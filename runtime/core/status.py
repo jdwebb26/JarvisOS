@@ -170,6 +170,9 @@ def build_status(root: Path) -> dict[str, Any]:
     operator_safe_autofix_runs = _load_jsons(root / "state" / "operator_safe_autofix_runs")
     operator_reply_plans = _load_jsons(root / "state" / "operator_reply_plans")
     operator_reply_applies = _load_jsons(root / "state" / "operator_reply_applies")
+    operator_reply_ingress = _load_jsons(root / "state" / "operator_reply_ingress")
+    operator_reply_ingress_results = _load_jsons(root / "state" / "operator_reply_ingress_results")
+    operator_reply_ingress_runs = _load_jsons(root / "state" / "operator_reply_ingress_runs")
     from scripts.operator_checkpoint_action_pack import classify_action_pack
     from scripts.operator_triage_support import build_decision_inbox_data, build_decision_shortlist_data, build_triage_data
     control_records = [record.to_dict() for record in list_control_records(root=root)]
@@ -300,6 +303,9 @@ def build_status(root: Path) -> dict[str, Any]:
         "operator_safe_autofix_runs": len(operator_safe_autofix_runs),
         "operator_reply_plans": len(operator_reply_plans),
         "operator_reply_applies": len(operator_reply_applies),
+        "operator_reply_ingress": len(operator_reply_ingress),
+        "operator_reply_ingress_results": len(operator_reply_ingress_results),
+        "operator_reply_ingress_runs": len(operator_reply_ingress_runs),
     }
     triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
     decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
@@ -389,12 +395,35 @@ def build_status(root: Path) -> dict[str, Any]:
             "recent_safe_autofix_run_count": len(operator_safe_autofix_runs),
             "recent_reply_plan_count": len(operator_reply_plans),
             "recent_reply_apply_count": len(operator_reply_applies),
+            "recent_reply_ingress_count": len(operator_reply_ingress),
+            "recent_reply_ingress_result_count": len(operator_reply_ingress_results),
+            "recent_reply_ingress_run_count": len(operator_reply_ingress_runs),
             "latest_queue_run": operator_queue_runs[-1] if operator_queue_runs else None,
             "latest_bulk_run": operator_bulk_runs[-1] if operator_bulk_runs else None,
             "latest_task_intervention": operator_task_interventions[-1] if operator_task_interventions else None,
             "latest_safe_autofix_run": operator_safe_autofix_runs[-1] if operator_safe_autofix_runs else None,
             "latest_reply_plan": operator_reply_plans[-1] if operator_reply_plans else None,
             "latest_reply_apply": operator_reply_applies[-1] if operator_reply_applies else None,
+            "latest_reply_ingress": operator_reply_ingress[-1] if operator_reply_ingress else None,
+            "latest_reply_ingress_run": operator_reply_ingress_runs[-1] if operator_reply_ingress_runs else None,
+            "reply_ingress_summary": {
+                "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
+                "ignored_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "ignored_non_reply"),
+                "invalid_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "invalid_reply"),
+                "blocked_count": sum(
+                    1
+                    for row in operator_reply_ingress
+                    if row.get("result_kind") in {"missing_inbox", "stale_inbox", "pack_refresh_required", "blocked", "duplicate_message"}
+                ),
+                "applied_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "applied"),
+                "duplicate_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "duplicate_message"),
+                "latest_source_metadata": {
+                    "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
+                    "source_channel": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_channel"),
+                    "source_message_id": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_message_id"),
+                    "source_user": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_user"),
+                },
+            },
             "current_action_pack": current_action_pack,
             "current_command_center": {
                 "health_label": ((current_command_center or {}).get("now") or {}).get("control_plane_health_label"),

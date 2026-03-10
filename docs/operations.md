@@ -401,6 +401,62 @@ Use reply plan when you want a durable non-executing plan.
 Use preview when you want the exact execute/explain/rebuild breakdown.
 Use apply when you want the reply string carried through existing wrapper guards.
 
+To bridge a real inbound operator message into the reply layer:
+
+```bash
+python3 scripts/operator_reply_ingest.py --reply "A1" --source-kind cli --source-message-id msg_123 --source-user operator
+python3 scripts/operator_reply_ingest.py --reply "A1 X2" --source-kind cli --source-message-id msg_124 --preview
+python3 scripts/operator_reply_ingest.py --reply "A1" --source-kind cli --source-message-id msg_125 --apply --dry-run
+python3 scripts/operator_reply_ingest.py --reply "A1" --source-kind cli --source-message-id msg_126 --apply
+python3 scripts/operator_reply_ingress_runner.py --apply --dry-run --continue-on-failure
+```
+
+Reply ingress is file-backed and auditable. The single-message wrapper writes:
+
+- `state/operator_reply_ingress/*.json`
+- `state/operator_reply_ingress_results/*.json`
+- `state/logs/operator_reply_ingress_latest.json`
+
+The bounded batch runner consumes files from:
+
+- `state/operator_reply_messages/*.json`
+
+and writes run ledgers to:
+
+- `state/operator_reply_ingress_runs/*.json`
+
+Minimal inbound file contract:
+
+```json
+{
+  "source_message_id": "msg_200",
+  "source_kind": "file",
+  "source_lane": "operator",
+  "source_channel": "reply_drop",
+  "source_user": "operator",
+  "raw_text": "A1",
+  "apply": true,
+  "dry_run": true
+}
+```
+
+Reply ingress classification rules:
+
+- `ignored_non_reply`: text is not compact reply grammar, so it is ledgered and ignored
+- `invalid_reply`: text looks like reply grammar but uses unsupported tokens
+- `missing_inbox`: reply is compact and potentially valid, but there is no saved decision inbox
+- `stale_inbox`: saved inbox no longer matches the current valid action pack
+- `pack_refresh_required`: current pack is expired or invalid and should be rebuilt first
+- `duplicate_message`: the same `source_message_id` was already processed and will not be reapplied unless forced
+- `planned_only`, `preview_only`, `applied`, `blocked`: normal ingress outcomes over the existing reply plan/preview/apply wrappers
+
+Recommended safe usage:
+
+- use `operator_reply_ingest.py --apply --dry-run` first for a fresh inbound reply
+- use `operator_reply_ingress_runner.py --apply --dry-run --continue-on-failure` for a bounded mixed folder batch
+- rebuild the pack/inbox first when ingress says `pack_refresh_required` or `stale_inbox`
+- do not reuse the same `source_message_id` unless you intentionally want duplicate handling
+
 To compare inbox snapshots:
 
 ```bash

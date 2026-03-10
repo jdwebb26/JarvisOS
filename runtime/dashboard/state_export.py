@@ -70,6 +70,9 @@ def build_state_export(root: Path) -> dict:
     operator_safe_autofix_runs = _load_jsons(root / "state" / "operator_safe_autofix_runs")
     operator_reply_plans = _load_jsons(root / "state" / "operator_reply_plans")
     operator_reply_applies = _load_jsons(root / "state" / "operator_reply_applies")
+    operator_reply_ingress = _load_jsons(root / "state" / "operator_reply_ingress")
+    operator_reply_ingress_results = _load_jsons(root / "state" / "operator_reply_ingress_results")
+    operator_reply_ingress_runs = _load_jsons(root / "state" / "operator_reply_ingress_runs")
 
     summary = {
         "counts": {
@@ -102,6 +105,9 @@ def build_state_export(root: Path) -> dict:
             "operator_safe_autofix_runs": len(operator_safe_autofix_runs),
             "operator_reply_plans": len(operator_reply_plans),
             "operator_reply_applies": len(operator_reply_applies),
+            "operator_reply_ingress": len(operator_reply_ingress),
+            "operator_reply_ingress_results": len(operator_reply_ingress_results),
+            "operator_reply_ingress_runs": len(operator_reply_ingress_runs),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -272,6 +278,8 @@ def build_state_export(root: Path) -> dict:
     summary["reply_summary"] = {
         "latest_reply_plan_count": len(operator_reply_plans),
         "latest_reply_apply_count": len(operator_reply_applies),
+        "latest_reply_ingress_count": len(operator_reply_ingress),
+        "latest_reply_ingress_run_count": len(operator_reply_ingress_runs),
         "invalid_reply_count": sum(1 for row in operator_reply_plans if row.get("unknown_tokens")),
         "blocked_reply_count": sum(
             1
@@ -279,6 +287,21 @@ def build_state_export(root: Path) -> dict:
             for step in row.get("per_step_results", [])
             if step.get("status") in {"invalid_reply", "plan_blocked"}
         ),
+        "ignored_ingress_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "ignored_non_reply"),
+        "invalid_ingress_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "invalid_reply"),
+        "blocked_ingress_count": sum(
+            1
+            for row in operator_reply_ingress
+            if row.get("result_kind") in {"missing_inbox", "stale_inbox", "pack_refresh_required", "blocked", "duplicate_message"}
+        ),
+        "applied_ingress_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "applied"),
+        "duplicate_ingress_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "duplicate_message"),
+        "latest_ingress_source": {
+            "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
+            "source_channel": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_channel"),
+            "source_message_id": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_message_id"),
+            "source_user": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_user"),
+        },
     }
 
     out_path = root / "state" / "logs" / "state_export.json"

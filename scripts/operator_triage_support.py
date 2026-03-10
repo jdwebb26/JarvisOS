@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -64,6 +65,35 @@ def operator_reply_applies_dir(root: Path) -> Path:
     return path
 
 
+def operator_reply_ingress_dir(root: Path) -> Path:
+    path = root / "state" / "operator_reply_ingress"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_reply_ingress_results_dir(root: Path) -> Path:
+    path = root / "state" / "operator_reply_ingress_results"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_reply_ingress_runs_dir(root: Path) -> Path:
+    path = root / "state" / "operator_reply_ingress_runs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_reply_messages_dir(root: Path) -> Path:
+    path = root / "state" / "operator_reply_messages"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+REPLY_TOKEN_PATTERN = re.compile(r"^[A-Z]\d+$")
+EXECUTABLE_REPLY_PREFIXES = {"A", "R", "P", "F"}
+REPORT_ONLY_REPLY_PREFIXES = {"X", "B"}
+
+
 def save_task_intervention_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
     path = operator_task_interventions_dir(root) / f"{record['intervention_id']}.json"
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
@@ -88,6 +118,26 @@ def save_reply_apply_record(root: Path, record: dict[str, Any]) -> dict[str, Any
     return record
 
 
+def save_reply_ingress_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_reply_ingress_dir(root) / f"{record['ingress_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    latest_path = triage_logs_dir(root) / "operator_reply_ingress_latest.json"
+    latest_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_reply_ingress_result(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_reply_ingress_results_dir(root) / f"{record['ingress_result_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_reply_ingress_run(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_reply_ingress_runs_dir(root) / f"{record['run_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
 def list_task_interventions(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_task_interventions_dir(root)), "completed_at", "started_at")
 
@@ -102,6 +152,104 @@ def list_reply_plans(root: Path) -> list[dict[str, Any]]:
 
 def list_reply_applies(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_reply_applies_dir(root)), "completed_at", "started_at")
+
+
+def list_reply_ingress_records(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_reply_ingress_dir(root)), "completed_at", "created_at")
+
+
+def list_reply_ingress_results(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_reply_ingress_results_dir(root)), "created_at", "completed_at")
+
+
+def list_reply_ingress_runs(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_reply_ingress_runs_dir(root)), "completed_at", "started_at")
+
+
+def normalize_reply_tokens(raw_text: str) -> list[str]:
+    return [token.strip().upper() for token in raw_text.replace(",", " ").split() if token.strip()]
+
+
+def classify_compact_reply_text(raw_text: str) -> dict[str, Any]:
+    normalized_text = " ".join(normalize_reply_tokens(raw_text))
+    tokens = normalize_reply_tokens(raw_text)
+    if not tokens:
+        return {
+            "normalized_text": normalized_text,
+            "reply_tokens": [],
+            "is_reply_candidate": False,
+            "classification": "ignored_non_reply",
+            "ignore_reason": "No compact reply tokens were present.",
+            "invalid_tokens": [],
+        }
+    invalid_shape = [token for token in tokens if not REPLY_TOKEN_PATTERN.match(token)]
+    if invalid_shape:
+        return {
+            "normalized_text": normalized_text,
+            "reply_tokens": tokens,
+            "is_reply_candidate": False,
+            "classification": "ignored_non_reply",
+            "ignore_reason": "Message does not match the bounded compact reply grammar.",
+            "invalid_tokens": invalid_shape,
+        }
+    unknown_prefix = [token for token in tokens if token[0] not in EXECUTABLE_REPLY_PREFIXES | REPORT_ONLY_REPLY_PREFIXES]
+    if unknown_prefix:
+        return {
+            "normalized_text": normalized_text,
+            "reply_tokens": tokens,
+            "is_reply_candidate": True,
+            "classification": "invalid_reply",
+            "ignore_reason": "",
+            "invalid_tokens": unknown_prefix,
+        }
+    return {
+        "normalized_text": normalized_text,
+        "reply_tokens": tokens,
+        "is_reply_candidate": True,
+        "classification": "reply_candidate",
+        "ignore_reason": "",
+        "invalid_tokens": [],
+    }
+
+
+def latest_reply_ingress_for_message_id(root: Path, source_message_id: str) -> dict[str, Any] | None:
+    if not source_message_id:
+        return None
+    for row in list_reply_ingress_records(root):
+        if row.get("source_message_id") == source_message_id:
+            return row
+    return None
+
+
+def current_decision_inbox_path(root: Path) -> Path:
+    return triage_logs_dir(root) / "operator_decision_inbox.json"
+
+
+def load_current_decision_inbox(root: Path) -> tuple[dict[str, Any] | None, Path, str | None]:
+    path = current_decision_inbox_path(root)
+    if not path.exists():
+        return None, path, "missing_inbox"
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), path, None
+    except Exception:
+        return None, path, "malformed_inbox"
+
+
+def classify_decision_inbox_freshness(root: Path, inbox: dict[str, Any] | None) -> tuple[str, dict[str, Any], str]:
+    current_pack = load_current_action_pack_summary(root)
+    if inbox is None:
+        return "missing_inbox", current_pack, "Decision inbox is missing."
+    inbox_pack_id = inbox.get("pack_id")
+    inbox_pack_status = inbox.get("pack_status")
+    current_pack_id = current_pack.get("action_pack_id")
+    current_pack_status = current_pack.get("status")
+    if current_pack_status != "valid":
+        return "pack_refresh_required", current_pack, f"Current action pack status is `{current_pack_status}`."
+    if inbox_pack_status != "valid":
+        return "stale_inbox", current_pack, f"Decision inbox pack status is `{inbox_pack_status}`."
+    if inbox_pack_id and current_pack_id and inbox_pack_id != current_pack_id:
+        return "stale_inbox", current_pack, "Decision inbox references an older action pack snapshot."
+    return "valid", current_pack, "Decision inbox matches the current valid action pack."
 
 
 def load_current_action_pack_summary(root: Path) -> dict[str, Any]:
@@ -1612,10 +1760,16 @@ def build_reply_plan(
     reply_string: str,
     allow_inbox_rebuild: bool = True,
     limit: int = 10,
+    source_inbox: dict[str, Any] | None = None,
+    source_inbox_path: Path | None = None,
 ) -> dict[str, Any]:
     from runtime.core.models import new_id
 
-    inbox, inbox_path = resolve_decision_inbox(root, allow_rebuild=allow_inbox_rebuild, limit=limit)
+    if source_inbox is None:
+        inbox, inbox_path = resolve_decision_inbox(root, allow_rebuild=allow_inbox_rebuild, limit=limit)
+    else:
+        inbox = source_inbox
+        inbox_path = source_inbox_path or current_decision_inbox_path(root)
     item_by_code: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
     for item in inbox.get("items", []):
         for code, mapping in item.get("reply_map", {}).items():
@@ -1659,6 +1813,293 @@ def build_reply_plan(
     }
     save_reply_plan_record(root, plan)
     return plan
+
+
+def build_reply_preview_data(
+    root: Path,
+    *,
+    reply_string: str,
+    allow_inbox_rebuild: bool = True,
+    limit: int = 10,
+    source_inbox: dict[str, Any] | None = None,
+    source_inbox_path: Path | None = None,
+) -> dict[str, Any]:
+    inbox = source_inbox
+    if inbox is None:
+        inbox, _ = resolve_decision_inbox(root, allow_rebuild=allow_inbox_rebuild, limit=limit)
+    plan = build_reply_plan(
+        root,
+        reply_string=reply_string,
+        allow_inbox_rebuild=allow_inbox_rebuild,
+        limit=limit,
+        source_inbox=inbox,
+        source_inbox_path=source_inbox_path,
+    )
+    return {
+        "ok": plan.get("ok", False),
+        "normalized_reply_tokens": plan.get("normalized_tokens", []),
+        "matched_inbox_items": [step.get("inbox_item_id") for step in plan.get("steps", [])],
+        "blocked_or_unknown_tokens": plan.get("unknown_tokens", []),
+        "steps": [
+            {
+                "reply_code": step.get("reply_code"),
+                "operation_kind": step.get("planned_operation_kind"),
+                "task_id": step.get("task_id"),
+                "action_id": step.get("action_id"),
+                "requires_pack_refresh_first": step.get("requires_pack_refresh_first"),
+                "suggested_command": step.get("suggested_command"),
+            }
+            for step in plan.get("steps", [])
+        ],
+        "any_stale_items": any(item.get("stale_risk") == "high" for item in (inbox or {}).get("items", [])),
+        "pack_refresh_recommended_first": (inbox or {}).get("pack_status") != "valid",
+        "plan": plan,
+    }
+
+
+def ingest_operator_reply(
+    root: Path,
+    *,
+    raw_text: str,
+    source_kind: str,
+    source_lane: str,
+    source_channel: str,
+    source_message_id: str,
+    source_user: str,
+    mode: str,
+    dry_run: bool,
+    continue_on_failure: bool,
+    force_duplicate: bool = False,
+) -> tuple[dict[str, Any], int]:
+    from runtime.core.models import new_id
+    from scripts.operator_apply_reply import apply_reply
+
+    created_at = now_iso()
+    normalized = classify_compact_reply_text(raw_text)
+    inbox, inbox_path, inbox_error = load_current_decision_inbox(root)
+    inbox_generated_at = inbox.get("generated_at") if inbox else None
+    inbox_status, current_pack, inbox_reason = classify_decision_inbox_freshness(root, inbox)
+
+    ingress = {
+        "ingress_id": new_id("opreplying"),
+        "created_at": created_at,
+        "source_kind": source_kind,
+        "source_lane": source_lane,
+        "source_channel": source_channel,
+        "source_message_id": source_message_id,
+        "source_user": source_user,
+        "raw_text": raw_text,
+        "normalized_text": normalized["normalized_text"],
+        "reply_tokens": normalized["reply_tokens"],
+        "matched_plan_id": None,
+        "decision_inbox_path": str(inbox_path),
+        "decision_inbox_generated_at": inbox_generated_at,
+        "source_action_pack_id": current_pack.get("action_pack_id"),
+        "source_action_pack_status": current_pack.get("status"),
+        "parse_ok": False,
+        "applied": False,
+        "dry_run": dry_run,
+        "ignored": False,
+        "ignore_reason": "",
+        "result_kind": "",
+        "result_ref_id": None,
+        "completed_at": None,
+    }
+    result = {
+        "ingress_result_id": new_id("opreplyres"),
+        "ingress_id": ingress["ingress_id"],
+        "created_at": created_at,
+        "classification": normalized["classification"],
+        "result_kind": "",
+        "ok": False,
+        "source_message_id": source_message_id,
+        "reply_tokens": normalized["reply_tokens"],
+        "payload": {},
+    }
+
+    duplicate = latest_reply_ingress_for_message_id(root, source_message_id) if source_message_id else None
+    if duplicate and not force_duplicate:
+        ingress["ignored"] = True
+        ingress["ignore_reason"] = f"Duplicate source_message_id `{source_message_id}` already processed."
+        ingress["result_kind"] = "duplicate_message"
+        ingress["result_ref_id"] = duplicate.get("ingress_id")
+        ingress["completed_at"] = now_iso()
+        result["result_kind"] = "duplicate_message"
+        result["payload"] = {"duplicate_of": duplicate.get("ingress_id")}
+        save_reply_ingress_record(root, ingress)
+        save_reply_ingress_result(root, result)
+        return {
+            "ok": False,
+            "classification": normalized["classification"],
+            "result_kind": "duplicate_message",
+            "ingress_record": ingress,
+            "result_record": result,
+        }, 1
+
+    if normalized["classification"] == "ignored_non_reply":
+        ingress["ignored"] = True
+        ingress["ignore_reason"] = normalized["ignore_reason"]
+        ingress["result_kind"] = "ignored_non_reply"
+        ingress["completed_at"] = now_iso()
+        result["result_kind"] = "ignored_non_reply"
+        result["ok"] = True
+        result["payload"] = {"ignore_reason": normalized["ignore_reason"]}
+        save_reply_ingress_record(root, ingress)
+        save_reply_ingress_result(root, result)
+        return {
+            "ok": True,
+            "classification": "ignored_non_reply",
+            "result_kind": "ignored_non_reply",
+            "ingress_record": ingress,
+            "result_record": result,
+        }, 0
+
+    if normalized["classification"] == "invalid_reply":
+        ingress["parse_ok"] = False
+        ingress["result_kind"] = "invalid_reply"
+        ingress["result_ref_id"] = result["ingress_result_id"]
+        ingress["completed_at"] = now_iso()
+        result["result_kind"] = "invalid_reply"
+        result["payload"] = {"unknown_tokens": normalized["invalid_tokens"]}
+        save_reply_ingress_record(root, ingress)
+        save_reply_ingress_result(root, result)
+        return {
+            "ok": False,
+            "classification": "invalid_reply",
+            "result_kind": "invalid_reply",
+            "ingress_record": ingress,
+            "result_record": result,
+        }, 1
+
+    if inbox_error == "missing_inbox":
+        ingress["ignored"] = False
+        ingress["ignore_reason"] = "Decision inbox is missing."
+        ingress["result_kind"] = "missing_inbox"
+        ingress["completed_at"] = now_iso()
+        result["result_kind"] = "missing_inbox"
+        result["payload"] = {"reason": "Decision inbox is missing. Build the inbox before ingesting replies."}
+        save_reply_ingress_record(root, ingress)
+        save_reply_ingress_result(root, result)
+        return {
+            "ok": False,
+            "classification": normalized["classification"],
+            "result_kind": "missing_inbox",
+            "ingress_record": ingress,
+            "result_record": result,
+        }, 1
+
+    if inbox_status != "valid":
+        ingress["ignored"] = False
+        ingress["ignore_reason"] = inbox_reason
+        ingress["result_kind"] = "pack_refresh_required" if inbox_status == "pack_refresh_required" else "stale_inbox"
+        ingress["completed_at"] = now_iso()
+        result["result_kind"] = ingress["result_kind"]
+        result["payload"] = {"reason": inbox_reason, "pack_status": current_pack.get("status"), "inbox_status": inbox_status}
+        save_reply_ingress_record(root, ingress)
+        save_reply_ingress_result(root, result)
+        return {
+            "ok": False,
+            "classification": normalized["classification"],
+            "result_kind": ingress["result_kind"],
+            "ingress_record": ingress,
+            "result_record": result,
+        }, 1
+
+    plan = build_reply_plan(
+        root,
+        reply_string=normalized["normalized_text"],
+        allow_inbox_rebuild=False,
+        source_inbox=inbox,
+        source_inbox_path=inbox_path,
+    )
+    ingress["matched_plan_id"] = plan.get("plan_id")
+    ingress["parse_ok"] = plan.get("ok", False)
+    result["payload"]["reply_plan"] = plan
+    if not plan.get("ok", False):
+        ingress["result_kind"] = "invalid_reply"
+        ingress["result_ref_id"] = plan.get("plan_id")
+        ingress["completed_at"] = now_iso()
+        result["result_kind"] = "invalid_reply"
+        result["payload"]["unknown_tokens"] = plan.get("unknown_tokens", [])
+        save_reply_ingress_record(root, ingress)
+        save_reply_ingress_result(root, result)
+        return {
+            "ok": False,
+            "classification": "invalid_reply",
+            "result_kind": "invalid_reply",
+            "ingress_record": ingress,
+            "result_record": result,
+            "reply_plan": plan,
+        }, 1
+
+    if mode == "plan":
+        ingress["result_kind"] = "planned_only"
+        ingress["result_ref_id"] = plan.get("plan_id")
+        ingress["completed_at"] = now_iso()
+        result["result_kind"] = "planned_only"
+        result["ok"] = True
+        save_reply_ingress_record(root, ingress)
+        save_reply_ingress_result(root, result)
+        return {
+            "ok": True,
+            "classification": "reply_candidate",
+            "result_kind": "planned_only",
+            "ingress_record": ingress,
+            "result_record": result,
+            "reply_plan": plan,
+        }, 0
+
+    if mode == "preview":
+        preview = build_reply_preview_data(
+            root,
+            reply_string=normalized["normalized_text"],
+            allow_inbox_rebuild=False,
+            source_inbox=inbox,
+            source_inbox_path=inbox_path,
+        )
+        ingress["result_kind"] = "preview_only"
+        ingress["result_ref_id"] = plan.get("plan_id")
+        ingress["completed_at"] = now_iso()
+        result["result_kind"] = "preview_only"
+        result["ok"] = bool(preview.get("ok"))
+        result["payload"]["preview"] = preview
+        save_reply_ingress_record(root, ingress)
+        save_reply_ingress_result(root, result)
+        return {
+            "ok": bool(preview.get("ok")),
+            "classification": "reply_candidate",
+            "result_kind": "preview_only",
+            "ingress_record": ingress,
+            "result_record": result,
+            "reply_plan": plan,
+            "preview": preview,
+        }, 0 if preview.get("ok") else 1
+
+    apply_payload, exit_code = apply_reply(
+        root,
+        reply_string=normalized["normalized_text"],
+        plan_id=plan.get("plan_id"),
+        dry_run=dry_run,
+        continue_on_failure=continue_on_failure,
+    )
+    ingress["applied"] = True
+    ingress["result_kind"] = "applied" if apply_payload.get("ok") else "blocked"
+    ingress["result_ref_id"] = apply_payload.get("reply_apply_id")
+    ingress["completed_at"] = now_iso()
+    result["result_kind"] = ingress["result_kind"]
+    result["ok"] = bool(apply_payload.get("ok"))
+    result["payload"]["apply"] = apply_payload
+    save_reply_ingress_record(root, ingress)
+    save_reply_ingress_result(root, result)
+    return {
+        "ok": bool(apply_payload.get("ok")),
+        "classification": "reply_candidate",
+        "result_kind": ingress["result_kind"],
+        "ingress_record": ingress,
+        "result_record": result,
+        "reply_plan": plan,
+        "apply_payload": apply_payload,
+    }, exit_code
 
 
 def build_decision_shortlist_data(root: Path, *, limit: int = 5, allow_inbox_rebuild: bool = True) -> dict[str, Any]:

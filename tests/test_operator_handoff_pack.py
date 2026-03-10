@@ -169,6 +169,20 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
             "--dry-run",
         ]
     )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_reply_ingest.py"),
+            "--root",
+            str(tmp_path),
+            "--reply",
+            "A1",
+            "--source-message-id",
+            "handoff_msg_1",
+            "--apply",
+            "--dry-run",
+        ]
+    )
 
     payload = _run_json(
         [
@@ -201,8 +215,10 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
     assert pack["command_center_summary"]["health_label"] in {"green", "yellow", "red"}
     assert "ranked_next_commands" in pack["decision_manifest_summary"]
     assert pack["decision_inbox_summary"]["reply_ready"] in {True, False}
+    assert pack["reply_ingress_summary"]["reply_ingest_ready"] in {True, False}
     assert pack["latest_reply_plan"] is not None
     assert pack["latest_reply_apply"] is not None
+    assert pack["latest_reply_ingress"] is not None
     assert any(
         row.get("last_successful_operator_action") or row.get("last_failed_operator_action")
         for row in pack["recent_task_status"]
