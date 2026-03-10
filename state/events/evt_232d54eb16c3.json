@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_232d54eb16c3",
+  "task_id": "task_e4bdfd0fc6e4",
+  "event_type": "review_requested",
+  "actor": "intake_regression",
+  "lane": "intake_regression",
+  "created_at": "2026-03-09T16:59:21.140807+00:00",
+  "from_status": "waiting_review",
+  "to_status": "waiting_review",
+  "checkpoint_summary": "Review request created: rev_fa264f7f6b49",
+  "reason": "Review required for task task_e4bdfd0fc6e4: patch python function bug in executor regression smoke 20260309_115921",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

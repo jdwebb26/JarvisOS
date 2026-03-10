@@ -1,0 +1,31 @@
+{
+  "task_id": "task_6027bba8ae5e",
+  "created_at": "2026-03-08T00:03:47.896832+00:00",
+  "updated_at": "2026-03-08T03:42:44.805849+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "jarvis",
+  "source_message_id": "review-task-001",
+  "source_user": "rollan",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: patch the intake code path for gateway routing",
+  "normalized_request": "patch the intake code path for gateway routing",
+  "task_type": "code",
+  "priority": "normal",
+  "risk_level": "risky",
+  "status": "completed",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-35B",
+  "review_required": true,
+  "approval_required": false,
+  "parent_task_id": null,
+  "related_artifact_ids": [],
+  "related_review_ids": [
+    "rev_6be8e19e7f7a"
+  ],
+  "related_approval_ids": [],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "Executor bounded pass finished for intake routing task.",
+  "version": "v1"
+}

@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_0715ab87e2ee",
+  "task_id": "task_545bb2889441",
+  "event_type": "task_created",
+  "actor": "smoke",
+  "lane": "jarvis",
+  "created_at": "2026-03-09T00:38:18.022989+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: complete from artifact queued guard cfa-guard-1773016697",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

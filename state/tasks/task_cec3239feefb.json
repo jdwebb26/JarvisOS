@@ -1,0 +1,35 @@
+{
+  "task_id": "task_cec3239feefb",
+  "created_at": "2026-03-09T17:16:38.285472+00:00",
+  "updated_at": "2026-03-09T21:20:02.730694",
+  "source_lane": "ready_to_ship_smoke",
+  "source_channel": "ready_to_ship_smoke",
+  "source_message_id": "ready_to_ship_smoke_20260309_121638",
+  "source_user": "ready_to_ship_smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: deploy live production service restart ready-to-ship smoke 20260309_121638",
+  "normalized_request": "deploy live production service restart ready-to-ship smoke 20260309_121638",
+  "task_type": "deploy",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "completed",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "review_required": true,
+  "approval_required": true,
+  "parent_task_id": null,
+  "related_artifact_ids": [
+    "art_c5eebd93028d"
+  ],
+  "related_review_ids": [
+    "rev_3f8e740e2c45"
+  ],
+  "related_approval_ids": [
+    "apr_fbdec31901b6"
+  ],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "Published recovered live apply report for local_executor.py after successful controlled Qwen apply.",
+  "version": "v1"
+}

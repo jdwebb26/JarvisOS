@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from runtime.core.task_artifacts import attach_artifact_to_task
+from runtime.core.task_runtime import load_task_record
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def new_artifact_id() -> str:
+    return f"art_{uuid.uuid4().hex[:12]}"
+
+
+def artifacts_dir(root: Optional[Path] = None) -> Path:
+    root_path = Path(root or ROOT).resolve()
+    path = root_path / "state" / "artifacts"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def artifact_path(artifact_id: str, root: Optional[Path] = None) -> Path:
+    return artifacts_dir(root=root) / f"{artifact_id}.json"
+
+
+def write_text_artifact(
+    *,
+    task_id: str,
+    artifact_type: str,
+    title: str,
+    summary: str,
+    content: str,
+    actor: str = "operator",
+    lane: str = "artifacts",
+    root: Optional[Path] = None,
+) -> dict:
+    root_path = Path(root or ROOT).resolve()
+
+    task = load_task_record(task_id, root=root_path)
+    if not task:
+        raise ValueError(f"Task not found: {task_id}")
+
+    artifact_id = new_artifact_id()
+    record = {
+        "artifact_id": artifact_id,
+        "task_id": task_id,
+        "artifact_type": artifact_type,
+        "title": title,
+        "summary": summary,
+        "content": content,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+        "created_by": actor,
+        "lane": lane,
+        "version": "v1",
+    }
+
+    path = artifact_path(artifact_id, root=root_path)
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+    linkage = attach_artifact_to_task(
+        task_id=task_id,
+        artifact_id=artifact_id,
+        artifact_type=artifact_type,
+        title=title,
+        actor=actor,
+        lane=lane,
+        root=root_path,
+    )
+
+    result = dict(record)
+    result["linked"] = linkage
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Write a text artifact and link it back onto a task.")
+    parser.add_argument("--root", default=str(ROOT), help="Project root path")
+    parser.add_argument("--task-id", required=True, help="Task id")
+    parser.add_argument("--artifact-type", required=True, help="Artifact type")
+    parser.add_argument("--title", required=True, help="Artifact title")
+    parser.add_argument("--summary", required=True, help="Artifact summary")
+    parser.add_argument("--content", required=True, help="Artifact content")
+    parser.add_argument("--actor", default="operator", help="Actor name")
+    parser.add_argument("--lane", default="artifacts", help="Lane name")
+    args = parser.parse_args()
+
+    record = write_text_artifact(
+        task_id=args.task_id,
+        artifact_type=args.artifact_type,
+        title=args.title,
+        summary=args.summary,
+        content=args.content,
+        actor=args.actor,
+        lane=args.lane,
+        root=Path(args.root).resolve(),
+    )
+
+    print(json.dumps(record, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

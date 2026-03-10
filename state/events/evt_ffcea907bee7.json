@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_ffcea907bee7",
+  "task_id": "task_cec3239feefb",
+  "event_type": "status_transition",
+  "actor": "qwen_candidate_applier",
+  "lane": "apply",
+  "created_at": "2026-03-10T00:48:23.140013+00:00",
+  "from_status": "ready_to_ship",
+  "to_status": "shipped",
+  "checkpoint_summary": "Live candidate apply succeeded",
+  "reason": "target_file=/home/rollan/.openclaw/workspace/tasks/local_executor.py\ncandidate_file=/home/rollan/.openclaw/workspace/artifacts/qwen_live/2026-03-09/candidates/local_executor.py\nlive_apply_artifact=/home/rollan/.openclaw/workspace/artifacts/qwen_live/2026-03-09/20260309_194823_live_apply.md",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

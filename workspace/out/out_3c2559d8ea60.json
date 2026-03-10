@@ -1,0 +1,12 @@
+{
+  "output_id": "out_3c2559d8ea60",
+  "task_id": "task_751aa0f9a77a",
+  "artifact_id": "art_782b4c03700f",
+  "title": "direct publish verification artifact",
+  "summary": "Artifact for direct publish verification",
+  "published_at": "2026-03-09T00:35:45.468931+00:00",
+  "published_by": "executor",
+  "lane": "outputs",
+  "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_3c2559d8ea60.md",
+  "version": "v1"
+}

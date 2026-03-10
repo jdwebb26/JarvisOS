@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from runtime.core.task_runtime import load_task, ship_task as ship_task_record
+
+try:
+    from runtime.dashboard.rebuild_all import rebuild_all
+except Exception:
+    rebuild_all = None
+
+
+def run_rebuild(root: Path) -> dict | None:
+    if rebuild_all is None:
+        return None
+
+    for call in (
+        lambda: rebuild_all(root=root),
+        lambda: rebuild_all(root),
+        lambda: rebuild_all(),
+    ):
+        try:
+            return call()
+        except TypeError:
+            continue
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": str(exc),
+            }
+
+    return {
+        "ok": False,
+        "error": "Could not call rebuild_all with supported signature.",
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Explicitly ship a completed/ready task.")
+    parser.add_argument("--root", default=str(ROOT), help="Project root path")
+    parser.add_argument("--task-id", required=True, help="Task ID")
+    parser.add_argument("--actor", required=True, help="Actor name")
+    parser.add_argument("--lane", required=True, help="Lane name")
+    parser.add_argument("--final-outcome", default="", help="Final ship outcome text")
+    args = parser.parse_args()
+
+    root = Path(args.root).resolve()
+    task = load_task(root, args.task_id)
+
+    if task.status == "shipped":
+        result = {
+            "task_id": task.task_id,
+            "previous_status": "shipped",
+            "status": "shipped",
+            "reason": "Task already shipped.",
+            "final_outcome": task.final_outcome or args.final_outcome,
+            "event_id": None,
+            "already_shipped": True,
+        }
+        ack_kind = "ship_task_noop_ack"
+        ack_reply = (
+            f"Task `{task.task_id}` was already `shipped`, so no change was made. "
+            "Run publish-complete when the linked artifact is ready."
+        )
+    else:
+        result = ship_task_record(
+            root=root,
+            task_id=args.task_id,
+            actor=args.actor,
+            lane=args.lane,
+            final_outcome=args.final_outcome,
+        )
+        ack_kind = "ship_task_ack"
+        ack_reply = (
+            f"Task `{result['task_id']}` is now `shipped`. "
+            "Link or confirm the artifact, then run publish-complete next."
+        )
+
+    rebuild_result = run_rebuild(root)
+
+    payload = {
+        "ok": True,
+        "task_id": result["task_id"],
+        "status": result["status"],
+        "ack_kind": ack_kind,
+        "ack_reply": ack_reply,
+        "reply": ack_reply,
+        "result": result,
+    }
+
+    if rebuild_result is not None:
+        payload["rebuild"] = rebuild_result
+
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

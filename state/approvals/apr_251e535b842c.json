@@ -1,0 +1,16 @@
+{
+  "approval_id": "apr_251e535b842c",
+  "task_id": "task_5df9112d0d34",
+  "requested_at": "2026-03-09T00:22:05.713866+00:00",
+  "updated_at": "2026-03-09T00:24:52.963001+00:00",
+  "requested_by": "operator",
+  "requested_reviewer": "anton",
+  "lane": "review",
+  "approval_type": "deploy",
+  "status": "approved",
+  "summary": "Approval required for task task_5df9112d0d34: deploy production runtime gate flow gateflow-1773015476",
+  "details": "",
+  "linked_artifact_ids": [],
+  "decision_reason": "salvage approval granted after event compat fix",
+  "version": "v1"
+}

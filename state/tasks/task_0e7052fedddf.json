@@ -1,0 +1,31 @@
+{
+  "task_id": "task_0e7052fedddf",
+  "created_at": "2026-03-09T00:37:09.307244+00:00",
+  "updated_at": "2026-03-09T00:37:09.533656+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "jarvis",
+  "source_message_id": "cfa-clean-1773016629",
+  "source_user": "smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: complete from artifact clean verification cfa-clean-1773016629",
+  "normalized_request": "complete from artifact clean verification cfa-clean-1773016629",
+  "task_type": "general",
+  "priority": "normal",
+  "risk_level": "normal",
+  "status": "completed",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-35B",
+  "review_required": false,
+  "approval_required": false,
+  "parent_task_id": null,
+  "related_artifact_ids": [
+    "art_f70dc358fee1"
+  ],
+  "related_review_ids": [],
+  "related_approval_ids": [],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "clean complete_from_artifact verification",
+  "version": "v1"
+}

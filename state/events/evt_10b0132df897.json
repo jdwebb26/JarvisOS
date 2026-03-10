@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_10b0132df897",
+  "task_id": "task_0e7052fedddf",
+  "event_type": "artifact_linked",
+  "actor": "operator",
+  "lane": "artifacts",
+  "created_at": "2026-03-09T00:37:09.448626+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Artifact linked: art_f70dc358fee1",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": "art_f70dc358fee1",
+  "artifact_type": "note",
+  "artifact_title": "clean complete_from_artifact verification artifact",
+  "already_linked": false,
+  "version": "v1"
+}

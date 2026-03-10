@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_69dfc967a002",
+  "task_id": "task_715939b805ec",
+  "requested_at": "2026-03-09T15:46:05.454423+00:00",
+  "updated_at": "2026-03-09T15:46:05.454434+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "gap_smoke",
+  "lane": "gap_smoke",
+  "status": "pending",
+  "summary": "Review required for task task_715939b805ec: deploy live production service restart",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "version": "v1"
+}

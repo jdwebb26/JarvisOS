@@ -1,0 +1,13 @@
+{
+  "artifact_id": "art_782b4c03700f",
+  "task_id": "task_751aa0f9a77a",
+  "artifact_type": "note",
+  "title": "direct publish verification artifact",
+  "summary": "Artifact for direct publish verification",
+  "content": "Disposable artifact used to verify output publishing creates an event cleanly.",
+  "created_at": "2026-03-09T00:35:45.380791+00:00",
+  "updated_at": "2026-03-09T00:35:45.380807+00:00",
+  "created_by": "operator",
+  "lane": "artifacts",
+  "version": "v1"
+}

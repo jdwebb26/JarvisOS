@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_494b40d029fc",
+  "task_id": "task_5029e9a08898",
+  "event_type": "checkpoint_recorded",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-09T00:08:44.543474+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Executor claimed task: fresh ship_task transition check shipfresh-1773014924",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

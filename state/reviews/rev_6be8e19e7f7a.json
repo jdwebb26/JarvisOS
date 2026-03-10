@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_6be8e19e7f7a",
+  "task_id": "task_6027bba8ae5e",
+  "requested_at": "2026-03-08T00:04:55.396929+00:00",
+  "updated_at": "2026-03-08T00:05:53.911998+00:00",
+  "reviewer_role": "archimedes",
+  "requested_by": "rollan",
+  "lane": "review",
+  "status": "approved",
+  "summary": "Review required for task task_6027bba8ae5e: patch the intake code path for gateway routing",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "Looks good for next step.",
+  "version": "v1"
+}

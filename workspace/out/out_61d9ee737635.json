@@ -1,0 +1,12 @@
+{
+  "output_id": "out_61d9ee737635",
+  "task_id": "task_4b727a01e34f",
+  "artifact_id": "art_0cfd8ee26a79",
+  "title": "complete_from_artifact disposable artifact",
+  "summary": "Artifact for complete_from_artifact flow",
+  "published_at": "2026-03-09T00:32:17.312358+00:00",
+  "published_by": "executor",
+  "lane": "executor",
+  "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_61d9ee737635.md",
+  "version": "v1"
+}

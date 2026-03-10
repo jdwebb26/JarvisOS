@@ -1,0 +1,13 @@
+{
+  "artifact_id": "art_dd4f0e3df318",
+  "task_id": "task_545bb2889441",
+  "artifact_type": "note",
+  "title": "queued guard artifact",
+  "summary": "Artifact for queued guard verification",
+  "content": "This should not allow publish+complete while the task is still queued.",
+  "created_at": "2026-03-09T00:38:18.110190+00:00",
+  "updated_at": "2026-03-09T00:38:18.110203+00:00",
+  "created_by": "operator",
+  "lane": "artifacts",
+  "version": "v1"
+}

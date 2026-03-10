@@ -1,0 +1,6 @@
+{
+  "approved_task_id": "task_d7b35612e2c7",
+  "approved_at": "2026-03-10T15:30:34.772565+00:00",
+  "approval_note": "task-bound router idempotency dry-run via nimo branch-contract guard pass",
+  "mode": "dry_run"
+}

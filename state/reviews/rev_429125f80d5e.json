@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_429125f80d5e",
+  "task_id": "task_d7b35612e2c7",
+  "requested_at": "2026-03-09T17:04:03.448876+00:00",
+  "updated_at": "2026-03-09T17:04:03.464892+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "router_smoke",
+  "lane": "router_smoke",
+  "status": "approved",
+  "summary": "Review required for task task_d7b35612e2c7: deploy live production service restart router idempotency smoke 20260309_120403",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "router idempotency smoke approval of review",
+  "version": "v1"
+}

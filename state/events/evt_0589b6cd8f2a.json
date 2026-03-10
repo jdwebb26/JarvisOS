@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_0589b6cd8f2a",
+  "task_id": "task_92c20f26be1b",
+  "event_type": "status_transition",
+  "actor": "approval_smoke",
+  "lane": "approval_smoke",
+  "created_at": "2026-03-09T16:33:35.567062+00:00",
+  "from_status": "waiting_approval",
+  "to_status": "queued",
+  "checkpoint_summary": "Approval granted: apr_a0eea60d98e3",
+  "reason": "approval smoke final approval",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

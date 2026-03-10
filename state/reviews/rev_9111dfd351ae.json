@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_9111dfd351ae",
+  "task_id": "task_e3d72b5aa2b8",
+  "requested_at": "2026-03-09T15:46:05.492704+00:00",
+  "updated_at": "2026-03-09T15:46:05.492714+00:00",
+  "reviewer_role": "archimedes",
+  "requested_by": "gap_smoke",
+  "lane": "gap_smoke",
+  "status": "pending",
+  "summary": "Review required for task task_e3d72b5aa2b8: patch python function bug in executor",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "version": "v1"
+}

@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_25049aed4554",
+  "task_id": "task_33c2c555f876",
+  "event_type": "task_status_changed",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-08T21:40:07.442600+00:00",
+  "from_status": "running",
+  "to_status": "completed",
+  "checkpoint_summary": null,
+  "reason": "Task completed.",
+  "final_outcome": "Smoke task closed automatically by e2e smoke runtime.",
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

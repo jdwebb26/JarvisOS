@@ -1,0 +1,221 @@
+{
+  "status": {
+    "queued_now": [
+      {
+        "task_id": "task_81a337bbf2d7",
+        "summary": "deploy live production service restart task-store transition smoke 20260309_120722",
+        "status": "queued",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_a7d82c0f29f8",
+        "summary": "patch python function bug in executor intake auto route smoke 20260309_114750",
+        "status": "queued",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_7d3a2154e2a7",
+        "summary": "deploy live production service restart intake auto route smoke 20260309_114742",
+        "status": "queued",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_92c20f26be1b",
+        "summary": "deploy live production service restart approval smoke 20260309_113335",
+        "status": "queued",
+        "priority": "normal"
+      }
+    ],
+    "running_now": [],
+    "blocked": [],
+    "waiting_approval": [
+      {
+        "task_id": "task_b9f27c71f948",
+        "summary": "deploy live production service restart smoke 20260309_112853",
+        "status": "waiting_approval",
+        "priority": "normal"
+      }
+    ],
+    "waiting_review": [
+      {
+        "task_id": "task_e4bdfd0fc6e4",
+        "summary": "patch python function bug in executor regression smoke 20260309_115921",
+        "status": "waiting_review",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_84d4ec9cfd46",
+        "summary": "deploy live production service restart regression smoke 20260309_115921",
+        "status": "waiting_review",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_9c69c65badd7",
+        "summary": "patch python function bug in executor intake auto route smoke 20260309_115607",
+        "status": "waiting_review",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_e134c1f6347c",
+        "summary": "deploy live production service restart intake auto route smoke 20260309_115607",
+        "status": "waiting_review",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_e3d72b5aa2b8",
+        "summary": "patch python function bug in executor",
+        "status": "waiting_review",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_715939b805ec",
+        "summary": "deploy live production service restart",
+        "status": "waiting_review",
+        "priority": "normal"
+      }
+    ],
+    "finished_recently": [
+      {
+        "task_id": "task_cec3239feefb",
+        "summary": "deploy live production service restart ready-to-ship smoke 20260309_121638",
+        "status": "completed",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_6229f00fea37",
+        "summary": "deploy live production service restart ready-to-ship smoke 20260309_121131",
+        "status": "completed",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_bbd60d50ec06",
+        "summary": "smoke test runtime pipeline 2f083365",
+        "status": "completed",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_545bb2889441",
+        "summary": "complete from artifact queued guard cfa-guard-1773016697",
+        "status": "completed",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_751aa0f9a77a",
+        "summary": "publish artifact only verification pubonly-1773016545",
+        "status": "completed",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_0e7052fedddf",
+        "summary": "complete from artifact clean verification cfa-clean-1773016629",
+        "status": "completed",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_4b727a01e34f",
+        "summary": "complete_from_artifact disposable flow cfa-1773016337",
+        "status": "completed",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_6e9f48c6f76b",
+        "summary": "smoke test runtime pipeline 80d9471a",
+        "status": "completed",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_5df9112d0d34",
+        "summary": "deploy production runtime gate flow gateflow-1773015476",
+        "status": "shipped",
+        "priority": "normal"
+      },
+      {
+        "task_id": "task_5029e9a08898",
+        "summary": "fresh ship_task transition check shipfresh-1773014924",
+        "status": "shipped",
+        "priority": "normal"
+      }
+    ],
+    "counts": {
+      "total_tasks": 33,
+      "queued": 4,
+      "running": 0,
+      "blocked": 0,
+      "waiting_approval": 1,
+      "waiting_review": 6,
+      "finished_recently": 10
+    },
+    "next_recommended_move": "Review tasks waiting on reviewer verdicts."
+  },
+  "pending_reviews": [
+    {
+      "review_id": "rev_311836e4a3e6",
+      "task_id": "task_84d4ec9cfd46",
+      "reviewer_role": "anton",
+      "status": "pending",
+      "summary": "Review required for task task_84d4ec9cfd46: deploy live production service restart regression smoke 20260309_115921"
+    },
+    {
+      "review_id": "rev_657fba34ce3a",
+      "task_id": "task_9c69c65badd7",
+      "reviewer_role": "archimedes",
+      "status": "pending",
+      "summary": "Review required for task task_9c69c65badd7: patch python function bug in executor intake auto route smoke 20260309_115607"
+    },
+    {
+      "review_id": "rev_69dfc967a002",
+      "task_id": "task_715939b805ec",
+      "reviewer_role": "anton",
+      "status": "pending",
+      "summary": "Review required for task task_715939b805ec: deploy live production service restart"
+    },
+    {
+      "review_id": "rev_74ea3848cac1",
+      "task_id": "task_e134c1f6347c",
+      "reviewer_role": "anton",
+      "status": "pending",
+      "summary": "Review required for task task_e134c1f6347c: deploy live production service restart intake auto route smoke 20260309_115607"
+    },
+    {
+      "review_id": "rev_9111dfd351ae",
+      "task_id": "task_e3d72b5aa2b8",
+      "reviewer_role": "archimedes",
+      "status": "pending",
+      "summary": "Review required for task task_e3d72b5aa2b8: patch python function bug in executor"
+    },
+    {
+      "review_id": "rev_fa264f7f6b49",
+      "task_id": "task_e4bdfd0fc6e4",
+      "reviewer_role": "archimedes",
+      "status": "pending",
+      "summary": "Review required for task task_e4bdfd0fc6e4: patch python function bug in executor regression smoke 20260309_115921"
+    }
+  ],
+  "pending_approvals": [
+    {
+      "approval_id": "apr_3f7c8486d081",
+      "task_id": "task_b9f27c71f948",
+      "requested_reviewer": "anton",
+      "status": "pending",
+      "summary": "Approval required after review approval: deploy live production service restart smoke 20260309_112853"
+    }
+  ],
+  "candidate_apply_ready": [
+    {
+      "task_id": "task_d7b35612e2c7",
+      "status": "ready_to_ship",
+      "summary": "deploy live production service restart router idempotency smoke 20260309_120403",
+      "assigned_model": "Qwen3.5-122B",
+      "handoff": "Approved and ready for live apply.",
+      "next_action": "Run Qwen candidate apply. Use --dry-run first if you want a no-write verification pass."
+    }
+  ],
+  "flowstate_waiting_promotion": [],
+  "operator_focus": "Clear pending reviews first.",
+  "counts": {
+    "pending_reviews": 6,
+    "pending_approvals": 1,
+    "candidate_apply_ready": 1,
+    "flowstate_waiting_promotion": 0
+  }
+}

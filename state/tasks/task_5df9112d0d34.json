@@ -1,0 +1,33 @@
+{
+  "task_id": "task_5df9112d0d34",
+  "created_at": "2026-03-09T00:17:56.595783+00:00",
+  "updated_at": "2026-03-09T00:24:53.035852+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "jarvis",
+  "source_message_id": "gateflow-1773015476",
+  "source_user": "smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: deploy production runtime gate flow gateflow-1773015476",
+  "normalized_request": "deploy production runtime gate flow gateflow-1773015476",
+  "task_type": "deploy",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "shipped",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "review_required": true,
+  "approval_required": true,
+  "parent_task_id": null,
+  "related_artifact_ids": [],
+  "related_review_ids": [
+    "rev_733345efc3fc"
+  ],
+  "related_approval_ids": [
+    "apr_251e535b842c"
+  ],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "gate flow completion gateflow-1773015476",
+  "version": "v1"
+}

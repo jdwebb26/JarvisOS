@@ -1,0 +1,31 @@
+{
+  "task_id": "task_b8283a17ca85",
+  "created_at": "2026-03-08T02:59:10.855957+00:00",
+  "updated_at": "2026-03-08T03:30:01.399064+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "jarvis",
+  "source_message_id": "dedupe-test-003",
+  "source_user": "rollan",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: add artifact linkage from task outputs back into related_artifact_ids",
+  "normalized_request": "add artifact linkage from task outputs back into related_artifact_ids",
+  "task_type": "general",
+  "priority": "normal",
+  "risk_level": "normal",
+  "status": "completed",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-35B",
+  "review_required": false,
+  "approval_required": false,
+  "parent_task_id": null,
+  "related_artifact_ids": [
+    "art_8d94613f6d36"
+  ],
+  "related_review_ids": [],
+  "related_approval_ids": [],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "Artifact linkage work was published and the task is complete.",
+  "version": "v1"
+}

@@ -1,0 +1,16 @@
+{
+  "approval_id": "apr_54d59595e889",
+  "task_id": "task_6229f00fea37",
+  "requested_at": "2026-03-09T17:11:31.637309+00:00",
+  "updated_at": "2026-03-09T17:11:31.662142+00:00",
+  "requested_by": "ready_to_ship_smoke",
+  "requested_reviewer": "anton",
+  "lane": "ready_to_ship_smoke",
+  "approval_type": "deploy",
+  "status": "approved",
+  "summary": "Approval required after review approval: deploy live production service restart ready-to-ship smoke 20260309_121131",
+  "details": "ready_to_ship smoke review approval",
+  "linked_artifact_ids": [],
+  "decision_reason": "ready_to_ship smoke approval approval",
+  "version": "v1"
+}

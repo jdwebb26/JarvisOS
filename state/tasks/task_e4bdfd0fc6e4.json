@@ -1,0 +1,31 @@
+{
+  "task_id": "task_e4bdfd0fc6e4",
+  "created_at": "2026-03-09T16:59:21.138510+00:00",
+  "updated_at": "2026-03-09T16:59:21.140495+00:00",
+  "source_lane": "intake_regression",
+  "source_channel": "intake_regression",
+  "source_message_id": "code_regression",
+  "source_user": "intake_regression",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: patch python function bug in executor regression smoke 20260309_115921",
+  "normalized_request": "patch python function bug in executor regression smoke 20260309_115921",
+  "task_type": "code",
+  "priority": "normal",
+  "risk_level": "risky",
+  "status": "waiting_review",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-35B",
+  "review_required": true,
+  "approval_required": false,
+  "parent_task_id": null,
+  "related_artifact_ids": [],
+  "related_review_ids": [
+    "rev_fa264f7f6b49"
+  ],
+  "related_approval_ids": [],
+  "checkpoint_summary": "",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "",
+  "version": "v1"
+}

@@ -1,0 +1,15 @@
+{
+  "event_id": "evt_9d4481703d2e",
+  "task_id": "task_1caf14131a74",
+  "event_type": "task_status_changed",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-08T03:12:40.419972+00:00",
+  "details": {
+    "from_status": "queued",
+    "to_status": "running",
+    "reason": "Executor claimed queued task.",
+    "final_outcome": ""
+  },
+  "version": "v1"
+}

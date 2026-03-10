@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_657fba34ce3a",
+  "task_id": "task_9c69c65badd7",
+  "requested_at": "2026-03-09T16:56:07.508413+00:00",
+  "updated_at": "2026-03-09T16:56:07.508424+00:00",
+  "reviewer_role": "archimedes",
+  "requested_by": "intake_smoke",
+  "lane": "intake_smoke",
+  "status": "pending",
+  "summary": "Review required for task task_9c69c65badd7: patch python function bug in executor intake auto route smoke 20260309_115607",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "version": "v1"
+}

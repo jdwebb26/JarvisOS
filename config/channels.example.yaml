@@ -1,0 +1,28 @@
+channels:
+  jarvis:
+    discord_id: "REPLACE_ME"
+    purpose: chat_planning_status_explicit_tasks
+
+  tasks:
+    discord_id: "REPLACE_ME"
+    purpose: durable_task_visibility
+
+  outputs:
+    discord_id: "REPLACE_ME"
+    purpose: approved_final_artifacts
+
+  review:
+    discord_id: "REPLACE_ME"
+    purpose: concise_approval_decisions
+
+  audit:
+    discord_id: "REPLACE_ME"
+    purpose: anton_high_stakes_review
+
+  code_review:
+    discord_id: "REPLACE_ME"
+    purpose: archimedes_code_review
+
+  flowstate:
+    discord_id: "REPLACE_ME"
+    purpose: source_ingest_extract_distill_propose

@@ -1,0 +1,31 @@
+{
+  "task_id": "task_6e9f48c6f76b",
+  "created_at": "2026-03-09T00:25:56.838699+00:00",
+  "updated_at": "2026-03-09T00:31:27.403766+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "jarvis",
+  "source_message_id": "smoke-80d9471a",
+  "source_user": "smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: smoke test runtime pipeline 80d9471a",
+  "normalized_request": "smoke test runtime pipeline 80d9471a",
+  "task_type": "code",
+  "priority": "normal",
+  "risk_level": "risky",
+  "status": "completed",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-35B",
+  "review_required": true,
+  "approval_required": false,
+  "parent_task_id": null,
+  "related_artifact_ids": [
+    "art_461d662bf5ae"
+  ],
+  "related_review_ids": [],
+  "related_approval_ids": [],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "Smoke task closed automatically by e2e smoke runtime.",
+  "version": "v1"
+}

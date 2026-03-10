@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_ffe75eca083e",
+  "task_id": "task_545bb2889441",
+  "event_type": "task_status_changed",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-09T00:45:07.689426+00:00",
+  "from_status": "running",
+  "to_status": "completed",
+  "checkpoint_summary": null,
+  "reason": "Task completed.",
+  "final_outcome": "closed queued guard verification task",
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

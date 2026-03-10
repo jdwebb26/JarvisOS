@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_04a60b7331a1",
+  "task_id": "task_4b727a01e34f",
+  "event_type": "task_created",
+  "actor": "smoke",
+  "lane": "jarvis",
+  "created_at": "2026-03-09T00:32:17.074993+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: complete_from_artifact disposable flow cfa-1773016337",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

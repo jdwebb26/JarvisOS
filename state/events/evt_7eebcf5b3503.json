@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_7eebcf5b3503",
+  "task_id": "task_33c2c555f876",
+  "event_type": "task_created",
+  "actor": "smoke",
+  "lane": "jarvis",
+  "created_at": "2026-03-08T21:40:07.226298+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: smoke test runtime pipeline 62d2232d",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

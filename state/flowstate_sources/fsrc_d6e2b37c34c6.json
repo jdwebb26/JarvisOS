@@ -1,0 +1,20 @@
+{
+  "source_id": "fsrc_d6e2b37c34c6",
+  "created_at": "2026-03-08T00:09:07.122686+00:00",
+  "updated_at": "2026-03-08T00:46:20.348452+00:00",
+  "source_type": "note",
+  "title": "Flowstate source test",
+  "content": "This source should not auto-promote into a task.",
+  "source_ref": "manual-test",
+  "created_by": "rollan",
+  "processing_status": "distilled",
+  "distillation_artifact_ids": [
+    "fdist_71916fbca831"
+  ],
+  "promotion_request_ids": [
+    "apr_8ce6f4573eef"
+  ],
+  "version": "v1",
+  "extraction_artifact_id": "fext_4b335e09603d",
+  "latest_distillation_artifact_id": "fdist_71916fbca831"
+}

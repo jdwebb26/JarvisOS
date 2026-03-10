@@ -1,0 +1,12 @@
+{
+  "event_id": "evt_f573c5660ab6",
+  "task_id": "task_1caf14131a74",
+  "event_type": "checkpoint_recorded",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-08T03:17:55.338914+00:00",
+  "details": {
+    "checkpoint_summary": "Deploy task remains bounded and requires explicit ship-step confirmation."
+  },
+  "version": "v1"
+}

@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_94c35db2cedc",
+  "task_id": "task_9c69c65badd7",
+  "event_type": "task_created",
+  "actor": "intake_smoke",
+  "lane": "intake_smoke",
+  "created_at": "2026-03-09T16:56:07.504909+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: patch python function bug in executor intake auto route smoke 20260309_115607",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

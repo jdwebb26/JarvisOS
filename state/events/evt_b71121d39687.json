@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_b71121d39687",
+  "task_id": "task_6229f00fea37",
+  "event_type": "output_published",
+  "actor": "operator",
+  "lane": "outputs",
+  "created_at": "2026-03-09T18:08:04.314390+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Output published: out_9bc70bf935b4",
+  "reason": "tiny linked artifact for publish_complete smoke",
+  "final_outcome": null,
+  "artifact_id": "art_publish_smoke_20260309_125152",
+  "artifact_type": "report",
+  "artifact_title": "publish smoke artifact art_publish_smoke_20260309_125152",
+  "already_linked": null,
+  "version": "v1"
+}

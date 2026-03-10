@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_42965a5ac8e9",
+  "task_id": "task_751aa0f9a77a",
+  "event_type": "artifact_linked",
+  "actor": "operator",
+  "lane": "artifacts",
+  "created_at": "2026-03-09T00:35:45.381518+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Artifact linked: art_782b4c03700f",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": "art_782b4c03700f",
+  "artifact_type": "note",
+  "artifact_title": "direct publish verification artifact",
+  "already_linked": false,
+  "version": "v1"
+}

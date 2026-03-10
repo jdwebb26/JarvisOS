@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_88338e2618aa",
+  "task_id": "task_81a337bbf2d7",
+  "event_type": "review_requested",
+  "actor": "task_store_smoke",
+  "lane": "task_store_smoke",
+  "created_at": "2026-03-09T17:07:22.740878+00:00",
+  "from_status": "waiting_review",
+  "to_status": "waiting_review",
+  "checkpoint_summary": "Review request created: rev_8e6666ba005d",
+  "reason": "Review required for task task_81a337bbf2d7: deploy live production service restart task-store transition smoke 20260309_120722",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

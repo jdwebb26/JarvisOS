@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "timestamp_utc": "2026-03-10T16:48:16.314222+00:00",
+  "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
+  "steps": [
+    {
+      "step": "validate",
+      "ok": true,
+      "summary": {
+        "pass": 69,
+        "warn": 0,
+        "fail": 0
+      },
+      "message": "validate passed"
+    },
+    {
+      "step": "runtime_regression_pack",
+      "ok": false,
+      "summary": {},
+      "message": "{\n  \"ok\": false,\n  \"total\": 5,\n  \"passed\": 4,\n  \"failed\": 1,\n  \"results\": [\n    {\n      \"script\": \"runtime/core/check_ops_report_regression.py\",\n      \"ok\": false,\n      \"exit_code\": 1,\n      \"payload_ok\": false,\n      \"stdout_head\": \"{\\n  \\\"ok\\\": false,\\n  \\\"live_file_exists\\\": true,\\n  \\\"task_db_exists\\\": true,\\n  \\\"results_dir_exists\\\": true,\\n  \\\"checks\\\": {\\n    \\\"helper_signature\\\": false,\\n    \\\"counts_query_unfiltered\\\": false,\\n    \\\"recent_query_unfiltered\\\": false,\\n    \\\"callsite_no_task_id\\\": false,\\n    \\\"summary_heading\\\": false,\\n    \\\"queue_counts_heading\\\": true,\\n    \\\"recent_heading\\\": true,\\n    \\\"artifact_paths_heading\\\": true,\\n    \\\"attention_heading\\\": true,\\n    \\\"next_action_heading\\\": true\\n  },\\n  \\\"notes\\\": [],\\n  \\\"task_74\\\": {\\n    \\\"id\\\": 74,\\n    \\\"status\\\": \\\"done\\\",\\n    \\\"result_path\\\": \\\"/home/rollan/.openclaw/workspace/tasks/results/74.md\\\"\\n  },\\n  \\\"\",\n      \"stderr_head\": \"\"\n    },\n    {\n      \"script\": \"runtime/core/e2e_ops_report_executor_smoke.py\",\n      \"ok\": true,\n      \"exit_code\": 0,\n      \"payload_ok\": true,\n      \"stdout_head\": \"{\\n  \\\"ok\\\": true,\\n  \\\"skipped\\\": true,\\n  \\\"reason\\\": \\\"readonly tasks.db: /home/rollan/.openclaw/workspace/tasks/tasks.db\\\"\\n}\",\n      \"stderr_head\": \"\"\n    },\n    {\n      \"script\": \"runtime/core/decision_router_idempotency_smoke.py\",\n      \"ok\": true,\n      \"exit_code\": 0,\n      \"payload_ok\": true,\n      \"stdout_head\": \"{\\n  \\\"ok\\\": true,\\n  \\\"input\\\": \\\"task: deploy live production service restart router idempotency smoke 20260310_114816\\\",\\n  \\\"task_id\\\": \\\"task_d215d5d213ad\\\",\\n  \\\"created_kind\\\": \\\"task_created\\\",\\n  \\\"created_route_kind\\\": \\\"review_requested\\\",\\n  \\\"status_after_create\\\": \\\"waiting_review\\\",\\n  \\\"review_count_after_create\\\": 1,\\n  \\\"approval_count_after_create\\\": 0,\\n  \\\"second_route\\\": {\\n    \\\"kind\\\": \\\"waiting_review\\\",\\n    \\\"task_id\\\": \\\"task_d215d5d213ad\\\",\\n    \\\"review_id\\\": \\\"rev_94c495f7243c\\\",\\n    \\\"reviewer_role\\\": \\\"anton\\\",\\n    \\\"status\\\": \\\"pending\\\",\\n    \\\"message\\\": \\\"A review already exists and is still pending.\\\"\\n  },\\n  \\\"review_cou\",\n      \"stderr_head\": \"\"\n    },\n    {\n      \"script\": \"runtime/core/approval_ready_to_ship_smoke.py\",\n      \"ok\": true,\n      \"exit_code\": 0,\n      \"payload_ok\": true,\n      \"stdout_head\": \"{\\n  \\\"ok\\\": true,\\n  \\\"input\\\": \\\"task: deploy live production service restart ready-to-ship smoke 20260310_114816\\\",\\n  \\\"task_id\\\": \\\"task_e3944015d767\\\",\\n  \\\"created_kind\\\": \\\"task_created\\\",\\n  \\\"created_route_kind\\\": \\\"review_requested\\\",\\n  \\\"status_after_create\\\": \\\"waiting_review\\\",\\n  \\\"review_id\\\": \\\"rev_010cea1425d3\\\",\\n  \\\"status_after_review_approved\\\": \\\"waiting_approval\\\",\\n  \\\"approval_id\\\": \\\"apr_c6657601a50e\\\",\\n  \\\"approval_status_after_decision\\\": \\\"approved\\\",\\n  \\\"final_outcome_before_approval_decision\\\": \\\"candidate_ready_for_live_apply\\\",\\n  \\\"final_task_status\\\": \\\"ready_to_ship\\\"\\n}\",\n      \"stderr_head\": \"\"\n    },\n    {\n      \"script\": \"runtime/core/e2e_publish_complete_chain_smoke.py\",\n      \"ok\": true,\n      \"exit_code\": 0,\n      \"payload_ok\": true,\n      \"stdout_head\": \"{\\n  \\\"ok\\\": true,\\n  \\\"temp_root\\\": \\\"/home/rollan/.openclaw/workspace/jarvis-v5/e2e_publish_complete_chain_aan3se89\\\",\\n  \\\"task_id\\\": \\\"task_e420bfc845f9\\\",\\n  \\\"artifact_id\\\": \\\"art_c1038cfd794a\\\",\\n  \\\"intake_result\\\": {\\n    \\\"kind\\\": \\\"task_created\\\",\\n    \\\"task_created\\\": true,\\n    \\\"task_id\\\": \\\"task_e420bfc845f9\\\",\\n    \\\"short_summary\\\": \\\"deploy live production service restart e2e publish-complete smoke\\\",\\n    \\\"initial_status\\\": \\\"queued\\\",\\n    \\\"final_status\\\": \\\"waiting_review\\\",\\n    \\\"progress_lane\\\": \\\"#tasks\\\",\\n    \\\"review_expected\\\": true,\\n    \\\"approval_expected\\\": true,\\n    \\\"task_type\\\": \\\"deploy\\\",\\n    \\\"priority\\\": \\\"normal\\\",\\n \",\n      \"stderr_head\": \"\"\n    }\n  ]\n}"
+    }
+  ],
+  "message": "Smoke stopped at runtime_regression_pack."
+}

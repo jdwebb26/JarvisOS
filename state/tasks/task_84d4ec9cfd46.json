@@ -1,0 +1,31 @@
+{
+  "task_id": "task_84d4ec9cfd46",
+  "created_at": "2026-03-09T16:59:21.121338+00:00",
+  "updated_at": "2026-03-09T16:59:21.125582+00:00",
+  "source_lane": "intake_regression",
+  "source_channel": "intake_regression",
+  "source_message_id": "deploy_regression",
+  "source_user": "intake_regression",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: deploy live production service restart regression smoke 20260309_115921",
+  "normalized_request": "deploy live production service restart regression smoke 20260309_115921",
+  "task_type": "deploy",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "waiting_review",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "review_required": true,
+  "approval_required": true,
+  "parent_task_id": null,
+  "related_artifact_ids": [],
+  "related_review_ids": [
+    "rev_311836e4a3e6"
+  ],
+  "related_approval_ids": [],
+  "checkpoint_summary": "",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "",
+  "version": "v1"
+}

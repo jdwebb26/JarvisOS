@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_1b71658fca4e",
+  "task_id": "task_cec3239feefb",
+  "event_type": "status_transition",
+  "actor": "ready_to_ship_smoke",
+  "lane": "ready_to_ship_smoke",
+  "created_at": "2026-03-09T17:16:38.288749+00:00",
+  "from_status": "queued",
+  "to_status": "waiting_review",
+  "checkpoint_summary": "Review requested from anton",
+  "reason": "Review required for task task_cec3239feefb: deploy live production service restart ready-to-ship smoke 20260309_121638",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

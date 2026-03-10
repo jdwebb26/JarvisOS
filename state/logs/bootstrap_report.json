@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "timestamp_utc": "2026-03-10T16:48:43.354833+00:00",
+  "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
+  "requested_root": "/home/rollan/.openclaw/workspace",
+  "created_dirs": [],
+  "existing_dirs_count": 32,
+  "copy_examples_enabled": true,
+  "copy_examples_requested": false,
+  "copied_configs": {
+    "config/app.yaml": "kept_existing",
+    "config/channels.yaml": "kept_existing",
+    "config/models.yaml": "kept_existing",
+    "config/policies.yaml": "kept_existing"
+  }
+}

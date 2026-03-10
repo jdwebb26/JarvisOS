@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_2a4b695570cc",
+  "task_id": "task_6e9f48c6f76b",
+  "event_type": "checkpoint_recorded",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-09T00:25:56.897406+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Executor started work on: smoke test runtime pipeline 80d9471a",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

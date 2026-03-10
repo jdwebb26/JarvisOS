@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_733345efc3fc",
+  "task_id": "task_5df9112d0d34",
+  "requested_at": "2026-03-09T00:17:56.871767+00:00",
+  "updated_at": "2026-03-09T00:22:05.647016+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "operator",
+  "lane": "review",
+  "status": "approved",
+  "summary": "Review required for task task_5df9112d0d34: deploy production runtime gate flow gateflow-1773015476",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "salvage review approval",
+  "version": "v1"
+}

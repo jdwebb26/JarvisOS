@@ -1,0 +1,50 @@
+{
+  "ok": true,
+  "status_counts": {
+    "total_tasks": 33,
+    "queued": 4,
+    "running": 0,
+    "blocked": 0,
+    "waiting_approval": 1,
+    "waiting_review": 6,
+    "finished_recently": 10
+  },
+  "operator_snapshot_counts": {
+    "pending_reviews": 6,
+    "pending_approvals": 1,
+    "candidate_apply_ready": 1,
+    "flowstate_waiting_promotion": 0
+  },
+  "task_board_total": 33,
+  "event_board_total": 50,
+  "review_inbox_counts": {
+    "pending_reviews": 6,
+    "pending_approvals": 1,
+    "flowstate_waiting_promotion": 0
+  },
+  "state_export_counts": {
+    "tasks": 33,
+    "reviews": 16,
+    "approvals": 9,
+    "artifacts": 8,
+    "flowstate_sources": 1
+  },
+  "flowstate_index_counts": {
+    "total_sources": 1,
+    "awaiting_promotion_approval": 0,
+    "ingested_only": 0,
+    "extracted": 0,
+    "distilled": 1
+  },
+  "output_board_total": 7,
+  "written_files": [
+    "/home/rollan/.openclaw/workspace/jarvis-v5/state/logs/operator_snapshot.json",
+    "/home/rollan/.openclaw/workspace/jarvis-v5/state/logs/task_board.json",
+    "/home/rollan/.openclaw/workspace/jarvis-v5/state/logs/event_board.json",
+    "/home/rollan/.openclaw/workspace/jarvis-v5/state/logs/review_inbox.json",
+    "/home/rollan/.openclaw/workspace/jarvis-v5/state/logs/state_export.json",
+    "/home/rollan/.openclaw/workspace/jarvis-v5/state/logs/output_board.json",
+    "/home/rollan/.openclaw/workspace/jarvis-v5/state/flowstate_sources/index.json"
+  ],
+  "errors": []
+}

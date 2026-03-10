@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_a8ffd788a6e5",
+  "task_id": "task_545bb2889441",
+  "event_type": "artifact_linked",
+  "actor": "operator",
+  "lane": "artifacts",
+  "created_at": "2026-03-09T00:38:18.110734+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Artifact linked: art_dd4f0e3df318",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": "art_dd4f0e3df318",
+  "artifact_type": "note",
+  "artifact_title": "queued guard artifact",
+  "already_linked": false,
+  "version": "v1"
+}

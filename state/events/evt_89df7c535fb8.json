@@ -1,0 +1,16 @@
+{
+  "event_id": "evt_89df7c535fb8",
+  "task_id": "task_b8283a17ca85",
+  "event_type": "output_published",
+  "actor": "rollan",
+  "lane": "outputs",
+  "created_at": "2026-03-08T03:30:01.398124+00:00",
+  "details": {
+    "artifact_id": "art_8d94613f6d36",
+    "artifact_type": "note",
+    "title": "Artifact linkage proof",
+    "output_id": "out_90f04098c5a0",
+    "output_summary": "This artifact proves task outputs now link back into related_artifact_ids."
+  },
+  "version": "v1"
+}

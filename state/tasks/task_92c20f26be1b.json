@@ -1,0 +1,33 @@
+{
+  "task_id": "task_92c20f26be1b",
+  "created_at": "2026-03-09T16:33:35.534714+00:00",
+  "updated_at": "2026-03-09T16:33:35.566914+00:00",
+  "source_lane": "approval_smoke",
+  "source_channel": "approval_smoke",
+  "source_message_id": "approval_20260309_113335",
+  "source_user": "approval_smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: deploy live production service restart approval smoke 20260309_113335",
+  "normalized_request": "deploy live production service restart approval smoke 20260309_113335",
+  "task_type": "deploy",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "queued",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "review_required": true,
+  "approval_required": true,
+  "parent_task_id": null,
+  "related_artifact_ids": [],
+  "related_review_ids": [
+    "rev_bd6ffbd2651c"
+  ],
+  "related_approval_ids": [
+    "apr_a0eea60d98e3"
+  ],
+  "checkpoint_summary": "",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "",
+  "version": "v1"
+}

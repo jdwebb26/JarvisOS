@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_9bc76516dfef",
+  "task_id": "task_7d3a2154e2a7",
+  "event_type": "task_created",
+  "actor": "intake_smoke",
+  "lane": "intake_smoke",
+  "created_at": "2026-03-09T16:47:42.324725+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: deploy live production service restart intake auto route smoke 20260309_114742",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

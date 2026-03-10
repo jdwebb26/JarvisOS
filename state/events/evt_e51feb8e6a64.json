@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_e51feb8e6a64",
+  "task_id": "task_84d4ec9cfd46",
+  "event_type": "status_transition",
+  "actor": "intake_regression",
+  "lane": "intake_regression",
+  "created_at": "2026-03-09T16:59:21.126570+00:00",
+  "from_status": "queued",
+  "to_status": "waiting_review",
+  "checkpoint_summary": "Review requested from anton",
+  "reason": "Review required for task task_84d4ec9cfd46: deploy live production service restart regression smoke 20260309_115921",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

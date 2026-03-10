@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_0f9e743bfbf6",
+  "task_id": "task_6229f00fea37",
+  "event_type": "task_status_changed",
+  "actor": "operator",
+  "lane": "outputs",
+  "created_at": "2026-03-09T18:54:29.407841+00:00",
+  "from_status": "shipped",
+  "to_status": "completed",
+  "checkpoint_summary": null,
+  "reason": "Task completed.",
+  "final_outcome": "Used existing published output out_9bc70bf935b4 from artifact art_publish_smoke_20260309_125152.",
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

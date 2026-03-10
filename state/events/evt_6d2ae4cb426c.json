@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_6d2ae4cb426c",
+  "task_id": "task_0ab6cb250246",
+  "event_type": "checkpoint_recorded",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-09T00:02:16.053733+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "advance_running functional checkpoint advrun-1773014535",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

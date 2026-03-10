@@ -1,0 +1,33 @@
+{
+  "task_id": "task_1caf14131a74",
+  "created_at": "2026-03-08T00:08:52.505839+00:00",
+  "updated_at": "2026-03-08T04:17:15.524482+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "jarvis",
+  "source_message_id": "approval-task-001",
+  "source_user": "rollan",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: deploy the new jarvis v5 gateway service wiring",
+  "normalized_request": "deploy the new jarvis v5 gateway service wiring",
+  "task_type": "deploy",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "shipped",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "review_required": true,
+  "approval_required": true,
+  "parent_task_id": null,
+  "related_artifact_ids": [],
+  "related_review_ids": [
+    "rev_699a02b49d84"
+  ],
+  "related_approval_ids": [
+    "apr_1003f1bd9d45"
+  ],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "Executor bounded pass finished for deploy task; explicit ship step still required.",
+  "version": "v1"
+}

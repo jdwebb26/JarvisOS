@@ -1,0 +1,12 @@
+{
+  "output_id": "out_9bc70bf935b4",
+  "task_id": "task_6229f00fea37",
+  "artifact_id": "art_publish_smoke_20260309_125152",
+  "title": "publish smoke artifact art_publish_smoke_20260309_125152",
+  "summary": "tiny linked artifact for publish_complete smoke",
+  "published_at": "2026-03-09T18:08:04.314136+00:00",
+  "published_by": "operator",
+  "lane": "outputs",
+  "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_9bc70bf935b4.md",
+  "version": "v1"
+}

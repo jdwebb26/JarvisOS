@@ -1,0 +1,28 @@
+{
+  "counts": {
+    "tasks": 33,
+    "reviews": 16,
+    "approvals": 9,
+    "artifacts": 8,
+    "flowstate_sources": 1
+  },
+  "task_status_counts": {
+    "shipped": 4,
+    "completed": 17,
+    "waiting_review": 6,
+    "queued": 4,
+    "waiting_approval": 1,
+    "ready_to_ship": 1
+  },
+  "review_status_counts": {
+    "approved": 10,
+    "pending": 6
+  },
+  "approval_status_counts": {
+    "approved": 8,
+    "pending": 1
+  },
+  "flowstate_processing_counts": {
+    "distilled": 1
+  }
+}

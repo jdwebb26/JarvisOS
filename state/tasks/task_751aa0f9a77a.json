@@ -1,0 +1,31 @@
+{
+  "task_id": "task_751aa0f9a77a",
+  "created_at": "2026-03-09T00:35:45.237151+00:00",
+  "updated_at": "2026-03-09T00:44:06.184622+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "jarvis",
+  "source_message_id": "pubonly-1773016545",
+  "source_user": "smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: publish artifact only verification pubonly-1773016545",
+  "normalized_request": "publish artifact only verification pubonly-1773016545",
+  "task_type": "general",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "completed",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "review_required": true,
+  "approval_required": true,
+  "parent_task_id": null,
+  "related_artifact_ids": [
+    "art_782b4c03700f"
+  ],
+  "related_review_ids": [],
+  "related_approval_ids": [],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "closed stray publish-only verification task",
+  "version": "v1"
+}

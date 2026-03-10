@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_a8373400e665",
+  "task_id": "task_5029e9a08898",
+  "event_type": "task_status_changed",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-09T00:08:44.668225+00:00",
+  "from_status": "completed",
+  "to_status": "shipped",
+  "checkpoint_summary": null,
+  "reason": "Task shipped.",
+  "final_outcome": "fresh ship_task shipped shipfresh-1773014924",
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

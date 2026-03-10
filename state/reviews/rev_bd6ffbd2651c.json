@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_bd6ffbd2651c",
+  "task_id": "task_92c20f26be1b",
+  "requested_at": "2026-03-09T16:33:35.536043+00:00",
+  "updated_at": "2026-03-09T16:33:35.545957+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "approval_smoke",
+  "lane": "approval_smoke",
+  "status": "approved",
+  "summary": "Review required for task task_92c20f26be1b: deploy live production service restart approval smoke 20260309_113335",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "approval smoke review pass",
+  "version": "v1"
+}

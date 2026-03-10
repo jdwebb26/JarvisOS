@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_311836e4a3e6",
+  "task_id": "task_84d4ec9cfd46",
+  "requested_at": "2026-03-09T16:59:21.125106+00:00",
+  "updated_at": "2026-03-09T16:59:21.125114+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "intake_regression",
+  "lane": "intake_regression",
+  "status": "pending",
+  "summary": "Review required for task task_84d4ec9cfd46: deploy live production service restart regression smoke 20260309_115921",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "version": "v1"
+}

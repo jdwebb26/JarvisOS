@@ -1,0 +1,11 @@
+{
+  "artifact_id": "art_publish_smoke_20260309_125152",
+  "task_id": "task_6229f00fea37",
+  "artifact_type": "report",
+  "title": "publish smoke artifact art_publish_smoke_20260309_125152",
+  "summary": "tiny linked artifact for publish_complete smoke",
+  "content": "This is a tiny linked artifact used to verify publish_complete on a shipped task.",
+  "created_at": "2026-03-09T17:51:52.433866+00:00",
+  "updated_at": "2026-03-09T17:51:52.433866+00:00",
+  "version": "v1"
+}

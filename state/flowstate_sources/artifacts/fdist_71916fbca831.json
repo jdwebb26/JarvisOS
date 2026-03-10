@@ -1,0 +1,26 @@
+{
+  "artifact_id": "fdist_71916fbca831",
+  "artifact_type": "flowstate_distillation",
+  "source_id": "fsrc_d6e2b37c34c6",
+  "created_at": "2026-03-08T00:46:20.348344+00:00",
+  "updated_at": "2026-03-08T00:46:20.348348+00:00",
+  "title": "Flowstate source test",
+  "source_type": "note",
+  "summary": "Test source distilled into reusable artifact form.",
+  "key_claims": [
+    "This source should not auto-promote."
+  ],
+  "key_ideas": [
+    "Use approval gating before task creation."
+  ],
+  "candidate_actions": [
+    "Review promotion request apr_8ce6f4573eef."
+  ],
+  "notable_sections": [
+    "manual-test source"
+  ],
+  "caveats": [
+    "This is a synthetic test distillation."
+  ],
+  "version": "v1"
+}

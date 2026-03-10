@@ -1,0 +1,36 @@
+# Core application settings for Qwen v5 smoke runner
+# Copy this file to app.yaml and customize as needed
+
+app:
+  name: "jarvis-v5-smoke"
+  version: "0.1.0"
+  
+# Workspace configuration
+workspace:
+  base_path: "/home/rollan/.openclaw/workspace"
+  # Relative paths from workspace base
+  logs_dir: "logs"
+  results_dir: "results"
+  state_dir: "state"
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+  file: "logs/jarvis-smoke.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+# Agent runtime settings
+agent:
+  max_read_chars: 16000
+  enable_thinking: false
+  use_raw_api: false
+  thought_in_content: true
+  
+# Task queue integration (Phase 2+)
+task_queue:
+  enabled: false
+  db_path: "tasks/tasks.db"
+  poll_interval_seconds: 30
+  priority_order: "DESC"  # DESC or ASC

@@ -1,0 +1,25 @@
+{
+  "counts": {
+    "total_sources": 1,
+    "awaiting_promotion_approval": 0,
+    "ingested_only": 0,
+    "extracted": 0,
+    "distilled": 1
+  },
+  "items": [
+    {
+      "source_id": "fsrc_d6e2b37c34c6",
+      "title": "Flowstate source test",
+      "source_type": "note",
+      "processing_status": "distilled",
+      "created_by": "rollan",
+      "extraction_artifact_present": true,
+      "distillation_artifact_present": true,
+      "candidate_action_count": 1,
+      "promotion_request_ids": [
+        "apr_8ce6f4573eef"
+      ],
+      "updated_at": "2026-03-08T00:46:20.348452+00:00"
+    }
+  ]
+}

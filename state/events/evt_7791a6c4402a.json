@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_7791a6c4402a",
+  "task_id": "task_81a337bbf2d7",
+  "event_type": "task_created",
+  "actor": "task_store_smoke",
+  "lane": "task_store_smoke",
+  "created_at": "2026-03-09T17:07:22.737497+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: deploy live production service restart task-store transition smoke 20260309_120722",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

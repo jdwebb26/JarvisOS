@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Optional
+
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from runtime.core.models import ApprovalRecord, ApprovalStatus, TaskStatus, new_id, now_iso
+from runtime.core.task_events import append_event, make_event
+from runtime.core.task_store import add_approval_link, load_task, transition_task
+from runtime.dashboard.rebuild_helpers import rebuild_all_outputs
+
+
+def approvals_dir(root: Optional[Path] = None) -> Path:
+    base = root or ROOT
+    path = base / "state" / "approvals"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def approval_path(approval_id: str, root: Optional[Path] = None) -> Path:
+    return approvals_dir(root) / f"{approval_id}.json"
+
+
+def save_approval(record: ApprovalRecord, root: Optional[Path] = None) -> ApprovalRecord:
+    record.updated_at = now_iso()
+    approval_path(record.approval_id, root).write_text(
+        json.dumps(record.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return record
+
+
+def load_approval(approval_id: str, root: Optional[Path] = None) -> Optional[ApprovalRecord]:
+    path = approval_path(approval_id, root)
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return ApprovalRecord.from_dict(data)
+
+
+def list_approvals_for_task(task_id: str, root: Optional[Path] = None) -> list[ApprovalRecord]:
+    items: list[ApprovalRecord] = []
+    for path in approvals_dir(root).glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            record = ApprovalRecord.from_dict(data)
+            if record.task_id == task_id:
+                items.append(record)
+        except Exception:
+            continue
+    items.sort(key=lambda x: x.updated_at, reverse=True)
+    return items
+
+
+def latest_approval_for_task(task_id: str, root: Optional[Path] = None) -> Optional[ApprovalRecord]:
+    items = list_approvals_for_task(task_id, root=root)
+    return items[0] if items else None
+
+
+def request_approval(
+    *,
+    task_id: str,
+    approval_type: str,
+    requested_by: str,
+    requested_reviewer: str,
+    lane: str,
+    summary: str,
+    details: str = "",
+    linked_artifact_ids: Optional[list[str]] = None,
+    root: Optional[Path] = None,
+) -> ApprovalRecord:
+    task = load_task(task_id, root=root)
+    if task is None:
+        raise ValueError(f"Task not found: {task_id}")
+
+    existing = latest_approval_for_task(task_id, root=root)
+    if existing and existing.status == ApprovalStatus.PENDING.value:
+        return existing
+
+    record = ApprovalRecord(
+        approval_id=new_id("apr"),
+        task_id=task_id,
+        requested_at=now_iso(),
+        updated_at=now_iso(),
+        requested_by=requested_by,
+        requested_reviewer=requested_reviewer,
+        lane=lane,
+        approval_type=approval_type,
+        status=ApprovalStatus.PENDING.value,
+        summary=summary,
+        details=details,
+        linked_artifact_ids=linked_artifact_ids or [],
+    )
+
+    save_approval(record, root=root)
+    add_approval_link(task_id, record.approval_id, root=root)
+
+    if task.status != TaskStatus.WAITING_APPROVAL.value:
+        transition_task(
+            task_id=task_id,
+            to_status=TaskStatus.WAITING_APPROVAL.value,
+            actor=requested_by,
+            lane=lane,
+            summary=f"Approval requested from {requested_reviewer}",
+            root=root,
+            details=summary,
+            approval_id=record.approval_id,
+        )
+
+    append_event(
+        make_event(
+            task_id=task_id,
+            event_type="approval_requested",
+            actor=requested_by,
+            lane=lane,
+            summary=f"Approval request created: {record.approval_id}",
+            from_status=TaskStatus.WAITING_APPROVAL.value,
+            to_status=TaskStatus.WAITING_APPROVAL.value,
+            details=summary,
+            approval_id=record.approval_id,
+        ),
+        root=root,
+    )
+    rebuild_all_outputs(Path(root or ROOT))
+    return record
+
+
+def record_approval_decision(
+    *,
+    approval_id: str,
+    decision: str,
+    actor: str,
+    lane: str,
+    reason: str = "",
+    root: Optional[Path] = None,
+) -> ApprovalRecord:
+    record = load_approval(approval_id, root=root)
+    if record is None:
+        raise ValueError(f"Approval not found: {approval_id}")
+
+    if decision not in {
+        ApprovalStatus.APPROVED.value,
+        ApprovalStatus.REJECTED.value,
+        ApprovalStatus.CANCELLED.value,
+    }:
+        raise ValueError(f"Invalid approval decision: {decision}")
+
+    record.status = decision
+    record.decision_reason = reason
+    save_approval(record, root=root)
+
+    if decision == ApprovalStatus.APPROVED.value:
+        transition_task(
+            task_id=record.task_id,
+            to_status=TaskStatus.QUEUED.value,
+            actor=actor,
+            lane=lane,
+            summary=f"Approval granted: {approval_id}",
+            root=root,
+            details=reason,
+            approval_id=approval_id,
+        )
+    else:
+        transition_task(
+            task_id=record.task_id,
+            to_status=TaskStatus.BLOCKED.value,
+            actor=actor,
+            lane=lane,
+            summary=f"Approval not granted: {approval_id}",
+            root=root,
+            details=reason,
+            approval_id=approval_id,
+        )
+
+    append_event(
+        make_event(
+            task_id=record.task_id,
+            event_type="approval_recorded",
+            actor=actor,
+            lane=lane,
+            summary=f"Approval decision recorded: {decision}",
+            from_status=None,
+            to_status=None,
+            details=reason,
+            approval_id=approval_id,
+        ),
+        root=root,
+    )
+    rebuild_all_outputs(Path(root or ROOT))
+    return record
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Request or resolve an approval object for a task.")
+    parser.add_argument("--root", default=str(ROOT), help="Project root path")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    req = sub.add_parser("request")
+    req.add_argument("--task-id", required=True)
+    req.add_argument("--approval-type", required=True)
+    req.add_argument("--requested-by", default="operator")
+    req.add_argument("--requested-reviewer", default="anton")
+    req.add_argument("--lane", default="review")
+    req.add_argument("--summary", required=True)
+    req.add_argument("--details", default="")
+
+    dec = sub.add_parser("decide")
+    dec.add_argument("--approval-id", required=True)
+    dec.add_argument("--decision", required=True, choices=["approved", "rejected", "cancelled"])
+    dec.add_argument("--actor", default="reviewer")
+    dec.add_argument("--lane", default="review")
+    dec.add_argument("--reason", default="")
+
+    args = parser.parse_args()
+    root = Path(args.root).resolve()
+
+    if args.command == "request":
+        record = request_approval(
+            task_id=args.task_id,
+            approval_type=args.approval_type,
+            requested_by=args.requested_by,
+            requested_reviewer=args.requested_reviewer,
+            lane=args.lane,
+            summary=args.summary,
+            details=args.details,
+            root=root,
+        )
+    else:
+        record = record_approval_decision(
+            approval_id=args.approval_id,
+            decision=args.decision,
+            actor=args.actor,
+            lane=args.lane,
+            reason=args.reason,
+            root=root,
+        )
+
+    print(json.dumps(record.to_dict(), indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

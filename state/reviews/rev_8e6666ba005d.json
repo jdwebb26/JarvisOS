@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_8e6666ba005d",
+  "task_id": "task_81a337bbf2d7",
+  "requested_at": "2026-03-09T17:07:22.739125+00:00",
+  "updated_at": "2026-03-09T17:07:22.753586+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "task_store_smoke",
+  "lane": "task_store_smoke",
+  "status": "approved",
+  "summary": "Review required for task task_81a337bbf2d7: deploy live production service restart task-store transition smoke 20260309_120722",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "task store transition smoke review approval",
+  "version": "v1"
+}

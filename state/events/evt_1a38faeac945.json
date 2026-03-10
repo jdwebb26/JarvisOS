@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_1a38faeac945",
+  "task_id": "task_e4bdfd0fc6e4",
+  "event_type": "task_created",
+  "actor": "intake_regression",
+  "lane": "intake_regression",
+  "created_at": "2026-03-09T16:59:21.138713+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: patch python function bug in executor regression smoke 20260309_115921",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

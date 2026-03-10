@@ -1,0 +1,34 @@
+app:
+  name: jarvis-v5
+  version: 0.1.0
+  environment: dev
+
+paths:
+  root: .
+  workspace: ./workspace
+  state_dir: ./state
+  artifacts_dir: ./state/artifacts
+  logs_dir: ./state/logs
+
+runtime:
+  chat_first: true
+  ordinary_chat_creates_tasks: false
+  explicit_task_creation_enabled: true
+  validate_first: true
+  qwen_only: true
+
+features:
+  heartbeat: true
+  flowstate: true
+  dashboard: true
+  approvals: true
+  review_lanes: true
+
+discord:
+  enabled: true
+  guild_id: "REPLACE_ME"
+
+storage:
+  task_store_backend: sqlite
+  events_backend: sqlite
+  artifact_index_backend: json

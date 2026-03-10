@@ -1,0 +1,16 @@
+{
+  "approval_id": "apr_3f7c8486d081",
+  "task_id": "task_b9f27c71f948",
+  "requested_at": "2026-03-09T16:28:53.493137+00:00",
+  "updated_at": "2026-03-09T16:28:53.493145+00:00",
+  "requested_by": "handoff_smoke",
+  "requested_reviewer": "anton",
+  "lane": "handoff_smoke",
+  "approval_type": "deploy",
+  "status": "pending",
+  "summary": "Approval required after review approval: deploy live production service restart smoke 20260309_112853",
+  "details": "smoke test review approval",
+  "linked_artifact_ids": [],
+  "decision_reason": "",
+  "version": "v1"
+}

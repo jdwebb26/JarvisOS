@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_7d8365d549a9",
+  "task_id": "task_5df9112d0d34",
+  "event_type": "approval_recorded",
+  "actor": "anton",
+  "lane": "review",
+  "created_at": "2026-03-09T00:24:52.963882+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Approval decision recorded: approved",
+  "reason": "salvage approval granted after event compat fix",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

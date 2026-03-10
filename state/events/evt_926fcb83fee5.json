@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_926fcb83fee5",
+  "task_id": "task_92c20f26be1b",
+  "event_type": "review_recorded",
+  "actor": "approval_smoke",
+  "lane": "approval_smoke",
+  "created_at": "2026-03-09T16:33:35.558434+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Review verdict recorded: approved",
+  "reason": "approval smoke review pass",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

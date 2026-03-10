@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_73a2fce442eb",
+  "task_id": "task_e3d72b5aa2b8",
+  "event_type": "task_created",
+  "actor": "gap_smoke",
+  "lane": "gap_smoke",
+  "created_at": "2026-03-09T15:46:05.491708+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: patch python function bug in executor",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

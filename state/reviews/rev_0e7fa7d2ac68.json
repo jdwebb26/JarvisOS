@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_0e7fa7d2ac68",
+  "task_id": "task_6229f00fea37",
+  "requested_at": "2026-03-09T17:11:31.621260+00:00",
+  "updated_at": "2026-03-09T17:11:31.636495+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "ready_to_ship_smoke",
+  "lane": "ready_to_ship_smoke",
+  "status": "approved",
+  "summary": "Review required for task task_6229f00fea37: deploy live production service restart ready-to-ship smoke 20260309_121131",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "ready_to_ship smoke review approval",
+  "version": "v1"
+}

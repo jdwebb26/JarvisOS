@@ -1,0 +1,82 @@
+{
+  "rows": [
+    {
+      "output_id": "out_88b300de8685",
+      "task_id": "task_cec3239feefb",
+      "artifact_id": "art_c5eebd93028d",
+      "title": "Live Apply Report \u2014 local_executor.py",
+      "summary": "Recovered live apply artifact for local_executor.py; applied=True; rolled_back=False; smoke_ok=True",
+      "published_at": "2026-03-10T01:40:01.612660+00:00",
+      "published_by": "operator",
+      "lane": "outputs",
+      "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_88b300de8685.md"
+    },
+    {
+      "output_id": "out_9bc70bf935b4",
+      "task_id": "task_6229f00fea37",
+      "artifact_id": "art_publish_smoke_20260309_125152",
+      "title": "publish smoke artifact art_publish_smoke_20260309_125152",
+      "summary": "tiny linked artifact for publish_complete smoke",
+      "published_at": "2026-03-09T18:08:04.314136+00:00",
+      "published_by": "operator",
+      "lane": "outputs",
+      "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_9bc70bf935b4.md"
+    },
+    {
+      "output_id": "out_4e2754b72050",
+      "task_id": "task_0e7052fedddf",
+      "artifact_id": "art_f70dc358fee1",
+      "title": "clean complete_from_artifact verification artifact",
+      "summary": "Artifact for clean complete_from_artifact verification",
+      "published_at": "2026-03-09T00:37:09.532353+00:00",
+      "published_by": "executor",
+      "lane": "executor",
+      "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_4e2754b72050.md"
+    },
+    {
+      "output_id": "out_3c2559d8ea60",
+      "task_id": "task_751aa0f9a77a",
+      "artifact_id": "art_782b4c03700f",
+      "title": "direct publish verification artifact",
+      "summary": "Artifact for direct publish verification",
+      "published_at": "2026-03-09T00:35:45.468931+00:00",
+      "published_by": "executor",
+      "lane": "outputs",
+      "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_3c2559d8ea60.md"
+    },
+    {
+      "output_id": "out_61d9ee737635",
+      "task_id": "task_4b727a01e34f",
+      "artifact_id": "art_0cfd8ee26a79",
+      "title": "complete_from_artifact disposable artifact",
+      "summary": "Artifact for complete_from_artifact flow",
+      "published_at": "2026-03-09T00:32:17.312358+00:00",
+      "published_by": "executor",
+      "lane": "executor",
+      "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_61d9ee737635.md"
+    },
+    {
+      "output_id": "out_90f04098c5a0",
+      "task_id": "task_b8283a17ca85",
+      "artifact_id": "art_8d94613f6d36",
+      "title": "Artifact linkage proof",
+      "summary": "This artifact proves task outputs now link back into related_artifact_ids.",
+      "published_at": "2026-03-08T03:30:01.398011+00:00",
+      "published_by": "rollan",
+      "lane": "outputs",
+      "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_90f04098c5a0.md"
+    },
+    {
+      "output_id": "out_9a16a9cfeab0",
+      "task_id": "task_b8283a17ca85",
+      "artifact_id": "art_8d94613f6d36",
+      "title": "Artifact linkage proof",
+      "summary": "This artifact proves task outputs now link back into related_artifact_ids.",
+      "published_at": "2026-03-08T03:27:02.208921+00:00",
+      "published_by": "rollan",
+      "lane": "outputs",
+      "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_9a16a9cfeab0.md"
+    }
+  ],
+  "total": 7
+}

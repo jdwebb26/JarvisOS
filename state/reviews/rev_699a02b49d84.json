@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_699a02b49d84",
+  "task_id": "task_1caf14131a74",
+  "requested_at": "2026-03-08T00:10:07.303194+00:00",
+  "updated_at": "2026-03-08T00:23:47.573844+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "rollan",
+  "lane": "review",
+  "status": "approved",
+  "summary": "Review required for task task_1caf14131a74: deploy the new jarvis v5 gateway service wiring",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "Ready for operator approval.",
+  "version": "v1"
+}

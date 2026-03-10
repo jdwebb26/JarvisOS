@@ -1,0 +1,31 @@
+{
+  "task_id": "task_545bb2889441",
+  "created_at": "2026-03-09T00:38:18.022772+00:00",
+  "updated_at": "2026-03-09T00:45:07.689146+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "jarvis",
+  "source_message_id": "cfa-guard-1773016697",
+  "source_user": "smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: complete from artifact queued guard cfa-guard-1773016697",
+  "normalized_request": "complete from artifact queued guard cfa-guard-1773016697",
+  "task_type": "general",
+  "priority": "normal",
+  "risk_level": "normal",
+  "status": "completed",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-35B",
+  "review_required": false,
+  "approval_required": false,
+  "parent_task_id": null,
+  "related_artifact_ids": [
+    "art_dd4f0e3df318"
+  ],
+  "related_review_ids": [],
+  "related_approval_ids": [],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "closed queued guard verification task",
+  "version": "v1"
+}

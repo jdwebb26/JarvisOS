@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_730233d498fb",
+  "task_id": "task_715939b805ec",
+  "event_type": "review_requested",
+  "actor": "gap_smoke",
+  "lane": "gap_smoke",
+  "created_at": "2026-03-09T15:46:05.455481+00:00",
+  "from_status": "waiting_review",
+  "to_status": "waiting_review",
+  "checkpoint_summary": "Review request created: rev_69dfc967a002",
+  "reason": "Review required for task task_715939b805ec: deploy live production service restart",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

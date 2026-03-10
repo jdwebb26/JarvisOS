@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_8472599d9958",
+  "task_id": "task_751aa0f9a77a",
+  "event_type": "task_status_changed",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-09T00:35:45.319719+00:00",
+  "from_status": "queued",
+  "to_status": "running",
+  "checkpoint_summary": null,
+  "reason": "Executor claimed queued task.",
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

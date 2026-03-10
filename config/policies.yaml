@@ -1,0 +1,43 @@
+chat_policy:
+  chat_first: true
+  ordinary_chat_creates_tasks: false
+  explicit_task_triggers:
+    - "task:"
+    - "task"
+
+review_policy:
+  archimedes_required_for:
+    - code
+    - code_review
+    - production_change
+
+  anton_required_for:
+    - risky
+    - deploy
+    - ship
+    - quant
+    - high_stakes
+
+approval_policy:
+  require_approval_for:
+    - code_change
+    - flowstate_promotion
+    - deploy
+    - quant
+    - high_stakes_output
+
+flowstate_policy:
+  auto_promote: false
+  allow_memory_write_without_approval: false
+  allow_task_creation_without_approval: false
+
+model_policy:
+  qwen_only: true
+  allowed_families:
+    - qwen3.5
+
+storage_policy:
+  task_store_backend: sqlite
+  artifact_index_backend: json
+  review_store_backend: json
+  approval_store_backend: json

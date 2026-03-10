@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_5da550fd9010",
+  "task_id": "task_6229f00fea37",
+  "event_type": "task_created",
+  "actor": "ready_to_ship_smoke",
+  "lane": "ready_to_ship_smoke",
+  "created_at": "2026-03-09T17:11:31.619442+00:00",
+  "from_status": null,
+  "to_status": "queued",
+  "checkpoint_summary": "Task created: deploy live production service restart ready-to-ship smoke 20260309_121131",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

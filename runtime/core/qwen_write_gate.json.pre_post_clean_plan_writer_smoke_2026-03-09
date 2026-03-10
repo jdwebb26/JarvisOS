@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "mode": "allowlist_only",
+  "approved_task_id": 64,
+  "allowed_paths": [
+    "/home/rollan/.openclaw/workspace/strategy_factory/strategy_factory/folds.py",
+    "/home/rollan/.openclaw/workspace/tasks/local_executor.py"
+  ],
+  "note": "first narrow write gate; enabled for dry-run eligibility only"
+}

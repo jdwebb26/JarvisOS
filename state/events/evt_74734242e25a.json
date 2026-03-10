@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_74734242e25a",
+  "task_id": "task_0ab6cb250246",
+  "event_type": "task_status_changed",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-09T00:02:16.114632+00:00",
+  "from_status": "running",
+  "to_status": "completed",
+  "checkpoint_summary": null,
+  "reason": "Task completed.",
+  "final_outcome": "advance_running functional completion advrun-1773014535",
+  "artifact_id": null,
+  "artifact_type": null,
+  "artifact_title": null,
+  "already_linked": null,
+  "version": "v1"
+}

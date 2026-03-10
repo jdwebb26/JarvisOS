@@ -1,0 +1,15 @@
+{
+  "event_id": "evt_5c2f841d6753",
+  "task_id": "task_1caf14131a74",
+  "event_type": "task_status_changed",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-08T03:42:57.773608+00:00",
+  "details": {
+    "from_status": "running",
+    "to_status": "completed",
+    "reason": "Task completed.",
+    "final_outcome": "Executor bounded pass finished for deploy task; explicit ship step still required."
+  },
+  "version": "v1"
+}

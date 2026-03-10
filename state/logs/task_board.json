@@ -1,0 +1,517 @@
+{
+  "rows": [
+    {
+      "task_id": "task_d7b35612e2c7",
+      "summary": "deploy live production service restart router idempotency smoke 20260309_120403",
+      "task_type": "deploy",
+      "status": "ready_to_ship",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_429125f80d5e"
+      ],
+      "related_approval_ids": [
+        "apr_fe7e884155a7"
+      ],
+      "updated_at": "2026-03-10T02:28:45.963859+00:00"
+    },
+    {
+      "task_id": "task_cec3239feefb",
+      "summary": "deploy live production service restart ready-to-ship smoke 20260309_121638",
+      "task_type": "deploy",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_3f8e740e2c45"
+      ],
+      "related_approval_ids": [
+        "apr_fbdec31901b6"
+      ],
+      "updated_at": "2026-03-09T21:20:02.730694"
+    },
+    {
+      "task_id": "task_6229f00fea37",
+      "summary": "deploy live production service restart ready-to-ship smoke 20260309_121131",
+      "task_type": "deploy",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_0e7fa7d2ac68"
+      ],
+      "related_approval_ids": [
+        "apr_54d59595e889"
+      ],
+      "updated_at": "2026-03-09T18:54:29.407561+00:00"
+    },
+    {
+      "task_id": "task_81a337bbf2d7",
+      "summary": "deploy live production service restart task-store transition smoke 20260309_120722",
+      "task_type": "deploy",
+      "status": "queued",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_8e6666ba005d"
+      ],
+      "related_approval_ids": [
+        "apr_430eb52b4c1c"
+      ],
+      "updated_at": "2026-03-09T17:07:22.777179+00:00"
+    },
+    {
+      "task_id": "task_e4bdfd0fc6e4",
+      "summary": "patch python function bug in executor regression smoke 20260309_115921",
+      "task_type": "code",
+      "status": "waiting_review",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [
+        "rev_fa264f7f6b49"
+      ],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T16:59:21.140495+00:00"
+    },
+    {
+      "task_id": "task_84d4ec9cfd46",
+      "summary": "deploy live production service restart regression smoke 20260309_115921",
+      "task_type": "deploy",
+      "status": "waiting_review",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_311836e4a3e6"
+      ],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T16:59:21.125582+00:00"
+    },
+    {
+      "task_id": "task_9c69c65badd7",
+      "summary": "patch python function bug in executor intake auto route smoke 20260309_115607",
+      "task_type": "code",
+      "status": "waiting_review",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [
+        "rev_657fba34ce3a"
+      ],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T16:56:07.508907+00:00"
+    },
+    {
+      "task_id": "task_e134c1f6347c",
+      "summary": "deploy live production service restart intake auto route smoke 20260309_115607",
+      "task_type": "deploy",
+      "status": "waiting_review",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_74ea3848cac1"
+      ],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T16:56:07.440564+00:00"
+    },
+    {
+      "task_id": "task_a7d82c0f29f8",
+      "summary": "patch python function bug in executor intake auto route smoke 20260309_114750",
+      "task_type": "code",
+      "status": "queued",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T16:47:50.594119+00:00"
+    },
+    {
+      "task_id": "task_7d3a2154e2a7",
+      "summary": "deploy live production service restart intake auto route smoke 20260309_114742",
+      "task_type": "deploy",
+      "status": "queued",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T16:47:42.324529+00:00"
+    },
+    {
+      "task_id": "task_92c20f26be1b",
+      "summary": "deploy live production service restart approval smoke 20260309_113335",
+      "task_type": "deploy",
+      "status": "queued",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_bd6ffbd2651c"
+      ],
+      "related_approval_ids": [
+        "apr_a0eea60d98e3"
+      ],
+      "updated_at": "2026-03-09T16:33:35.566914+00:00"
+    },
+    {
+      "task_id": "task_b9f27c71f948",
+      "summary": "deploy live production service restart smoke 20260309_112853",
+      "task_type": "deploy",
+      "status": "waiting_approval",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_bf9ef2799d9b"
+      ],
+      "related_approval_ids": [
+        "apr_3f7c8486d081"
+      ],
+      "updated_at": "2026-03-09T16:28:53.493665+00:00"
+    },
+    {
+      "task_id": "task_e3d72b5aa2b8",
+      "summary": "patch python function bug in executor",
+      "task_type": "code",
+      "status": "waiting_review",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [
+        "rev_9111dfd351ae"
+      ],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T15:46:05.493141+00:00"
+    },
+    {
+      "task_id": "task_715939b805ec",
+      "summary": "deploy live production service restart",
+      "task_type": "deploy",
+      "status": "waiting_review",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_69dfc967a002"
+      ],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T15:46:05.454958+00:00"
+    },
+    {
+      "task_id": "task_bbd60d50ec06",
+      "summary": "smoke test runtime pipeline 2f083365",
+      "task_type": "code",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T00:56:30.433430+00:00"
+    },
+    {
+      "task_id": "task_545bb2889441",
+      "summary": "complete from artifact queued guard cfa-guard-1773016697",
+      "task_type": "general",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "normal",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": false,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T00:45:07.689146+00:00"
+    },
+    {
+      "task_id": "task_751aa0f9a77a",
+      "summary": "publish artifact only verification pubonly-1773016545",
+      "task_type": "general",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T00:44:06.184622+00:00"
+    },
+    {
+      "task_id": "task_0e7052fedddf",
+      "summary": "complete from artifact clean verification cfa-clean-1773016629",
+      "task_type": "general",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "normal",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": false,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T00:37:09.533656+00:00"
+    },
+    {
+      "task_id": "task_4b727a01e34f",
+      "summary": "complete_from_artifact disposable flow cfa-1773016337",
+      "task_type": "general",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "normal",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": false,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T00:34:03.263863+00:00"
+    },
+    {
+      "task_id": "task_6e9f48c6f76b",
+      "summary": "smoke test runtime pipeline 80d9471a",
+      "task_type": "code",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T00:31:27.403766+00:00"
+    },
+    {
+      "task_id": "task_5df9112d0d34",
+      "summary": "deploy production runtime gate flow gateflow-1773015476",
+      "task_type": "deploy",
+      "status": "shipped",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_733345efc3fc"
+      ],
+      "related_approval_ids": [
+        "apr_251e535b842c"
+      ],
+      "updated_at": "2026-03-09T00:24:53.035852+00:00"
+    },
+    {
+      "task_id": "task_5029e9a08898",
+      "summary": "fresh ship_task transition check shipfresh-1773014924",
+      "task_type": "deploy",
+      "status": "shipped",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T00:08:44.668002+00:00"
+    },
+    {
+      "task_id": "task_0ab6cb250246",
+      "summary": "advance_running functional check advrun-1773014535",
+      "task_type": "code",
+      "status": "shipped",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-09T00:03:09.695478+00:00"
+    },
+    {
+      "task_id": "task_f8aa2ef5ca1c",
+      "summary": "smoke test runtime pipeline 2f693b4e",
+      "task_type": "code",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-08T23:50:39.092913+00:00"
+    },
+    {
+      "task_id": "task_33c2c555f876",
+      "summary": "smoke test runtime pipeline 62d2232d",
+      "task_type": "code",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-08T21:40:07.442394+00:00"
+    },
+    {
+      "task_id": "task_a211689f79c6",
+      "summary": "smoke test runtime pipeline 50639fce",
+      "task_type": "code",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-08T06:43:15.765841+00:00"
+    },
+    {
+      "task_id": "task_868f62c81668",
+      "summary": "smoke test runtime pipeline ea04b0d1",
+      "task_type": "code",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-08T06:43:15.287186+00:00"
+    },
+    {
+      "task_id": "task_9cb60ae3b431",
+      "summary": "build the minimum durable runtime spine",
+      "task_type": "general",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "normal",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": false,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [
+        "apr_8ce6f4573eef"
+      ],
+      "updated_at": "2026-03-08T05:42:53.510399+00:00"
+    },
+    {
+      "task_id": "task_e88e3b75a521",
+      "summary": "build the minimum durable runtime spine",
+      "task_type": "general",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "normal",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": false,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-08T05:40:50.202893+00:00"
+    },
+    {
+      "task_id": "task_1caf14131a74",
+      "summary": "deploy the new jarvis v5 gateway service wiring",
+      "task_type": "deploy",
+      "status": "shipped",
+      "priority": "normal",
+      "risk_level": "high_stakes",
+      "assigned_model": "Qwen3.5-122B",
+      "review_required": true,
+      "approval_required": true,
+      "related_review_ids": [
+        "rev_699a02b49d84"
+      ],
+      "related_approval_ids": [
+        "apr_1003f1bd9d45"
+      ],
+      "updated_at": "2026-03-08T04:17:15.524482+00:00"
+    },
+    {
+      "task_id": "task_6027bba8ae5e",
+      "summary": "patch the intake code path for gateway routing",
+      "task_type": "code",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [
+        "rev_6be8e19e7f7a"
+      ],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-08T03:42:44.805849+00:00"
+    },
+    {
+      "task_id": "task_b8283a17ca85",
+      "summary": "add artifact linkage from task outputs back into related_artifact_ids",
+      "task_type": "general",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "normal",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": false,
+      "approval_required": false,
+      "related_review_ids": [],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-08T03:30:01.399064+00:00"
+    },
+    {
+      "task_id": "task_8bafe8444fc2",
+      "summary": "patch the gateway ack formatting for review responses",
+      "task_type": "code",
+      "status": "completed",
+      "priority": "normal",
+      "risk_level": "risky",
+      "assigned_model": "Qwen3.5-35B",
+      "review_required": true,
+      "approval_required": false,
+      "related_review_ids": [
+        "rev_11d9cfda5552"
+      ],
+      "related_approval_ids": [],
+      "updated_at": "2026-03-08T02:11:40.220036+00:00"
+    }
+  ],
+  "total": 33
+}

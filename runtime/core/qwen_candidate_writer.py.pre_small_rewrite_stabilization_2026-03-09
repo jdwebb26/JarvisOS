@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import py_compile
+import re
+from datetime import datetime
+from pathlib import Path
+
+try:
+    import requests
+except Exception:
+    requests = None
+
+WORKSPACE = Path("/home/rollan/.openclaw/workspace")
+ALLOWED_EXTRA_ROOT = WORKSPACE / "tasks"
+ARTIFACT_ROOT = WORKSPACE / "artifacts" / "qwen_live"
+APPROVAL_PATH = WORKSPACE / "jarvis-v5" / "runtime" / "core" / "qwen_approval_state.json"
+WRITE_GATE_PATH = WORKSPACE / "jarvis-v5" / "runtime" / "core" / "qwen_write_gate.json"
+
+MODEL_SERVER = os.getenv("QWEN_AGENT_MODEL_SERVER", "http://172.23.64.1:1234/v1").rstrip("/")
+MODEL_NAME = os.getenv("QWEN_AGENT_MODEL", "qwen3.5-35b-a3b")
+API_KEY = os.getenv("QWEN_AGENT_API_KEY", "lm-studio")
+MAX_FULL_REWRITE_CHARS = 6000
+
+
+def now_iso() -> str:
+    return datetime.now().isoformat()
+
+
+def now_stamp() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def today_dir() -> Path:
+    out = ARTIFACT_ROOT / datetime.now().strftime("%Y-%m-%d")
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def read_json(path: Path, default: dict) -> dict:
+    if not path.exists():
+        return default
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def latest_patch_plan() -> Path | None:
+    direct_candidates = []
+
+    for latest_name in ("latest_patch_plan.md",):
+        for day_dir in sorted(ARTIFACT_ROOT.glob("20*-*-*"), reverse=True):
+            p = day_dir / latest_name
+            if p.exists():
+                direct_candidates.append(p)
+
+    numbered_candidates = sorted(
+        ARTIFACT_ROOT.glob("20*-*-*/*_patch_plan.md"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+    all_candidates = direct_candidates + [p for p in numbered_candidates if p not in direct_candidates]
+    return all_candidates[0] if all_candidates else None
+
+
+def extract_target_files(text: str) -> list[str]:
+    matches = re.findall(
+        r"/home/rollan/\.openclaw/workspace/[A-Za-z0-9_\-./]+",
+        text,
+    )
+    files = []
+    seen = set()
+    for path in matches:
+        if not (
+            path.endswith(".py")
+            or path.endswith(".md")
+            or path.endswith(".yaml")
+            or path.endswith(".yml")
+            or path.endswith(".json")
+        ):
+            continue
+        if path not in seen:
+            seen.add(path)
+            files.append(path)
+    return files
+
+
+def detect_thinking_contamination(text: str) -> bool:
+    t = (text or "").strip().lower()
+    return "thinking process:" in t or t.startswith("thinking process")
+
+def strip_think(text: str) -> str:
+    return re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL).strip()
+
+
+def strip_code_fences(text: str) -> str:
+    text = text.strip()
+    match = re.match(r"^```(?:python)?\s*(.*?)\s*```$", text, flags=re.DOTALL)
+    if match:
+        return match.group(1).strip() + "\n"
+    return text + ("\n" if not text.endswith("\n") else "")
+
+
+def call_model(prompt: str) -> str:
+    if requests is None:
+        raise RuntimeError("requests is not installed. Install with: pip install requests")
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "/no_think\n"
+                    "You are a single-file patch materializer.\n"
+                    "Return only the full replacement file content.\n"
+                    "No explanation.\n"
+                    "No markdown.\n"
+                    "No code fences unless unavoidable.\n"
+                    "No analysis.\n"
+                    "No thinking text.\n"
+                    "No preamble.\n"
+                    "Start directly with the file contents.\n"
+                    "Preserve unchanged parts when possible.\n"
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.0,
+            "max_tokens": 500,
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+    response = requests.post(
+        f"{MODEL_SERVER}/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=(5,25),
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["choices"][0]["message"]["content"]
+
+
+def build_prompt(target_path: str, current_text: str, patch_plan_text: str) -> str:
+    return "\n".join(
+        [
+            f"Target file: {target_path}",
+            "",
+            "Patch plan:",
+            patch_plan_text[:2200],
+            "",
+            "Current file content:",
+            current_text[:8000],
+            "",
+            "Task:",
+            "Produce the full updated replacement file content for the target file only.",
+            "Apply the smallest safe patch described by the patch plan.",
+            "Do not change unrelated logic.",
+        ]
+    )
+
+
+def validate_python(path: Path) -> tuple[bool, str]:
+    try:
+        py_compile.compile(str(path), doraise=True)
+        return True, "py_compile ok"
+    except Exception as e:
+        return False, str(e)
+
+
+def write_artifact(name: str, body: str) -> Path:
+    out = today_dir() / f"{now_stamp()}_{name}.md"
+    out.write_text(body, encoding="utf-8")
+    latest = today_dir() / f"latest_{name}.md"
+    latest.write_text(body, encoding="utf-8")
+    return out
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Generate a candidate replacement file for an approved patch."
+    )
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    args = parser.parse_args()
+
+    approval = read_json(
+        APPROVAL_PATH,
+        {
+            "approved_task_id": None,
+            "approved_at": None,
+            "approval_note": None,
+            "mode": "dry_run",
+        },
+    )
+    gate = read_json(
+        WRITE_GATE_PATH,
+        {
+            "enabled": False,
+            "mode": "allowlist_only",
+            "approved_task_id": None,
+            "allowed_paths": [],
+            "note": None,
+        },
+    )
+
+    patch_plan = latest_patch_plan()
+    if patch_plan is None:
+        raise RuntimeError("No latest patch plan found.")
+
+    patch_plan_text = patch_plan.read_text(encoding="utf-8", errors="replace")
+    target_files = extract_target_files(patch_plan_text)
+
+    if not target_files:
+        raise RuntimeError("No target files found in patch plan.")
+    if len(target_files) != 1:
+        raise RuntimeError(f"Expected exactly one target file, got {len(target_files)}.")
+
+    target_path = target_files[0]
+
+    if approval.get("approved_task_id") != gate.get("approved_task_id"):
+        raise RuntimeError("Approval task id does not match write gate task id.")
+    if not gate.get("enabled"):
+        raise RuntimeError("Write gate is disabled.")
+    if target_path not in set(gate.get("allowed_paths", [])):
+        raise RuntimeError("Target path is outside the allowlist.")
+
+    target_file = Path(target_path)
+    if not target_file.exists():
+        raise RuntimeError(f"Target file does not exist: {target_file}")
+
+    current_text = target_file.read_text(encoding="utf-8", errors="replace")
+    generation_mode = ""
+    generation_error = ""
+
+    if len(current_text) > MAX_FULL_REWRITE_CHARS:
+        generation_mode = "fallback_live_baseline_size_guard"
+        generation_error = f"target too large for bounded full rewrite: {len(current_text)} chars"
+        candidate_text = current_text
+    else:
+        prompt = build_prompt(target_path, current_text, patch_plan_text)
+        generation_mode = "model_full_rewrite"
+        try:
+            raw = call_model(prompt)
+            if detect_thinking_contamination(raw):
+                raise RuntimeError("model returned Thinking Process contamination")
+            cleaned = strip_think(raw)
+            candidate_text = strip_code_fences(cleaned)
+        except Exception as e:
+            generation_mode = "fallback_live_baseline"
+            generation_error = f"{type(e).__name__}: {e}"
+            candidate_text = current_text
+
+    bad_markers = [
+        "<think>",
+        "Thinking Process:",
+        "Patch plan:",
+        "Current file content:",
+        "Task:",
+    ]
+    if any(marker in candidate_text for marker in bad_markers):
+        generation_mode = "fallback_live_baseline"
+        if not generation_error:
+            generation_error = "model returned analysis instead of raw file content"
+        candidate_text = current_text
+
+    candidates_dir = today_dir() / "candidates"
+    candidates_dir.mkdir(parents=True, exist_ok=True)
+
+    candidate_file = candidates_dir / target_file.name
+    candidate_file.write_text(candidate_text, encoding="utf-8")
+
+    syntax_valid = None
+    validation_msg = "not validated"
+    if target_file.suffix == ".py":
+        syntax_valid, validation_msg = validate_python(candidate_file)
+
+    summary = "\n".join(
+        [
+            "# Qwen Candidate Writer",
+            "",
+            f"- timestamp: {now_iso()}",
+            f"- approved_task_id: {approval.get('approved_task_id')}",
+            f"- target_file: {target_path}",
+            f"- candidate_file: {candidate_file}",
+            f"- syntax_valid: {syntax_valid}",
+            f"- validation_msg: {validation_msg}",
+            f"- generation_mode: {generation_mode}",
+            f"- generation_error: {generation_error[:300] if generation_error else ""}",
+            "",
+            "## Approval State",
+            "```json",
+            json.dumps(approval, indent=2, ensure_ascii=False),
+            "```",
+            "",
+            "## Write Gate",
+            "```json",
+            json.dumps(gate, indent=2, ensure_ascii=False),
+            "```",
+            "",
+            "## Patch Plan",
+            f"- {patch_plan}",
+            "",
+            "## Outcome",
+            "",
+            "Candidate file generated only. No live code was changed.",
+            "",
+        ]
+    )
+
+    artifact = write_artifact("candidate_write", summary)
+
+    payload = {
+        "ok": True,
+        "target_file": target_path,
+        "candidate_file": str(candidate_file),
+        "syntax_valid": syntax_valid,
+        "validation_msg": validation_msg,
+        "artifact": str(artifact),
+        "generation_mode": generation_mode,
+        "generation_error": generation_error,
+    }
+
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"Wrote: {artifact}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

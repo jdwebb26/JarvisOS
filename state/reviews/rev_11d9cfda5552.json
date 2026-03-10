@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_11d9cfda5552",
+  "task_id": "task_8bafe8444fc2",
+  "requested_at": "2026-03-08T01:59:33.311463+00:00",
+  "updated_at": "2026-03-08T02:02:22.605405+00:00",
+  "reviewer_role": "archimedes",
+  "requested_by": "rollan",
+  "lane": "review",
+  "status": "approved",
+  "summary": "Review required for task task_8bafe8444fc2: patch the gateway ack formatting for review responses",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "Gateway review wrapper test approved.",
+  "version": "v1"
+}

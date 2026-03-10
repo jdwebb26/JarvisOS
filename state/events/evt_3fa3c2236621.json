@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_3fa3c2236621",
+  "task_id": "task_751aa0f9a77a",
+  "event_type": "output_published",
+  "actor": "executor",
+  "lane": "outputs",
+  "created_at": "2026-03-09T00:35:45.469154+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Output published: out_3c2559d8ea60",
+  "reason": "Artifact for direct publish verification",
+  "final_outcome": null,
+  "artifact_id": "art_782b4c03700f",
+  "artifact_type": "note",
+  "artifact_title": "direct publish verification artifact",
+  "already_linked": null,
+  "version": "v1"
+}

@@ -1,0 +1,15 @@
+{
+  "event_id": "evt_69e6f2c87ba2",
+  "task_id": "task_b8283a17ca85",
+  "event_type": "task_status_changed",
+  "actor": "rollan",
+  "lane": "outputs",
+  "created_at": "2026-03-08T03:30:01.399181+00:00",
+  "details": {
+    "from_status": "queued",
+    "to_status": "completed",
+    "reason": "Task completed.",
+    "final_outcome": "Artifact linkage work was published and the task is complete."
+  },
+  "version": "v1"
+}

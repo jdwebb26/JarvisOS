@@ -1,0 +1,15 @@
+{
+  "review_id": "rev_74ea3848cac1",
+  "task_id": "task_e134c1f6347c",
+  "requested_at": "2026-03-09T16:56:07.439764+00:00",
+  "updated_at": "2026-03-09T16:56:07.439790+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "intake_smoke",
+  "lane": "intake_smoke",
+  "status": "pending",
+  "summary": "Review required for task task_e134c1f6347c: deploy live production service restart intake auto route smoke 20260309_115607",
+  "details": "",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "version": "v1"
+}

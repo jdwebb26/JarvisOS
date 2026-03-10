@@ -1,0 +1,372 @@
+{
+  "ok": true,
+  "strict": false,
+  "timestamp_utc": "2026-03-10T16:48:43.376804+00:00",
+  "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
+  "requested_root": "/home/rollan/.openclaw/workspace/jarvis-v5",
+  "summary": {
+    "pass": 69,
+    "warn": 0,
+    "fail": 0
+  },
+  "foundation": {
+    "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
+    "created_dirs": [],
+    "existing_dirs_count": 14,
+    "copied_configs": {
+      "config/app.yaml": "kept_existing",
+      "config/channels.yaml": "kept_existing",
+      "config/models.yaml": "kept_existing",
+      "config/policies.yaml": "kept_existing"
+    }
+  },
+  "findings": [
+    {
+      "status": "pass",
+      "category": "repo",
+      "message": "Repo root exists.",
+      "details": "/home/rollan/.openclaw/workspace/jarvis-v5"
+    },
+    {
+      "status": "pass",
+      "category": "repo",
+      "message": "Git metadata directory is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `config` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `docs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/core` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/dashboard` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/executor` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/flowstate` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/gateway` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `scripts` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/approvals` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/artifacts` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/events` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/flowstate_sources` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/heartbeat` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/logs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/reviews` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/tasks` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `workspace` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `workspace/inbox` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `workspace/out` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `workspace/work` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `README.md` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `docs/deployment.md` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `docs/operations.md` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `docs/runtime-regression-runbook.md` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `config/app.example.yaml` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `config/channels.example.yaml` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `config/models.example.yaml` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `config/policies.example.yaml` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/bootstrap.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/doctor.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/generate_config.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/smoke_test.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/validate.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/intake.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/decision_router.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/approval_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/review_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/publish_complete.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/run_runtime_regression_pack.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/gateway/complete_from_artifact.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/gateway/discord_intake.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/dashboard/operator_snapshot.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Example config `config/app.example.yaml` is Qwen-oriented."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Example config `config/channels.example.yaml` is Qwen-oriented."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Example config `config/models.example.yaml` is Qwen-oriented."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Example config `config/policies.example.yaml` is Qwen-oriented."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Live config `config/app.yaml` has no obvious placeholders."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Live config `config/channels.yaml` has no obvious placeholders."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "config/channels.yaml includes the expected operator channel names."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Live config `config/models.yaml` has no obvious placeholders."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "config/models.yaml is pinned to Qwen 3.5."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Live config `config/policies.yaml` has no obvious placeholders."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/logs` is writable."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `workspace/out` is writable."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.intake` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.decision_router` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.review_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.approval_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.publish_complete` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.run_runtime_regression_pack` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.gateway.complete_from_artifact` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.dashboard.operator_snapshot` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "runtime",
+      "message": "Runtime regression pack entrypoint is present."
+    },
+    {
+      "status": "pass",
+      "category": "operator",
+      "message": "Operator snapshot log exists."
+    }
+  ],
+  "next_actions": []
+}

@@ -1,0 +1,433 @@
+{
+  "ok": true,
+  "verdict": "healthy_with_warnings",
+  "timestamp_utc": "2026-03-10T00:12:21.622657+00:00",
+  "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
+  "summary": {
+    "pass": 68,
+    "warn": 1,
+    "fail": 0,
+    "tasks": 33,
+    "approvals": 9,
+    "reviews": 16,
+    "outputs": 6
+  },
+  "groups": {
+    "repo": [
+      {
+        "status": "pass",
+        "category": "repo",
+        "message": "Repo root exists.",
+        "details": "/home/rollan/.openclaw/workspace/jarvis-v5"
+      },
+      {
+        "status": "warn",
+        "category": "repo",
+        "message": "Git metadata directory is missing.",
+        "remediation": "If this is a source export rather than a git checkout, ignore this warning."
+      }
+    ],
+    "filesystem": [
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `config` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `docs` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime/core` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime/dashboard` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime/executor` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime/flowstate` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime/gateway` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `scripts` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/approvals` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/artifacts` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/events` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/flowstate_sources` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/logs` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/reviews` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/tasks` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `workspace` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `workspace/inbox` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `workspace/out` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/logs` is writable."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `workspace/out` is writable."
+      }
+    ],
+    "files": [
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `README.md` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `docs/deployment.md` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `docs/operations.md` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `docs/runtime-regression-runbook.md` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `config/app.example.yaml` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `config/channels.example.yaml` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `config/models.example.yaml` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `config/policies.example.yaml` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `scripts/bootstrap.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `scripts/doctor.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `scripts/generate_config.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `scripts/smoke_test.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `scripts/validate.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/core/intake.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/core/decision_router.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/core/approval_store.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/core/review_store.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/core/publish_complete.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/core/run_runtime_regression_pack.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/gateway/complete_from_artifact.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/gateway/discord_intake.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/dashboard/operator_snapshot.py` is present."
+      }
+    ],
+    "config": [
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Example config `config/app.example.yaml` is Qwen-oriented."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Example config `config/channels.example.yaml` is Qwen-oriented."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Example config `config/models.example.yaml` is Qwen-oriented."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Example config `config/policies.example.yaml` is Qwen-oriented."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Live config `config/app.yaml` has no obvious placeholders."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Live config `config/channels.yaml` has no obvious placeholders."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "config/channels.yaml includes the expected operator channel names."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Live config `config/models.yaml` has no obvious placeholders."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "config/models.yaml is pinned to Qwen 3.5."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Live config `config/policies.yaml` has no obvious placeholders."
+      }
+    ],
+    "imports": [
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.core.intake` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.core.decision_router` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.core.review_store` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.core.approval_store` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.core.publish_complete` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.core.run_runtime_regression_pack` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.gateway.complete_from_artifact` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.dashboard.operator_snapshot` imports cleanly."
+      }
+    ],
+    "runtime": [
+      {
+        "status": "pass",
+        "category": "runtime",
+        "message": "Runtime regression pack entrypoint is present."
+      },
+      {
+        "status": "pass",
+        "category": "runtime",
+        "message": "Runtime regression pack is green (5/5 passed)."
+      }
+    ],
+    "operator": [
+      {
+        "status": "pass",
+        "category": "operator",
+        "message": "Operator snapshot log exists."
+      },
+      {
+        "status": "pass",
+        "category": "operator",
+        "message": "state_export.json is present for operator/dashboard visibility."
+      }
+    ],
+    "runtime_state": [
+      {
+        "status": "pass",
+        "category": "runtime_state",
+        "message": "State directories are readable.",
+        "details": "tasks=33 approvals=9 reviews=16 outputs=6"
+      }
+    ]
+  },
+  "next_actions": [
+    "If this is a source export rather than a git checkout, ignore this warning.",
+    "After a green baseline, use operator snapshot / dashboard outputs to work the next ready_to_ship or publish-complete handoff."
+  ],
+  "regression_pack": {
+    "ok": true,
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "results": [
+      {
+        "script": "runtime/core/check_ops_report_regression.py",
+        "ok": true,
+        "exit_code": 0,
+        "payload_ok": true,
+        "stdout_head": "{\n  \"ok\": true,\n  \"live_file_exists\": true,\n  \"task_db_exists\": true,\n  \"results_dir_exists\": true,\n  \"checks\": {\n    \"helper_signature\": true,\n    \"counts_query_unfiltered\": true,\n    \"recent_query_unfiltered\": true,\n    \"callsite_no_task_id\": true,\n    \"summary_heading\": true,\n    \"queue_counts_heading\": true,\n    \"recent_heading\": true,\n    \"artifact_paths_heading\": true,\n    \"attention_heading\": true,\n    \"next_action_heading\": true\n  },\n  \"notes\": [],\n  \"task_74\": {\n    \"id\": 74,\n    \"status\": \"done\",\n    \"result_path\": \"/home/rollan/.openclaw/workspace/tasks/results/74.md\"\n  },\n  \"recent",
+        "stderr_head": ""
+      },
+      {
+        "script": "runtime/core/e2e_ops_report_executor_smoke.py",
+        "ok": true,
+        "exit_code": 0,
+        "payload_ok": true,
+        "stdout_head": "{\n  \"ok\": true,\n  \"inserted_task_id\": 96,\n  \"inserted_title\": \"ops report e2e executor smoke 20260309_191221\",\n  \"executor_exit_code\": 0,\n  \"executor_stdout_head\": \"\",\n  \"executor_stderr_head\": \"\",\n  \"task_status\": \"done\",\n  \"task_result_path\": \"/home/rollan/.openclaw/workspace/tasks/results/96.md\",\n  \"artifact_exists\": true,\n  \"found_sections\": [\n    \"## Summary\",\n    \"## Queue Counts\",\n    \"## Recently Completed / Updated Tasks\",\n    \"## Latest Artifact Paths\",\n    \"## Attention Items\",\n    \"## Next Human/Agent Action\"\n  ],\n  \"preview_head\": \"# Ops Report Improvement Task 96\\n\\n## Title\\nops",
+        "stderr_head": ""
+      },
+      {
+        "script": "runtime/core/decision_router_idempotency_smoke.py",
+        "ok": true,
+        "exit_code": 0,
+        "payload_ok": true,
+        "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart router idempotency smoke 20260309_191221\",\n  \"task_id\": \"task_85b699957274\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_count_after_create\": 1,\n  \"approval_count_after_create\": 0,\n  \"second_route\": {\n    \"kind\": \"waiting_review\",\n    \"task_id\": \"task_85b699957274\",\n    \"review_id\": \"rev_b17e666c08df\",\n    \"reviewer_role\": \"anton\",\n    \"status\": \"pending\",\n    \"message\": \"A review already exists and is still pending.\"\n  },\n  \"review_cou",
+        "stderr_head": ""
+      },
+      {
+        "script": "runtime/core/approval_ready_to_ship_smoke.py",
+        "ok": true,
+        "exit_code": 0,
+        "payload_ok": true,
+        "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart ready-to-ship smoke 20260309_191221\",\n  \"task_id\": \"task_6634619aeeaf\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_id\": \"rev_27c8e64b6972\",\n  \"status_after_review_approved\": \"waiting_approval\",\n  \"approval_id\": \"apr_418c2bd4e65a\",\n  \"approval_status_after_decision\": \"approved\",\n  \"final_outcome_before_approval_decision\": \"candidate_ready_for_live_apply\",\n  \"final_task_status\": \"ready_to_ship\"\n}",
+        "stderr_head": ""
+      },
+      {
+        "script": "runtime/core/e2e_publish_complete_chain_smoke.py",
+        "ok": true,
+        "exit_code": 0,
+        "payload_ok": true,
+        "stdout_head": "{\n  \"ok\": true,\n  \"temp_root\": \"/home/rollan/.openclaw/workspace/jarvis-v5/e2e_publish_complete_chain_q6fpp2ru\",\n  \"task_id\": \"task_03607170162d\",\n  \"artifact_id\": \"art_d42061f13ab9\",\n  \"intake_result\": {\n    \"kind\": \"task_created\",\n    \"task_created\": true,\n    \"task_id\": \"task_03607170162d\",\n    \"short_summary\": \"deploy live production service restart e2e publish-complete smoke\",\n    \"initial_status\": \"queued\",\n    \"final_status\": \"waiting_review\",\n    \"progress_lane\": \"#tasks\",\n    \"review_expected\": true,\n    \"approval_expected\": true,\n    \"task_type\": \"deploy\",\n    \"priority\": \"normal\",\n ",
+        "stderr_head": ""
+      }
+    ]
+  }
+}

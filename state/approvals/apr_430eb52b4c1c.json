@@ -1,0 +1,16 @@
+{
+  "approval_id": "apr_430eb52b4c1c",
+  "task_id": "task_81a337bbf2d7",
+  "requested_at": "2026-03-09T17:07:22.754445+00:00",
+  "updated_at": "2026-03-09T17:07:22.776879+00:00",
+  "requested_by": "task_store_smoke",
+  "requested_reviewer": "anton",
+  "lane": "task_store_smoke",
+  "approval_type": "deploy",
+  "status": "approved",
+  "summary": "Approval required after review approval: deploy live production service restart task-store transition smoke 20260309_120722",
+  "details": "task store transition smoke review approval",
+  "linked_artifact_ids": [],
+  "decision_reason": "task store transition smoke approval approval",
+  "version": "v1"
+}

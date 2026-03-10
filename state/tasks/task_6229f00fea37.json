@@ -1,0 +1,35 @@
+{
+  "task_id": "task_6229f00fea37",
+  "created_at": "2026-03-09T17:11:31.619241+00:00",
+  "updated_at": "2026-03-09T18:54:29.407561+00:00",
+  "source_lane": "ready_to_ship_smoke",
+  "source_channel": "ready_to_ship_smoke",
+  "source_message_id": "ready_to_ship_smoke_20260309_121131",
+  "source_user": "ready_to_ship_smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: deploy live production service restart ready-to-ship smoke 20260309_121131",
+  "normalized_request": "deploy live production service restart ready-to-ship smoke 20260309_121131",
+  "task_type": "deploy",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "completed",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "review_required": true,
+  "approval_required": true,
+  "parent_task_id": null,
+  "related_artifact_ids": [
+    "art_publish_smoke_20260309_125152"
+  ],
+  "related_review_ids": [
+    "rev_0e7fa7d2ac68"
+  ],
+  "related_approval_ids": [
+    "apr_54d59595e889"
+  ],
+  "checkpoint_summary": "Task completed.",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "Used existing published output out_9bc70bf935b4 from artifact art_publish_smoke_20260309_125152.",
+  "version": "v1"
+}

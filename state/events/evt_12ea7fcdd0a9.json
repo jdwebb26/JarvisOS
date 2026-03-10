@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_12ea7fcdd0a9",
+  "task_id": "task_6e9f48c6f76b",
+  "event_type": "artifact_linked",
+  "actor": "operator",
+  "lane": "artifacts",
+  "created_at": "2026-03-09T00:31:27.403965+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Artifact linked: art_461d662bf5ae",
+  "reason": null,
+  "final_outcome": null,
+  "artifact_id": "art_461d662bf5ae",
+  "artifact_type": "note",
+  "artifact_title": "Disposable artifact linkage check",
+  "already_linked": false,
+  "version": "v1"
+}

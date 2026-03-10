@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "mode": "allowlist_only",
+  "approved_task_id": "task_d7b35612e2c7",
+  "allowed_paths": [
+    "/home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/decision_router.py"
+  ],
+  "note": "allow decision_router.py only for task_d7b35612e2c7"
+}

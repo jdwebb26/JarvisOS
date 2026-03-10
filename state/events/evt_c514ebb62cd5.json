@@ -1,0 +1,12 @@
+{
+  "event_id": "evt_c514ebb62cd5",
+  "task_id": "task_8bafe8444fc2",
+  "event_type": "checkpoint_recorded",
+  "actor": "rollan",
+  "lane": "tasks",
+  "created_at": "2026-03-08T02:11:34.381632+00:00",
+  "details": {
+    "checkpoint_summary": "Gateway wrapper path proven; moving into lifecycle control."
+  },
+  "version": "v1"
+}

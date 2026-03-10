@@ -1,0 +1,31 @@
+{
+  "task_id": "task_715939b805ec",
+  "created_at": "2026-03-09T15:46:05.452659+00:00",
+  "updated_at": "2026-03-09T15:46:05.454958+00:00",
+  "source_lane": "gap_smoke",
+  "source_channel": "gap_smoke",
+  "source_message_id": "deploy_case",
+  "source_user": "gap_smoke",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: deploy live production service restart",
+  "normalized_request": "deploy live production service restart",
+  "task_type": "deploy",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "waiting_review",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "review_required": true,
+  "approval_required": true,
+  "parent_task_id": null,
+  "related_artifact_ids": [],
+  "related_review_ids": [
+    "rev_69dfc967a002"
+  ],
+  "related_approval_ids": [],
+  "checkpoint_summary": "",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "",
+  "version": "v1"
+}

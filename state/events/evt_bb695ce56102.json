@@ -1,0 +1,18 @@
+{
+  "event_id": "evt_bb695ce56102",
+  "task_id": "task_0e7052fedddf",
+  "event_type": "output_published",
+  "actor": "executor",
+  "lane": "executor",
+  "created_at": "2026-03-09T00:37:09.532533+00:00",
+  "from_status": null,
+  "to_status": null,
+  "checkpoint_summary": "Output published: out_4e2754b72050",
+  "reason": "Artifact for clean complete_from_artifact verification",
+  "final_outcome": null,
+  "artifact_id": "art_f70dc358fee1",
+  "artifact_type": "note",
+  "artifact_title": "clean complete_from_artifact verification artifact",
+  "already_linked": null,
+  "version": "v1"
+}

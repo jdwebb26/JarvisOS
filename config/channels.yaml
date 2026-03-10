@@ -1,0 +1,28 @@
+channels:
+  jarvis:
+    discord_id: "1478178050133987400"
+    purpose: chat_planning_status_explicit_tasks
+
+  tasks:
+    discord_id: "1471188572932673549"
+    purpose: durable_task_visibility
+
+  outputs:
+    discord_id: "1476631292073218121"
+    purpose: approved_final_artifacts
+
+  review:
+    discord_id: "1477590492849115167"
+    purpose: concise_approval_decisions
+
+  audit:
+    discord_id: "1480715753190723657"
+    purpose: anton_high_stakes_review
+
+  code_review:
+    discord_id: "1480715776699928677"
+    purpose: archimedes_code_review
+
+  flowstate:
+    discord_id: "1471376970259628032"
+    purpose: source_ingest_extract_distill_propose

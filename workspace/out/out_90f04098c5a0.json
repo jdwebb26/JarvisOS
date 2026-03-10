@@ -1,0 +1,12 @@
+{
+  "output_id": "out_90f04098c5a0",
+  "task_id": "task_b8283a17ca85",
+  "artifact_id": "art_8d94613f6d36",
+  "title": "Artifact linkage proof",
+  "summary": "This artifact proves task outputs now link back into related_artifact_ids.",
+  "published_at": "2026-03-08T03:30:01.398011+00:00",
+  "published_by": "rollan",
+  "lane": "outputs",
+  "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_90f04098c5a0.md",
+  "version": "v1"
+}
