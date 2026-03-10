@@ -174,6 +174,16 @@ python3 scripts/operator_action_executor.py --action-id ACTION_ID
 
 For example, take an `action_id` from `recommended_execution_order` or one of the action sections in `state/logs/operator_checkpoint_action_pack.json`, then run it directly.
 
+To resolve and log an action without executing it:
+
+```bash
+python3 scripts/operator_action_executor.py --action-id ACTION_ID --dry-run
+```
+
+Execution records are written to:
+
+- `state/operator_action_executions/*.json`
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.

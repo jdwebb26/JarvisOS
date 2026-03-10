@@ -56,6 +56,7 @@ REQUIRED_DIRS = [
     "state/digest_artifact_links",
     "state/memory_candidates",
     "state/memory_retrievals",
+    "state/operator_action_executions",
     "state/tasks",
     "workspace",
     "workspace/inbox",

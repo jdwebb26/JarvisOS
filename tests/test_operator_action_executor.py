@@ -17,6 +17,12 @@ from runtime.ralph.consolidator import execute_consolidation
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _latest_execution_record(root: Path) -> dict:
+    rows = sorted((root / "state" / "operator_action_executions").glob("*.json"))
+    assert rows
+    return json.loads(rows[-1].read_text(encoding="utf-8"))
+
+
 def _make_task(
     root: Path,
     *,
@@ -107,6 +113,12 @@ def test_operator_action_executor_runs_review_action(tmp_path: Path):
     assert result["ok"] is True
     assert result["selected_action"]["action_id"] == action_id
     assert result["stdout_payload"]["ack"]["kind"] == "review_recorded_ack"
+    record = _latest_execution_record(tmp_path)
+    assert record["action_id"] == action_id
+    assert record["success"] is True
+    assert record["dry_run"] is False
+    assert record["ack_summary"]
+    assert record["return_code"] == 0
 
 
 def test_operator_action_executor_runs_memory_action(tmp_path: Path):
@@ -164,10 +176,46 @@ def test_operator_action_executor_runs_memory_action(tmp_path: Path):
     assert result["stdout_payload"]["ack"]["kind"] == "memory_decision_ack"
     assert promoted is not None
     assert promoted.decision_status == "promoted"
+    record = _latest_execution_record(tmp_path)
+    assert record["action_id"] == action_id
+    assert record["success"] is True
+    assert record["dry_run"] is False
 
 
-def test_operator_action_executor_reports_unknown_action_id(tmp_path: Path):
-    _make_task(tmp_path, task_id="task_action_executor_unknown")
+def test_operator_action_executor_dry_run_logs_without_execution(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_dry_run", review_required=True)
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "dry_run_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Dry run executor candidate",
+            "summary": "candidate for dry run executor",
+            "content": "candidate body",
+        },
+    )
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="Review pending for dry run",
+        root=tmp_path,
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["pending_review_commands"][0]["action_ids"]["approve"]
+
     result = _run_json(
         [
             sys.executable,
@@ -175,10 +223,76 @@ def test_operator_action_executor_reports_unknown_action_id(tmp_path: Path):
             "--root",
             str(tmp_path),
             "--action-id",
-            "review:approve:missing",
+            action_id,
+            "--dry-run",
+        ]
+    )
+
+    review = latest_review_for_task(task.task_id, root=tmp_path)
+    record = _latest_execution_record(tmp_path)
+
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    assert review is not None
+    assert review.status == "pending"
+    assert record["action_id"] == action_id
+    assert record["dry_run"] is True
+    assert record["success"] is True
+    assert record["ack_summary"] == "Dry run only. Command was resolved but not executed."
+
+
+def test_operator_action_executor_logs_failed_execution(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_failed", review_required=True)
+    hermes = execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "failed_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Failed executor candidate",
+            "summary": "candidate for failed executor",
+            "content": "candidate body",
+        },
+    )
+    stored_result = load_hermes_result(hermes["result"]["result_id"], root=tmp_path)
+    replay_trace_to_eval(
+        trace_id=stored_result["trace_id"],
+        actor="tester",
+        lane="eval",
+        evaluator_kind="replay_check",
+        objective="Seed eval for failed executor",
+        root=tmp_path,
+    )
+    execute_consolidation(task_id=task.task_id, actor="tester", lane="ralph", root=tmp_path)
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = result["pack"]["memory_decision_commands"][0]["action_ids"]["promote"]
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
         ],
         expect_ok=False,
     )
+    record = _latest_execution_record(tmp_path)
 
     assert result["ok"] is False
-    assert "not found" in result["error"]
+    assert result["failure"]["returncode"] != 0
+    assert record["action_id"] == action_id
+    assert record["success"] is False
+    assert record["failure"] is True
+    assert record["return_code"] != 0
+    assert "cannot be promoted without approved review" in record["stderr_snapshot"]

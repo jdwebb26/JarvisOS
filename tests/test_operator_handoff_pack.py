@@ -90,6 +90,25 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
         summary="Pending approval for handoff pack",
         root=tmp_path,
     )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_pack["pack"]["pending_approval_commands"][0]["action_ids"]["approve"],
+            "--dry-run",
+        ]
+    )
 
     payload = _run_json(
         [
@@ -112,6 +131,7 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
     assert pack["artifacts"]["candidate"]
     assert pack["latest_trace_summary"]
     assert pack["latest_eval_summary"]
+    assert pack["recent_operator_action_executions"]
     assert any(item["task_id"] == task_review.task_id for item in pack["pending_review_items"])
     assert any(item["task_id"] == task_approval.task_id for item in pack["pending_approval_items"])
     assert pack["ralph_memory_summary"]["latest_memory_candidates"]

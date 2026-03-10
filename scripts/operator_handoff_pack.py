@@ -84,6 +84,25 @@ def _eval_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, A
     ]
 
 
+def _operator_action_execution_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "execution_id": row.get("execution_id"),
+            "action_id": row.get("action_id"),
+            "category": (row.get("selected_action") or {}).get("category"),
+            "verb": (row.get("selected_action") or {}).get("verb"),
+            "target_id": (row.get("selected_action") or {}).get("target_id"),
+            "task_id": (row.get("selected_action") or {}).get("task_id"),
+            "dry_run": row.get("dry_run", False),
+            "success": row.get("success", False),
+            "return_code": row.get("return_code"),
+            "ack_summary": row.get("ack_summary", ""),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
 def _ralph_memory_summary(
     consolidation_runs: list[dict[str, Any]],
     memory_candidates: list[dict[str, Any]],
@@ -177,6 +196,14 @@ def _build_markdown(pack: dict[str, Any]) -> str:
             f"- {row['eval_result_id']}: passed={row['passed']} score={row['score']} task={row['task_id']} summary={row['summary']}"
         )
 
+    lines.extend(["", "## Recent Operator Actions"])
+    for row in pack["recent_operator_action_executions"]:
+        lines.append(
+            f"- {row['execution_id']}: action={row['action_id']} success={row['success']} dry_run={row['dry_run']} ack={row['ack_summary']}"
+        )
+    if not pack["recent_operator_action_executions"]:
+        lines.append("- none")
+
     lines.extend(["", "## Pending Review / Approval"])
     for row in pack["pending_review_items"]:
         lines.append(f"- review {row['review_id']} task={row['task_id']} reviewer={row['reviewer_role']} summary={row['summary']}")
@@ -215,6 +242,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     eval_results = _load_jsons(root / "state" / "eval_results")
     consolidation_runs = _load_jsons(root / "state" / "consolidation_runs")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
+    operator_action_executions = _load_jsons(root / "state" / "operator_action_executions")
 
     pack = {
         "generated_at": snapshot["status"].get("generated_at"),
@@ -225,6 +253,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         },
         "latest_trace_summary": _trace_summary(run_traces, limit=limit),
         "latest_eval_summary": _eval_summary(eval_results, limit=limit),
+        "recent_operator_action_executions": _operator_action_execution_summary(operator_action_executions, limit=limit),
         "pending_review_items": review_inbox["pending_reviews"],
         "pending_approval_items": review_inbox["pending_approvals"],
         "ralph_memory_summary": _ralph_memory_summary(consolidation_runs, memory_candidates, limit=limit),
