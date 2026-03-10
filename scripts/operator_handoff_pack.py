@@ -397,6 +397,22 @@ def _remediation_plan_summary(rows: list[dict[str, Any]], *, limit: int) -> list
     ]
 
 
+def _remediation_run_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "remediation_run_id": row.get("remediation_run_id"),
+            "remediation_plan_id": row.get("remediation_plan_id"),
+            "dry_run": row.get("dry_run", False),
+            "ok": row.get("ok", False),
+            "attempted_step_count": row.get("attempted_step_count", 0),
+            "failed_step_count": row.get("failed_step_count", 0),
+            "stop_reason": row.get("stop_reason", ""),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
 def _ralph_memory_summary(
     consolidation_runs: list[dict[str, Any]],
     memory_candidates: list[dict[str, Any]],
@@ -604,7 +620,8 @@ def _build_markdown(pack: dict[str, Any]) -> str:
     doctor = pack.get("doctor_summary", {})
     lines.append(
         f"- doctor_health={doctor.get('health_status')} highest_severity={doctor.get('highest_severity')} "
-        f"active_issues={doctor.get('active_issue_count')} latest_plan={((pack.get('latest_remediation_plan') or {}).get('remediation_plan_id'))}"
+        f"active_issues={doctor.get('active_issue_count')} latest_plan={((pack.get('latest_remediation_plan') or {}).get('remediation_plan_id'))} "
+        f"latest_run={((pack.get('latest_remediation_run') or {}).get('remediation_run_id'))}"
     )
 
     lines.extend(["", "## Action Pack"])
@@ -668,6 +685,8 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     operator_bridge_replays = _load_jsons(root / "state" / "operator_bridge_replays")
     operator_doctor_reports = _load_jsons(root / "state" / "operator_doctor_reports")
     operator_remediation_plans = _load_jsons(root / "state" / "operator_remediation_plans")
+    operator_remediation_runs = _load_jsons(root / "state" / "operator_remediation_runs")
+    operator_remediation_step_runs = _load_jsons(root / "state" / "operator_remediation_step_runs")
     recent_task_status = task_board["rows"][:limit]
     for row in recent_task_status:
         latest_success = latest_successful_action_for_task(root, row["task_id"])
@@ -890,11 +909,23 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "recent_doctor_reports": _doctor_report_summary(operator_doctor_reports, limit=limit),
         "latest_remediation_plan": _remediation_plan_summary(operator_remediation_plans, limit=1)[0] if operator_remediation_plans else None,
         "recent_remediation_plans": _remediation_plan_summary(operator_remediation_plans, limit=limit),
+        "latest_remediation_run": _remediation_run_summary(operator_remediation_runs, limit=1)[0] if operator_remediation_runs else None,
+        "recent_remediation_runs": _remediation_run_summary(operator_remediation_runs, limit=limit),
         "doctor_summary": {
             "health_status": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("health_status", "unknown"),
             "highest_severity": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("highest_severity", "unknown"),
             "active_issue_count": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("active_issue_count", 0),
             "next_recommended_commands": ((operator_doctor_reports[-1] if operator_doctor_reports else {}).get("next_recommended_commands", []))[:5],
+        },
+        "remediation_run_summary": {
+            "latest_remediation_run_id": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("remediation_run_id"),
+            "latest_remediation_run_ok": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("ok"),
+            "latest_remediation_run_dry_run": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("dry_run"),
+            "latest_remediation_run_attempted_step_count": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("attempted_step_count"),
+            "latest_remediation_run_failed_step_count": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("failed_step_count"),
+            "latest_remediation_run_stop_reason": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("stop_reason"),
+            "remediation_run_count": len(operator_remediation_runs),
+            "remediation_step_run_count": len(operator_remediation_step_runs),
         },
         "outbound_prompt_summary": {
             "generated_at": (outbound_prompt or {}).get("generated_at"),

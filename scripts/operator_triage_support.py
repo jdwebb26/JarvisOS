@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -155,6 +157,18 @@ def operator_remediation_plans_dir(root: Path) -> Path:
     return path
 
 
+def operator_remediation_runs_dir(root: Path) -> Path:
+    path = root / "state" / "operator_remediation_runs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_remediation_step_runs_dir(root: Path) -> Path:
+    path = root / "state" / "operator_remediation_step_runs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 REPLY_TOKEN_PATTERN = re.compile(r"^[A-Z]\d+$")
 EXECUTABLE_REPLY_PREFIXES = {"A", "R", "P", "F"}
 REPORT_ONLY_REPLY_PREFIXES = {"X", "B"}
@@ -270,6 +284,18 @@ def save_remediation_plan_record(root: Path, record: dict[str, Any]) -> dict[str
     return record
 
 
+def save_remediation_run_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_remediation_runs_dir(root) / f"{record['remediation_run_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_remediation_step_run_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_remediation_step_runs_dir(root) / f"{record['remediation_step_run_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
 def list_task_interventions(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_task_interventions_dir(root)), "completed_at", "started_at")
 
@@ -336,6 +362,14 @@ def list_doctor_reports(root: Path) -> list[dict[str, Any]]:
 
 def list_remediation_plans(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_remediation_plans_dir(root)), "completed_at", "started_at")
+
+
+def list_remediation_runs(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_remediation_runs_dir(root)), "completed_at", "started_at")
+
+
+def list_remediation_step_runs(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_remediation_step_runs_dir(root)), "completed_at", "started_at")
 
 
 def count_pending_reply_messages(root: Path) -> int:
@@ -3370,7 +3404,7 @@ DOCTOR_SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3}
 def _operator_command(root: Path, script_name: str, *args: str) -> str:
     parts = [
         "python3",
-        str((root / "scripts" / script_name).resolve()),
+        str((ROOT / "scripts" / script_name).resolve()),
         "--root",
         str(root.resolve()),
     ]
@@ -3759,6 +3793,289 @@ def explain_operator_doctor_issue(root: Path, *, issue_code: str, limit: int = 5
         "health_status": doctor.get("health_status"),
         "available_issue_codes": [row.get("issue_code") for row in doctor.get("issues", [])],
     }
+
+
+REMEDIATION_ALLOWED_SCRIPTS = {
+    "operator_checkpoint_action_pack.py",
+    "operator_decision_inbox.py",
+    "operator_reply_transport_cycle.py",
+    "operator_bridge_cycle.py",
+    "operator_explain_reply_transport_cycle.py",
+    "operator_explain_bridge_cycle.py",
+    "operator_replay_transport_cycle.py",
+    "operator_replay_bridge_cycle.py",
+    "operator_handoff_pack.py",
+}
+
+REMEDIATION_ALLOWED_ISSUE_CODES = {
+    "pack_missing",
+    "pack_invalid",
+    "pack_expired",
+    "inbox_missing",
+    "inbox_stale",
+    "inbox_not_reply_ready",
+    "pending_inbound_replies",
+    "pending_gateway_imports",
+    "latest_transport_failed",
+    "latest_bridge_failed",
+    "replay_blocked",
+    "bridge_replay_blocked",
+    "healthy",
+}
+
+
+def load_remediation_plan(root: Path, plan_id: str | None = None) -> dict[str, Any] | None:
+    if plan_id:
+        path = operator_remediation_plans_dir(root) / f"{plan_id}.json"
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                return None
+    rows = list_remediation_plans(root)
+    return rows[0] if rows else None
+
+
+def validate_remediation_command(root: Path, command: str, *, issue_code: str) -> dict[str, Any]:
+    if issue_code not in REMEDIATION_ALLOWED_ISSUE_CODES:
+        return {"ok": False, "reason": f"Issue code `{issue_code}` is not allowed for remediation execution."}
+    try:
+        argv = shlex.split(command)
+    except Exception as exc:
+        return {"ok": False, "reason": f"Command parsing failed: {exc}"}
+    if not argv:
+        return {"ok": False, "reason": "Remediation command is empty."}
+    if argv[0] != "python3":
+        return {"ok": False, "reason": "Remediation command must start with `python3`."}
+    if len(argv) < 2:
+        return {"ok": False, "reason": "Remediation command is missing a script path."}
+    script_path = Path(argv[1])
+    if not script_path.is_absolute():
+        script_path = (ROOT / script_path).resolve()
+    else:
+        script_path = script_path.resolve()
+    scripts_root = (ROOT / "scripts").resolve()
+    try:
+        script_path.relative_to(scripts_root)
+    except ValueError:
+        return {"ok": False, "reason": "Remediation command script must resolve under <root>/scripts."}
+    if script_path.name not in REMEDIATION_ALLOWED_SCRIPTS:
+        return {"ok": False, "reason": f"Remediation command script `{script_path.name}` is not in the allowlist."}
+    if "--root" not in argv:
+        return {"ok": False, "reason": "Remediation command must include an explicit --root argument."}
+    root_index = argv.index("--root")
+    if root_index + 1 >= len(argv):
+        return {"ok": False, "reason": "Remediation command has an incomplete --root argument."}
+    requested_root = Path(argv[root_index + 1]).resolve()
+    if requested_root != root.resolve():
+        return {"ok": False, "reason": "Remediation command root does not match the current repo root."}
+    return {
+        "ok": True,
+        "argv": argv,
+        "script_path": str(script_path),
+        "script_name": script_path.name,
+    }
+
+
+def _compact_remediation_step_run(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "remediation_step_run_id": row.get("remediation_step_run_id"),
+        "remediation_run_id": row.get("remediation_run_id"),
+        "remediation_plan_id": row.get("remediation_plan_id"),
+        "issue_code": row.get("issue_code"),
+        "step_index": row.get("step_index"),
+        "dry_run": row.get("dry_run", False),
+        "executed": row.get("executed", False),
+        "ok": row.get("ok", False),
+        "return_code": row.get("return_code"),
+        "command": row.get("command"),
+        "started_at": row.get("started_at"),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def compact_remediation_run(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "remediation_run_id": row.get("remediation_run_id"),
+        "remediation_plan_id": row.get("remediation_plan_id"),
+        "dry_run": row.get("dry_run", False),
+        "continue_on_failure": row.get("continue_on_failure", False),
+        "ok": row.get("ok", False),
+        "attempted_step_count": row.get("attempted_step_count", 0),
+        "executed_step_count": row.get("executed_step_count", 0),
+        "successful_step_count": row.get("successful_step_count", 0),
+        "failed_step_count": row.get("failed_step_count", 0),
+        "skipped_step_count": row.get("skipped_step_count", 0),
+        "stop_reason": row.get("stop_reason", ""),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def list_remediation_runs_view(root: Path, *, limit: int = 20) -> dict[str, Any]:
+    rows = list_remediation_runs(root)[:limit]
+    return {
+        "generated_at": now_iso(),
+        "count": len(rows),
+        "rows": [compact_remediation_run(row) for row in rows],
+    }
+
+
+def explain_remediation_run(root: Path, *, run_id: str | None = None, limit: int = 10) -> dict[str, Any]:
+    rows = list_remediation_runs(root)
+    run = None
+    if run_id:
+        for row in rows:
+            if row.get("remediation_run_id") == run_id:
+                run = row
+                break
+    else:
+        run = rows[0] if rows else None
+    if run is None:
+        return {"ok": False, "error": f"Remediation run not found: {run_id}" if run_id else "No remediation runs found."}
+    step_run_ids = set(run.get("step_run_ids", []))
+    steps = [row for row in list_remediation_step_runs(root) if row.get("remediation_step_run_id") in step_run_ids]
+    steps = sort_recent(steps, "step_index", "started_at")
+    return {
+        "ok": True,
+        "remediation_run": compact_remediation_run(run),
+        "remediation_plan": load_remediation_plan(root, run.get("remediation_plan_id")),
+        "step_runs": [_compact_remediation_step_run(row) for row in steps[:limit]],
+    }
+
+
+def execute_remediation_step(
+    root: Path,
+    *,
+    remediation_run_id: str,
+    remediation_plan_id: str,
+    step: dict[str, Any],
+    dry_run: bool,
+) -> dict[str, Any]:
+    from runtime.core.models import new_id
+
+    validation = validate_remediation_command(root, str(step.get("suggested_command", "")), issue_code=str(step.get("issue_code", "")))
+    started_at = now_iso()
+    record = {
+        "remediation_step_run_id": new_id("opremedstep"),
+        "remediation_run_id": remediation_run_id,
+        "remediation_plan_id": remediation_plan_id,
+        "issue_code": step.get("issue_code"),
+        "step_index": step.get("index"),
+        "command": step.get("suggested_command"),
+        "dry_run": dry_run,
+        "executed": False,
+        "ok": False,
+        "return_code": None,
+        "stdout": "",
+        "stderr": "",
+        "started_at": started_at,
+        "completed_at": None,
+    }
+    if not validation.get("ok"):
+        record["stderr"] = validation.get("reason", "Remediation command validation failed.")
+        record["completed_at"] = now_iso()
+        save_remediation_step_run_record(root, record)
+        return record
+    if dry_run:
+        record["ok"] = True
+        record["stderr"] = "Dry run: command validated but was not executed."
+        record["completed_at"] = now_iso()
+        save_remediation_step_run_record(root, record)
+        return record
+    completed = subprocess.run(validation["argv"], capture_output=True, text=True, shell=False)
+    record["executed"] = True
+    record["ok"] = completed.returncode == 0
+    record["return_code"] = completed.returncode
+    record["stdout"] = completed.stdout
+    record["stderr"] = completed.stderr
+    record["completed_at"] = now_iso()
+    save_remediation_step_run_record(root, record)
+    return record
+
+
+def execute_remediation_plan(
+    root: Path,
+    *,
+    plan_id: str | None,
+    step_index: int | None,
+    dry_run: bool,
+    continue_on_failure: bool,
+) -> tuple[dict[str, Any], int]:
+    from runtime.core.models import new_id
+
+    plan = load_remediation_plan(root, plan_id)
+    if plan is None:
+        payload = {
+            "ok": False,
+            "error": f"Remediation plan not found: {plan_id}" if plan_id else "No remediation plan found.",
+            "remediation_run": None,
+            "remediation_plan": None,
+            "executed_steps": [],
+        }
+        return payload, 1
+    steps = list(plan.get("steps", []))
+    if step_index is not None:
+        steps = [row for row in steps if int(row.get("index", -1)) == step_index]
+        if not steps:
+            payload = {
+                "ok": False,
+                "error": f"Remediation step not found: {step_index}",
+                "remediation_run": None,
+                "remediation_plan": plan,
+                "executed_steps": [],
+            }
+            return payload, 1
+    run = {
+        "remediation_run_id": new_id("opremedrun"),
+        "remediation_plan_id": plan.get("remediation_plan_id"),
+        "started_at": now_iso(),
+        "completed_at": None,
+        "dry_run": dry_run,
+        "continue_on_failure": continue_on_failure,
+        "ok": False,
+        "attempted_step_count": 0,
+        "executed_step_count": 0,
+        "successful_step_count": 0,
+        "failed_step_count": 0,
+        "skipped_step_count": 0,
+        "stop_reason": "",
+        "step_run_ids": [],
+    }
+    executed_steps: list[dict[str, Any]] = []
+    exit_code = 0
+    for step in steps:
+        run["attempted_step_count"] += 1
+        step_run = execute_remediation_step(
+            root,
+            remediation_run_id=run["remediation_run_id"],
+            remediation_plan_id=str(plan.get("remediation_plan_id")),
+            step=step,
+            dry_run=dry_run,
+        )
+        run["step_run_ids"].append(step_run["remediation_step_run_id"])
+        executed_steps.append(_compact_remediation_step_run(step_run))
+        if step_run.get("executed"):
+            run["executed_step_count"] += 1
+        else:
+            run["skipped_step_count"] += 1
+        if step_run.get("ok"):
+            run["successful_step_count"] += 1
+        else:
+            run["failed_step_count"] += 1
+            run["stop_reason"] = step_run.get("stderr") or "Remediation step failed."
+            exit_code = 1
+            if not continue_on_failure:
+                break
+    run["ok"] = run["failed_step_count"] == 0
+    run["completed_at"] = now_iso()
+    save_remediation_run_record(root, run)
+    payload = {
+        "ok": run["ok"],
+        "remediation_run": run,
+        "remediation_plan": plan,
+        "executed_steps": executed_steps,
+    }
+    return payload, exit_code
 
 
 def compare_inbox_snapshots(current: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:

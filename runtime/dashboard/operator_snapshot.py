@@ -159,6 +159,8 @@ def build_operator_snapshot(root: Path) -> dict:
         "doctor_summary": (status.get("operator_control_plane", {}) or {}).get("doctor_summary", {}),
         "latest_doctor_report": (status.get("operator_control_plane", {}) or {}).get("latest_doctor_report"),
         "latest_remediation_plan": (status.get("operator_control_plane", {}) or {}).get("latest_remediation_plan"),
+        "latest_remediation_run": (status.get("operator_control_plane", {}) or {}).get("latest_remediation_run"),
+        "remediation_run_summary": (status.get("operator_control_plane", {}) or {}).get("remediation_run_summary", {}),
         "latest_compare_reply_transport_cycles": (status.get("operator_control_plane", {}) or {}).get("latest_compare_reply_transport_cycles"),
         "latest_compare_bridge_cycles": (status.get("operator_control_plane", {}) or {}).get("latest_compare_bridge_cycles"),
         "pending_reviews": pending_reviews,
@@ -201,6 +203,8 @@ def build_operator_snapshot(root: Path) -> dict:
             "operator_bridge_replays": status.get("counts", {}).get("operator_bridge_replays", 0),
             "operator_doctor_reports": status.get("counts", {}).get("operator_doctor_reports", 0),
             "operator_remediation_plans": status.get("counts", {}).get("operator_remediation_plans", 0),
+            "operator_remediation_runs": status.get("counts", {}).get("operator_remediation_runs", 0),
+            "operator_remediation_step_runs": status.get("counts", {}).get("operator_remediation_step_runs", 0),
         },
     }
 

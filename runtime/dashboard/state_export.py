@@ -84,6 +84,8 @@ def build_state_export(root: Path) -> dict:
     operator_bridge_replays = _load_jsons(root / "state" / "operator_bridge_replays")
     operator_doctor_reports = _load_jsons(root / "state" / "operator_doctor_reports")
     operator_remediation_plans = _load_jsons(root / "state" / "operator_remediation_plans")
+    operator_remediation_runs = _load_jsons(root / "state" / "operator_remediation_runs")
+    operator_remediation_step_runs = _load_jsons(root / "state" / "operator_remediation_step_runs")
 
     summary = {
         "counts": {
@@ -130,6 +132,8 @@ def build_state_export(root: Path) -> dict:
             "operator_bridge_replays": len(operator_bridge_replays),
             "operator_doctor_reports": len(operator_doctor_reports),
             "operator_remediation_plans": len(operator_remediation_plans),
+            "operator_remediation_runs": len(operator_remediation_runs),
+            "operator_remediation_step_runs": len(operator_remediation_step_runs),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -329,6 +333,8 @@ def build_state_export(root: Path) -> dict:
         "latest_bridge_replay_count": len(operator_bridge_replays),
         "latest_doctor_report_count": len(operator_doctor_reports),
         "latest_remediation_plan_count": len(operator_remediation_plans),
+        "latest_remediation_run_count": len(operator_remediation_runs),
+        "latest_remediation_step_run_count": len(operator_remediation_step_runs),
         "latest_ingress_source": {
             "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
             "source_channel": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_channel"),
@@ -412,7 +418,16 @@ def build_state_export(root: Path) -> dict:
         "highest_severity": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("highest_severity"),
         "active_issue_count": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("active_issue_count"),
         "latest_remediation_plan_id": (operator_remediation_plans[-1] if operator_remediation_plans else {}).get("remediation_plan_id"),
+        "latest_remediation_run_id": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("remediation_run_id"),
         "next_recommended_commands": ((operator_doctor_reports[-1] if operator_doctor_reports else {}).get("next_recommended_commands", []))[:5],
+    }
+    summary["remediation_run_summary"] = {
+        "latest_remediation_run_id": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("remediation_run_id"),
+        "latest_remediation_run_ok": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("ok"),
+        "latest_remediation_run_dry_run": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("dry_run"),
+        "latest_remediation_run_attempted_step_count": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("attempted_step_count"),
+        "latest_remediation_run_failed_step_count": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("failed_step_count"),
+        "latest_remediation_run_stop_reason": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("stop_reason"),
     }
 
     out_path = root / "state" / "logs" / "state_export.json"

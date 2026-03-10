@@ -558,6 +558,8 @@ Doctor/remediation durable artifacts:
 
 - `state/operator_doctor_reports/*.json`
 - `state/operator_remediation_plans/*.json`
+- `state/operator_remediation_runs/*.json`
+- `state/operator_remediation_step_runs/*.json`
 - `state/logs/operator_doctor_latest.json`
 - `state/logs/operator_doctor_latest.md`
 
@@ -576,6 +578,16 @@ Doctor issue codes stay bounded and deterministic:
 - `replay_blocked`
 - `bridge_replay_blocked`
 - `healthy`
+
+To execute a remediation plan safely through existing wrapper scripts only:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_run_remediation_plan.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_run_remediation_plan.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --dry-run
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_run_remediation_plan.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --step-index 1
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_remediation_runs.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_explain_remediation_run.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
 
 To compare inbox snapshots:
 
