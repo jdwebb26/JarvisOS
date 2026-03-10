@@ -164,6 +164,16 @@ The action pack includes:
 - artifact inspection and follow-up commands where task state makes them relevant
 - a recommended execution order
 
+## One-Step Action Executor
+
+When the checkpoint action pack already exists and you want to run one suggested action by stable id instead of copy-pasting the command, use:
+
+```bash
+python3 scripts/operator_action_executor.py --action-id ACTION_ID
+```
+
+For example, take an `action_id` from `recommended_execution_order` or one of the action sections in `state/logs/operator_checkpoint_action_pack.json`, then run it directly.
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.

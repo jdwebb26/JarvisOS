@@ -19,6 +19,17 @@ def _quote(value: str) -> str:
     return json.dumps(value)
 
 
+def _command_spec(argv: list[str]) -> dict[str, Any]:
+    return {
+        "argv": argv,
+        "command": " ".join(_quote(part) for part in argv),
+    }
+
+
+def _action_id(category: str, verb: str, target_id: str) -> str:
+    return f"{category}:{verb}:{target_id}"
+
+
 def _artifact_path(root: Path, artifact_id: str) -> Path:
     return root / "state" / "artifacts" / f"{artifact_id}.json"
 
@@ -32,6 +43,9 @@ def _review_actions(root: Path, items: list[dict[str, Any]]) -> list[dict[str, A
     for item in items:
         review_id = item["review_id"]
         task_id = item["task_id"]
+        approve_action_id = _action_id("review", "approve", review_id)
+        changes_requested_action_id = _action_id("review", "changes_requested", review_id)
+        reject_action_id = _action_id("review", "reject", review_id)
         rows.append(
             {
                 "review_id": review_id,
@@ -39,21 +53,65 @@ def _review_actions(root: Path, items: list[dict[str, Any]]) -> list[dict[str, A
                 "summary": item.get("summary", ""),
                 "reviewer_role": item.get("reviewer_role"),
                 "commands": {
-                    "approve": (
-                        f"python3 runtime/gateway/review_decision.py --root {_quote(str(root))} "
-                        f"--review-id {review_id} --verdict approved --actor operator --lane review "
-                        f"--reason {_quote(f'Approved from checkpoint pack for {task_id}')}"
+                    "approve": _command_spec(
+                        [
+                            "python3",
+                            "runtime/gateway/review_decision.py",
+                            "--root",
+                            str(root),
+                            "--review-id",
+                            review_id,
+                            "--verdict",
+                            "approved",
+                            "--actor",
+                            "operator",
+                            "--lane",
+                            "review",
+                            "--reason",
+                            f"Approved from checkpoint pack for {task_id}",
+                        ]
                     ),
-                    "changes_requested": (
-                        f"python3 runtime/gateway/review_decision.py --root {_quote(str(root))} "
-                        f"--review-id {review_id} --verdict changes_requested --actor operator --lane review "
-                        f"--reason {_quote(f'Changes requested from checkpoint pack for {task_id}')}"
+                    "changes_requested": _command_spec(
+                        [
+                            "python3",
+                            "runtime/gateway/review_decision.py",
+                            "--root",
+                            str(root),
+                            "--review-id",
+                            review_id,
+                            "--verdict",
+                            "changes_requested",
+                            "--actor",
+                            "operator",
+                            "--lane",
+                            "review",
+                            "--reason",
+                            f"Changes requested from checkpoint pack for {task_id}",
+                        ]
                     ),
-                    "reject": (
-                        f"python3 runtime/gateway/review_decision.py --root {_quote(str(root))} "
-                        f"--review-id {review_id} --verdict rejected --actor operator --lane review "
-                        f"--reason {_quote(f'Rejected from checkpoint pack for {task_id}')}"
+                    "reject": _command_spec(
+                        [
+                            "python3",
+                            "runtime/gateway/review_decision.py",
+                            "--root",
+                            str(root),
+                            "--review-id",
+                            review_id,
+                            "--verdict",
+                            "rejected",
+                            "--actor",
+                            "operator",
+                            "--lane",
+                            "review",
+                            "--reason",
+                            f"Rejected from checkpoint pack for {task_id}",
+                        ]
                     ),
+                },
+                "action_ids": {
+                    "approve": approve_action_id,
+                    "changes_requested": changes_requested_action_id,
+                    "reject": reject_action_id,
                 },
             }
         )
@@ -65,6 +123,9 @@ def _approval_actions(root: Path, items: list[dict[str, Any]]) -> list[dict[str,
     for item in items:
         approval_id = item["approval_id"]
         task_id = item["task_id"]
+        approve_action_id = _action_id("approval", "approve", approval_id)
+        reject_action_id = _action_id("approval", "reject", approval_id)
+        cancel_action_id = _action_id("approval", "cancel", approval_id)
         rows.append(
             {
                 "approval_id": approval_id,
@@ -72,21 +133,65 @@ def _approval_actions(root: Path, items: list[dict[str, Any]]) -> list[dict[str,
                 "summary": item.get("summary", ""),
                 "requested_reviewer": item.get("requested_reviewer"),
                 "commands": {
-                    "approve": (
-                        f"python3 runtime/gateway/approval_decision.py --root {_quote(str(root))} "
-                        f"--approval-id {approval_id} --decision approved --actor operator --lane review "
-                        f"--reason {_quote(f'Approved from checkpoint pack for {task_id}')}"
+                    "approve": _command_spec(
+                        [
+                            "python3",
+                            "runtime/gateway/approval_decision.py",
+                            "--root",
+                            str(root),
+                            "--approval-id",
+                            approval_id,
+                            "--decision",
+                            "approved",
+                            "--actor",
+                            "operator",
+                            "--lane",
+                            "review",
+                            "--reason",
+                            f"Approved from checkpoint pack for {task_id}",
+                        ]
                     ),
-                    "reject": (
-                        f"python3 runtime/gateway/approval_decision.py --root {_quote(str(root))} "
-                        f"--approval-id {approval_id} --decision rejected --actor operator --lane review "
-                        f"--reason {_quote(f'Rejected from checkpoint pack for {task_id}')}"
+                    "reject": _command_spec(
+                        [
+                            "python3",
+                            "runtime/gateway/approval_decision.py",
+                            "--root",
+                            str(root),
+                            "--approval-id",
+                            approval_id,
+                            "--decision",
+                            "rejected",
+                            "--actor",
+                            "operator",
+                            "--lane",
+                            "review",
+                            "--reason",
+                            f"Rejected from checkpoint pack for {task_id}",
+                        ]
                     ),
-                    "cancel": (
-                        f"python3 runtime/gateway/approval_decision.py --root {_quote(str(root))} "
-                        f"--approval-id {approval_id} --decision cancelled --actor operator --lane review "
-                        f"--reason {_quote(f'Cancelled from checkpoint pack for {task_id}')}"
+                    "cancel": _command_spec(
+                        [
+                            "python3",
+                            "runtime/gateway/approval_decision.py",
+                            "--root",
+                            str(root),
+                            "--approval-id",
+                            approval_id,
+                            "--decision",
+                            "cancelled",
+                            "--actor",
+                            "operator",
+                            "--lane",
+                            "review",
+                            "--reason",
+                            f"Cancelled from checkpoint pack for {task_id}",
+                        ]
                     ),
+                },
+                "action_ids": {
+                    "approve": approve_action_id,
+                    "reject": reject_action_id,
+                    "cancel": cancel_action_id,
                 },
             }
         )
@@ -104,25 +209,72 @@ def _memory_actions(root: Path, items: list[dict[str, Any]]) -> list[dict[str, A
         sorted_items = sorted(task_items, key=lambda row: (row.get("confidence_score") or 0.0, row.get("updated_at", "")), reverse=True)
         for index, item in enumerate(sorted_items):
             mem_id = item["memory_candidate_id"]
+            promote_action_id = _action_id("memory", "promote", mem_id)
+            reject_action_id = _action_id("memory", "reject", mem_id)
             commands = {
-                "promote": (
-                    f"python3 runtime/gateway/memory_decision.py --root {_quote(str(root))} "
-                    f"--action promote --memory-candidate-id {mem_id} --actor operator --lane memory "
-                    f"--reason {_quote(f'Promoted from checkpoint pack for {task_id}')}"
+                "promote": _command_spec(
+                    [
+                        "python3",
+                        "runtime/gateway/memory_decision.py",
+                        "--root",
+                        str(root),
+                        "--action",
+                        "promote",
+                        "--memory-candidate-id",
+                        mem_id,
+                        "--actor",
+                        "operator",
+                        "--lane",
+                        "memory",
+                        "--reason",
+                        f"Promoted from checkpoint pack for {task_id}",
+                    ]
                 ),
-                "reject": (
-                    f"python3 runtime/gateway/memory_decision.py --root {_quote(str(root))} "
-                    f"--action reject --memory-candidate-id {mem_id} --actor operator --lane memory "
-                    f"--reason {_quote(f'Rejected from checkpoint pack for {task_id}')}"
+                "reject": _command_spec(
+                    [
+                        "python3",
+                        "runtime/gateway/memory_decision.py",
+                        "--root",
+                        str(root),
+                        "--action",
+                        "reject",
+                        "--memory-candidate-id",
+                        mem_id,
+                        "--actor",
+                        "operator",
+                        "--lane",
+                        "memory",
+                        "--reason",
+                        f"Rejected from checkpoint pack for {task_id}",
+                    ]
                 ),
             }
+            action_ids = {
+                "promote": promote_action_id,
+                "reject": reject_action_id,
+            }
             if index > 0:
-                commands["supersede"] = (
-                    f"python3 runtime/gateway/memory_decision.py --root {_quote(str(root))} "
-                    f"--action supersede --memory-candidate-id {mem_id} --actor operator --lane memory "
-                    f"--superseded-by-memory-candidate-id {sorted_items[0]['memory_candidate_id']} "
-                    f"--reason {_quote(f'Superseded from checkpoint pack for {task_id}')}"
+                commands["supersede"] = _command_spec(
+                    [
+                        "python3",
+                        "runtime/gateway/memory_decision.py",
+                        "--root",
+                        str(root),
+                        "--action",
+                        "supersede",
+                        "--memory-candidate-id",
+                        mem_id,
+                        "--actor",
+                        "operator",
+                        "--lane",
+                        "memory",
+                        "--superseded-by-memory-candidate-id",
+                        sorted_items[0]["memory_candidate_id"],
+                        "--reason",
+                        f"Superseded from checkpoint pack for {task_id}",
+                    ]
                 )
+                action_ids["supersede"] = _action_id("memory", "supersede", mem_id)
 
             rows.append(
                 {
@@ -132,6 +284,7 @@ def _memory_actions(root: Path, items: list[dict[str, Any]]) -> list[dict[str, A
                     "summary": item.get("summary", ""),
                     "confidence_score": item.get("confidence_score"),
                     "commands": commands,
+                    "action_ids": action_ids,
                 }
             )
     return rows
@@ -145,22 +298,58 @@ def _artifact_followups(root: Path, task_rows: list[dict[str, Any]], artifacts: 
         artifact_id = item["artifact_id"]
         task = task_by_id.get(item["task_id"], {})
         commands = {
-            "inspect_artifact_json": f"python3 -m json.tool {_quote(str(_artifact_path(root, artifact_id)))}",
+            "inspect_artifact_json": _command_spec(
+                [
+                    "python3",
+                    "-m",
+                    "json.tool",
+                    str(_artifact_path(root, artifact_id)),
+                ]
+            ),
+        }
+        action_ids = {
+            "inspect_artifact_json": _action_id("artifact", "inspect", artifact_id),
         }
         status = task.get("status")
         promoted_artifact_id = task.get("promoted_artifact_id")
         if status == "shipped" and promoted_artifact_id == artifact_id:
-            commands["publish_complete"] = (
-                f"python3 runtime/gateway/complete_from_artifact.py --root {_quote(str(root))} "
-                f"--task-id {task['task_id']} --artifact-id {artifact_id} --actor operator --lane outputs "
-                f"--final-outcome {_quote(f'Completed from checkpoint pack for {task['task_id']}')}"
+            commands["publish_complete"] = _command_spec(
+                [
+                    "python3",
+                    "runtime/gateway/complete_from_artifact.py",
+                    "--root",
+                    str(root),
+                    "--task-id",
+                    task["task_id"],
+                    "--artifact-id",
+                    artifact_id,
+                    "--actor",
+                    "operator",
+                    "--lane",
+                    "outputs",
+                    "--final-outcome",
+                    f"Completed from checkpoint pack for {task['task_id']}",
+                ]
             )
+            action_ids["publish_complete"] = _action_id("artifact", "publish_complete", artifact_id)
         elif status == "ready_to_ship" and promoted_artifact_id == artifact_id:
-            commands["ship_task"] = (
-                f"python3 runtime/gateway/ship_task.py --root {_quote(str(root))} "
-                f"--task-id {task['task_id']} --actor operator --lane outputs "
-                f"--final-outcome {_quote(f'Shipped from checkpoint pack for {task['task_id']}')}"
+            commands["ship_task"] = _command_spec(
+                [
+                    "python3",
+                    "runtime/gateway/ship_task.py",
+                    "--root",
+                    str(root),
+                    "--task-id",
+                    task["task_id"],
+                    "--actor",
+                    "operator",
+                    "--lane",
+                    "outputs",
+                    "--final-outcome",
+                    f"Shipped from checkpoint pack for {task['task_id']}",
+                ]
             )
+            action_ids["ship_task"] = _action_id("artifact", "ship_task", artifact_id)
 
         rows.append(
             {
@@ -170,9 +359,69 @@ def _artifact_followups(root: Path, task_rows: list[dict[str, Any]], artifacts: 
                 "lifecycle_state": "promoted" if item in artifacts.get("promoted", []) else "candidate",
                 "task_status": status,
                 "commands": commands,
+                "action_ids": action_ids,
             }
         )
     return rows
+
+
+def _build_action_index(
+    review_actions: list[dict[str, Any]],
+    approval_actions: list[dict[str, Any]],
+    memory_actions: list[dict[str, Any]],
+    artifact_followups: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    index: dict[str, dict[str, Any]] = {}
+
+    for row in review_actions:
+        for verb, action_id in row["action_ids"].items():
+            index[action_id] = {
+                "action_id": action_id,
+                "category": "pending_review",
+                "verb": verb,
+                "target_id": row["review_id"],
+                "task_id": row["task_id"],
+                "command": row["commands"][verb],
+                "summary": row.get("summary", ""),
+            }
+
+    for row in approval_actions:
+        for verb, action_id in row["action_ids"].items():
+            index[action_id] = {
+                "action_id": action_id,
+                "category": "pending_approval",
+                "verb": verb,
+                "target_id": row["approval_id"],
+                "task_id": row["task_id"],
+                "command": row["commands"][verb],
+                "summary": row.get("summary", ""),
+            }
+
+    for row in memory_actions:
+        for verb, action_id in row["action_ids"].items():
+            index[action_id] = {
+                "action_id": action_id,
+                "category": "memory_candidate",
+                "verb": verb,
+                "target_id": row["memory_candidate_id"],
+                "task_id": row["task_id"],
+                "command": row["commands"][verb],
+                "summary": row.get("summary", ""),
+            }
+
+    for row in artifact_followups:
+        for verb, action_id in row["action_ids"].items():
+            index[action_id] = {
+                "action_id": action_id,
+                "category": "artifact_followup",
+                "verb": verb,
+                "target_id": row["artifact_id"],
+                "task_id": row["task_id"],
+                "command": row["commands"][verb],
+                "summary": row.get("title", ""),
+            }
+
+    return index
 
 
 def _recommended_order(
@@ -183,43 +432,51 @@ def _recommended_order(
 ) -> list[dict[str, Any]]:
     order: list[dict[str, Any]] = []
     for row in review_actions[:5]:
+        action_id = row["action_ids"]["approve"]
         order.append(
             {
+                "action_id": action_id,
                 "category": "pending_review",
                 "target_id": row["review_id"],
                 "task_id": row["task_id"],
-                "recommended_command": row["commands"]["approve"],
+                "recommended_command": row["commands"]["approve"]["command"],
                 "reason": "Reviews unblock the next approval or promotion decision.",
             }
         )
     for row in approval_actions[:5]:
+        action_id = row["action_ids"]["approve"]
         order.append(
             {
+                "action_id": action_id,
                 "category": "pending_approval",
                 "target_id": row["approval_id"],
                 "task_id": row["task_id"],
-                "recommended_command": row["commands"]["approve"],
+                "recommended_command": row["commands"]["approve"]["command"],
                 "reason": "Approvals unblock resume, ship, or publish decisions.",
             }
         )
     for row in memory_actions[:5]:
+        action_id = row["action_ids"]["promote"]
         order.append(
             {
+                "action_id": action_id,
                 "category": "memory_candidate",
                 "target_id": row["memory_candidate_id"],
                 "task_id": row["task_id"],
-                "recommended_command": row["commands"]["promote"],
+                "recommended_command": row["commands"]["promote"]["command"],
                 "reason": "Memory candidates stay non-promoted until an explicit operator decision.",
             }
         )
     for row in artifact_followups[:5]:
-        followup_command = row["commands"].get("publish_complete") or row["commands"].get("ship_task") or row["commands"]["inspect_artifact_json"]
+        primary_verb = "publish_complete" if "publish_complete" in row["commands"] else "ship_task" if "ship_task" in row["commands"] else "inspect_artifact_json"
+        followup_command = row["commands"][primary_verb]
         order.append(
             {
+                "action_id": row["action_ids"][primary_verb],
                 "category": "artifact_followup",
                 "target_id": row["artifact_id"],
                 "task_id": row["task_id"],
-                "recommended_command": followup_command,
+                "recommended_command": followup_command["command"],
                 "reason": "Inspect or continue artifact-backed work only after upstream decisions are clear.",
             }
         )
@@ -241,23 +498,24 @@ def _build_markdown(pack: dict[str, Any]) -> str:
     lines.extend(["", "## Pending Review Commands"])
     for row in pack["pending_review_commands"]:
         lines.append(f"- {row['review_id']} task={row['task_id']}")
-        lines.append(f"  approve: `{row['commands']['approve']}`")
+        lines.append(f"  approve [{row['action_ids']['approve']}]: `{row['commands']['approve']['command']}`")
 
     lines.extend(["", "## Pending Approval Commands"])
     for row in pack["pending_approval_commands"]:
         lines.append(f"- {row['approval_id']} task={row['task_id']}")
-        lines.append(f"  approve: `{row['commands']['approve']}`")
+        lines.append(f"  approve [{row['action_ids']['approve']}]: `{row['commands']['approve']['command']}`")
 
     lines.extend(["", "## Memory Decision Commands"])
     for row in pack["memory_decision_commands"]:
         lines.append(f"- {row['memory_candidate_id']} task={row['task_id']} type={row['memory_type']}")
-        lines.append(f"  promote: `{row['commands']['promote']}`")
+        lines.append(f"  promote [{row['action_ids']['promote']}]: `{row['commands']['promote']['command']}`")
 
     lines.extend(["", "## Artifact Follow-Up Commands"])
     for row in pack["artifact_followup_commands"]:
         lines.append(f"- {row['artifact_id']} task={row['task_id']} state={row['lifecycle_state']}")
-        primary = row["commands"].get("publish_complete") or row["commands"].get("ship_task") or row["commands"]["inspect_artifact_json"]
-        lines.append(f"  next: `{primary}`")
+        primary_verb = "publish_complete" if "publish_complete" in row["commands"] else "ship_task" if "ship_task" in row["commands"] else "inspect_artifact_json"
+        primary = row["commands"][primary_verb]
+        lines.append(f"  next [{row['action_ids'][primary_verb]}]: `{primary['command']}`")
 
     return "\n".join(lines).strip() + "\n"
 
@@ -271,6 +529,7 @@ def build_operator_checkpoint_action_pack(root: Path, *, limit: int = 10) -> dic
     memory_actions = _memory_actions(root, handoff["ralph_memory_summary"]["latest_memory_candidates"])
     artifact_followups = _artifact_followups(root, handoff["recent_task_status"], handoff["artifacts"])
     recommended_order = _recommended_order(review_actions, approval_actions, memory_actions, artifact_followups)
+    action_index = _build_action_index(review_actions, approval_actions, memory_actions, artifact_followups)
 
     pack = {
         "generated_at": handoff["generated_at"],
@@ -281,6 +540,7 @@ def build_operator_checkpoint_action_pack(root: Path, *, limit: int = 10) -> dic
         "memory_decision_commands": memory_actions,
         "artifact_followup_commands": artifact_followups,
         "recommended_execution_order": recommended_order,
+        "action_index": action_index,
         "operator_focus": handoff.get("operator_focus", ""),
         "review_inbox_reply": handoff.get("review_inbox_reply", ""),
     }
