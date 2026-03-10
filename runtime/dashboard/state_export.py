@@ -73,6 +73,8 @@ def build_state_export(root: Path) -> dict:
     operator_reply_ingress = _load_jsons(root / "state" / "operator_reply_ingress")
     operator_reply_ingress_results = _load_jsons(root / "state" / "operator_reply_ingress_results")
     operator_reply_ingress_runs = _load_jsons(root / "state" / "operator_reply_ingress_runs")
+    operator_reply_transport_cycles = _load_jsons(root / "state" / "operator_reply_transport_cycles")
+    operator_reply_messages = _load_jsons(root / "state" / "operator_reply_messages")
 
     summary = {
         "counts": {
@@ -108,6 +110,8 @@ def build_state_export(root: Path) -> dict:
             "operator_reply_ingress": len(operator_reply_ingress),
             "operator_reply_ingress_results": len(operator_reply_ingress_results),
             "operator_reply_ingress_runs": len(operator_reply_ingress_runs),
+            "operator_reply_transport_cycles": len(operator_reply_transport_cycles),
+            "operator_reply_messages": len(operator_reply_messages),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -280,6 +284,7 @@ def build_state_export(root: Path) -> dict:
         "latest_reply_apply_count": len(operator_reply_applies),
         "latest_reply_ingress_count": len(operator_reply_ingress),
         "latest_reply_ingress_run_count": len(operator_reply_ingress_runs),
+        "latest_reply_transport_cycle_count": len(operator_reply_transport_cycles),
         "invalid_reply_count": sum(1 for row in operator_reply_plans if row.get("unknown_tokens")),
         "blocked_reply_count": sum(
             1
@@ -296,12 +301,36 @@ def build_state_export(root: Path) -> dict:
         ),
         "applied_ingress_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "applied"),
         "duplicate_ingress_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "duplicate_message"),
+        "pending_inbound_message_count": sum(1 for row in operator_reply_messages if not row.get("processed_at")),
         "latest_ingress_source": {
             "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
             "source_channel": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_channel"),
             "source_message_id": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_message_id"),
             "source_user": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_user"),
         },
+    }
+    outbound_prompt_path = root / "state" / "logs" / "operator_outbound_prompt_latest.json"
+    reply_ack_path = root / "state" / "logs" / "operator_reply_ack_latest.json"
+    if outbound_prompt_path.exists():
+        try:
+            outbound_prompt = json.loads(outbound_prompt_path.read_text(encoding="utf-8"))
+        except Exception:
+            outbound_prompt = {}
+    else:
+        outbound_prompt = {}
+    if reply_ack_path.exists():
+        try:
+            reply_ack = json.loads(reply_ack_path.read_text(encoding="utf-8"))
+        except Exception:
+            reply_ack = {}
+    else:
+        reply_ack = {}
+    summary["reply_transport_summary"] = {
+        "reply_transport_ready": bool(outbound_prompt.get("reply_ready")) and outbound_prompt.get("pack_status") == "valid",
+        "outbound_prompt_pack_id": outbound_prompt.get("pack_id"),
+        "outbound_prompt_warning": outbound_prompt.get("warning", ""),
+        "latest_reply_ack_result_kind": ((reply_ack.get("latest_reply_received") or {}).get("result_kind")),
+        "latest_reply_ack_guidance": reply_ack.get("next_guidance", ""),
     }
 
     out_path = root / "state" / "logs" / "state_export.json"

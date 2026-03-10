@@ -183,6 +183,22 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
             "--dry-run",
         ]
     )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_outbound_prompt.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_reply_ack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
 
     payload = _run_json(
         [
@@ -216,6 +232,8 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
     assert "ranked_next_commands" in pack["decision_manifest_summary"]
     assert pack["decision_inbox_summary"]["reply_ready"] in {True, False}
     assert pack["reply_ingress_summary"]["reply_ingest_ready"] in {True, False}
+    assert pack["outbound_prompt_summary"]["pack_id"] == pack["decision_inbox_summary"]["pack_id"]
+    assert "latest_result_kind" in pack["reply_ack_summary"]
     assert pack["latest_reply_plan"] is not None
     assert pack["latest_reply_apply"] is not None
     assert pack["latest_reply_ingress"] is not None

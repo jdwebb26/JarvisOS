@@ -173,6 +173,7 @@ def build_status(root: Path) -> dict[str, Any]:
     operator_reply_ingress = _load_jsons(root / "state" / "operator_reply_ingress")
     operator_reply_ingress_results = _load_jsons(root / "state" / "operator_reply_ingress_results")
     operator_reply_ingress_runs = _load_jsons(root / "state" / "operator_reply_ingress_runs")
+    operator_reply_transport_cycles = _load_jsons(root / "state" / "operator_reply_transport_cycles")
     from scripts.operator_checkpoint_action_pack import classify_action_pack
     from scripts.operator_triage_support import build_decision_inbox_data, build_decision_shortlist_data, build_triage_data
     control_records = [record.to_dict() for record in list_control_records(root=root)]
@@ -306,6 +307,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "operator_reply_ingress": len(operator_reply_ingress),
         "operator_reply_ingress_results": len(operator_reply_ingress_results),
         "operator_reply_ingress_runs": len(operator_reply_ingress_runs),
+        "operator_reply_transport_cycles": len(operator_reply_transport_cycles),
     }
     triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
     decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
@@ -315,11 +317,15 @@ def build_status(root: Path) -> dict[str, Any]:
     compare_packs_path = root / "state" / "logs" / "operator_compare_packs_latest.json"
     compare_triage_path = root / "state" / "logs" / "operator_compare_triage_latest.json"
     compare_inbox_path = root / "state" / "logs" / "operator_compare_inbox_latest.json"
+    outbound_prompt_path = root / "state" / "logs" / "operator_outbound_prompt_latest.json"
+    reply_ack_path = root / "state" / "logs" / "operator_reply_ack_latest.json"
     current_command_center = None
     current_decision_manifest = None
     latest_compare_packs = None
     latest_compare_triage = None
     latest_compare_inbox = None
+    current_outbound_prompt = None
+    current_reply_ack = None
     if command_center_path.exists():
         try:
             current_command_center = json.loads(command_center_path.read_text(encoding="utf-8"))
@@ -345,6 +351,16 @@ def build_status(root: Path) -> dict[str, Any]:
             latest_compare_inbox = json.loads(compare_inbox_path.read_text(encoding="utf-8"))
         except Exception:
             latest_compare_inbox = None
+    if outbound_prompt_path.exists():
+        try:
+            current_outbound_prompt = json.loads(outbound_prompt_path.read_text(encoding="utf-8"))
+        except Exception:
+            current_outbound_prompt = None
+    if reply_ack_path.exists():
+        try:
+            current_reply_ack = json.loads(reply_ack_path.read_text(encoding="utf-8"))
+        except Exception:
+            current_reply_ack = None
 
     if control_records:
         next_move = "Inspect active control-state before resuming apply, promotion, or publish work."
@@ -398,6 +414,7 @@ def build_status(root: Path) -> dict[str, Any]:
             "recent_reply_ingress_count": len(operator_reply_ingress),
             "recent_reply_ingress_result_count": len(operator_reply_ingress_results),
             "recent_reply_ingress_run_count": len(operator_reply_ingress_runs),
+            "recent_reply_transport_cycle_count": len(operator_reply_transport_cycles),
             "latest_queue_run": operator_queue_runs[-1] if operator_queue_runs else None,
             "latest_bulk_run": operator_bulk_runs[-1] if operator_bulk_runs else None,
             "latest_task_intervention": operator_task_interventions[-1] if operator_task_interventions else None,
@@ -406,8 +423,10 @@ def build_status(root: Path) -> dict[str, Any]:
             "latest_reply_apply": operator_reply_applies[-1] if operator_reply_applies else None,
             "latest_reply_ingress": operator_reply_ingress[-1] if operator_reply_ingress else None,
             "latest_reply_ingress_run": operator_reply_ingress_runs[-1] if operator_reply_ingress_runs else None,
+            "latest_reply_transport_cycle": operator_reply_transport_cycles[-1] if operator_reply_transport_cycles else None,
             "reply_ingress_summary": {
                 "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
+                "reply_transport_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
                 "ignored_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "ignored_non_reply"),
                 "invalid_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "invalid_reply"),
                 "blocked_count": sum(
@@ -417,12 +436,29 @@ def build_status(root: Path) -> dict[str, Any]:
                 ),
                 "applied_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "applied"),
                 "duplicate_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "duplicate_message"),
+                "pending_inbound_message_count": len(
+                    [row for row in _load_jsons(root / "state" / "operator_reply_messages") if not row.get("processed_at")]
+                ),
                 "latest_source_metadata": {
                     "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
                     "source_channel": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_channel"),
                     "source_message_id": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_message_id"),
                     "source_user": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_user"),
                 },
+            },
+            "current_outbound_prompt": {
+                "generated_at": (current_outbound_prompt or {}).get("generated_at"),
+                "pack_id": (current_outbound_prompt or {}).get("pack_id"),
+                "pack_status": (current_outbound_prompt or {}).get("pack_status"),
+                "reply_ready": (current_outbound_prompt or {}).get("reply_ready"),
+                "warning": (current_outbound_prompt or {}).get("warning", ""),
+                "top_items": (current_outbound_prompt or {}).get("top_items", [])[:5],
+            },
+            "current_reply_ack": {
+                "generated_at": (current_reply_ack or {}).get("generated_at"),
+                "latest_result_kind": ((current_reply_ack or {}).get("latest_reply_received") or {}).get("result_kind"),
+                "next_guidance": (current_reply_ack or {}).get("next_guidance", ""),
+                "next_suggested_codes": (current_reply_ack or {}).get("next_suggested_codes", [])[:5],
             },
             "current_action_pack": current_action_pack,
             "current_command_center": {

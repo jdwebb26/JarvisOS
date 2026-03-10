@@ -457,6 +457,28 @@ Recommended safe usage:
 - rebuild the pack/inbox first when ingress says `pack_refresh_required` or `stale_inbox`
 - do not reuse the same `source_message_id` unless you intentionally want duplicate handling
 
+To build the outbound prompt, enqueue inbound reply rows, build an acknowledgement, and run one explicit file-backed transport cycle:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_outbound_prompt.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_enqueue_reply_message.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --raw-text "A1" --source-message-id msg_300 --apply --dry-run
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_reply_ack.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_reply_transport_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --apply --dry-run --continue-on-failure
+```
+
+The transport cycle stays wrapper-only and file-backed:
+
+- outbound prompt: `state/logs/operator_outbound_prompt_latest.json` and `.md`
+- inbound queue rows: `state/operator_reply_messages/*.json`
+- ingress ledgers: `state/operator_reply_ingress/*.json`, `state/operator_reply_ingress_results/*.json`, `state/operator_reply_ingress_runs/*.json`
+- reply ack: `state/logs/operator_reply_ack_latest.json` and `.md`
+- transport cycle runs: `state/operator_reply_transport_cycles/*.json`
+
+Use the outbound prompt when you want the smallest reply-ready push surface for a phone/watch.
+Use enqueue when you want to feed the file-backed inbound folder without hand-writing JSON.
+Use reply ack when you want the latest compact “what happened” summary after ingress/apply.
+Use the transport cycle when you want one explicit bounded prompt -> inbound batch -> ack loop with no daemon.
+
 To compare inbox snapshots:
 
 ```bash

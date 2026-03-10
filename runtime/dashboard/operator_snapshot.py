@@ -142,8 +142,11 @@ def build_operator_snapshot(root: Path) -> dict:
         "current_decision_inbox": (status.get("operator_control_plane", {}) or {}).get("current_decision_inbox", {}),
         "current_decision_shortlist": (status.get("operator_control_plane", {}) or {}).get("current_decision_shortlist", {}),
         "reply_ingress_summary": (status.get("operator_control_plane", {}) or {}).get("reply_ingress_summary", {}),
+        "current_outbound_prompt": (status.get("operator_control_plane", {}) or {}).get("current_outbound_prompt", {}),
+        "current_reply_ack": (status.get("operator_control_plane", {}) or {}).get("current_reply_ack", {}),
         "latest_reply_ingress": (status.get("operator_control_plane", {}) or {}).get("latest_reply_ingress"),
         "latest_reply_ingress_run": (status.get("operator_control_plane", {}) or {}).get("latest_reply_ingress_run"),
+        "latest_reply_transport_cycle": (status.get("operator_control_plane", {}) or {}).get("latest_reply_transport_cycle"),
         "pending_reviews": pending_reviews,
         "pending_approvals": pending_approvals,
         "candidate_apply_ready": candidate_apply_ready,
@@ -174,6 +177,7 @@ def build_operator_snapshot(root: Path) -> dict:
             "operator_reply_ingress": status.get("counts", {}).get("operator_reply_ingress", 0),
             "operator_reply_ingress_results": status.get("counts", {}).get("operator_reply_ingress_results", 0),
             "operator_reply_ingress_runs": status.get("counts", {}).get("operator_reply_ingress_runs", 0),
+            "operator_reply_transport_cycles": status.get("counts", {}).get("operator_reply_transport_cycles", 0),
         },
     }
 

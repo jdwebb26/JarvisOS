@@ -89,6 +89,12 @@ def operator_reply_messages_dir(root: Path) -> Path:
     return path
 
 
+def operator_reply_transport_cycles_dir(root: Path) -> Path:
+    path = root / "state" / "operator_reply_transport_cycles"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 REPLY_TOKEN_PATTERN = re.compile(r"^[A-Z]\d+$")
 EXECUTABLE_REPLY_PREFIXES = {"A", "R", "P", "F"}
 REPORT_ONLY_REPLY_PREFIXES = {"X", "B"}
@@ -138,6 +144,12 @@ def save_reply_ingress_run(root: Path, record: dict[str, Any]) -> dict[str, Any]
     return record
 
 
+def save_reply_transport_cycle_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_reply_transport_cycles_dir(root) / f"{record['transport_cycle_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
 def list_task_interventions(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_task_interventions_dir(root)), "completed_at", "started_at")
 
@@ -164,6 +176,18 @@ def list_reply_ingress_results(root: Path) -> list[dict[str, Any]]:
 
 def list_reply_ingress_runs(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_reply_ingress_runs_dir(root)), "completed_at", "started_at")
+
+
+def list_reply_transport_cycles(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_reply_transport_cycles_dir(root)), "completed_at", "started_at")
+
+
+def count_pending_reply_messages(root: Path) -> int:
+    count = 0
+    for row in load_jsons(operator_reply_messages_dir(root)):
+        if not row.get("processed_at"):
+            count += 1
+    return count
 
 
 def normalize_reply_tokens(raw_text: str) -> list[str]:
@@ -2127,6 +2151,158 @@ def build_decision_shortlist_markdown(pack: dict[str, Any]) -> str:
     lines = ["# Operator Decision Shortlist", "", f"Pack: {pack.get('pack_id')} status={pack.get('pack_status')}", ""]
     for row in pack.get("rows", []):
         lines.append(f"- {row['default_reply_code']} task={row.get('task_id')} reason={row.get('brief_reason')}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def reply_transport_readiness(root: Path, *, allow_inbox_rebuild: bool = False, limit: int = 5) -> dict[str, Any]:
+    current_pack = load_current_action_pack_summary(root)
+    inbox, inbox_path = resolve_decision_inbox(root, allow_rebuild=allow_inbox_rebuild, limit=limit)
+    pending_count = count_pending_reply_messages(root)
+    ready = current_pack.get("status") == "valid" and bool(inbox.get("reply_ready"))
+    reason = "Reply transport is ready."
+    if current_pack.get("status") != "valid":
+        reason = f"Current action pack status is `{current_pack.get('status')}`."
+    elif not inbox.get("reply_ready"):
+        reason = "Decision inbox is not reply-ready."
+    return {
+        "ready": ready,
+        "reason": reason,
+        "pack_id": current_pack.get("action_pack_id"),
+        "pack_status": current_pack.get("status"),
+        "decision_inbox_path": str(inbox_path),
+        "decision_inbox_generated_at": inbox.get("generated_at"),
+        "pending_inbound_message_count": pending_count,
+    }
+
+
+def build_operator_outbound_prompt_data(root: Path, *, limit: int = 5, allow_inbox_rebuild: bool = True) -> dict[str, Any]:
+    inbox, inbox_path = resolve_decision_inbox(root, allow_rebuild=allow_inbox_rebuild, limit=max(limit, 5))
+    shortlist = build_decision_shortlist_data(root, limit=min(limit, 5), allow_inbox_rebuild=allow_inbox_rebuild)
+    readiness = reply_transport_readiness(root, allow_inbox_rebuild=allow_inbox_rebuild, limit=max(limit, 5))
+    top_items = [
+        {
+            "rank": row.get("rank"),
+            "default_reply_code": row.get("default_reply_code"),
+            "task_id": row.get("task_id"),
+            "category": row.get("category"),
+            "brief_reason": row.get("brief_reason"),
+            "command_preview": row.get("command_preview"),
+        }
+        for row in inbox.get("items", [])[: min(limit, 5)]
+    ]
+    warning = ""
+    if not readiness["ready"]:
+        warning = readiness["reason"]
+    elif any(code.startswith("B") for row in inbox.get("items", [])[: min(limit, 5)] for code in row.get("allowed_reply_codes", [])):
+        warning = "Some top items require rebuild-first or explain-only handling before execution."
+    return {
+        "generated_at": now_iso(),
+        "pack_id": inbox.get("pack_id"),
+        "pack_status": inbox.get("pack_status"),
+        "reply_ready": inbox.get("reply_ready"),
+        "top_items": top_items,
+        "compact_reply_instructions": [
+            "Reply with compact deterministic codes only: A#, R#, P#, X#, B#, F#.",
+            "Use A/R/P only when the inbox exposes them for that item.",
+            "Use X# to explain an item and B# to rebuild or refresh first.",
+            "Use F# only for items that explicitly support force reruns.",
+        ],
+        "warning": warning,
+        "decision_inbox_path": str(inbox_path),
+        "decision_inbox_generated_at": inbox.get("generated_at"),
+        "pending_inbound_message_count": readiness["pending_inbound_message_count"],
+        "shortlist_rows": shortlist.get("rows", []),
+    }
+
+
+def build_operator_outbound_prompt_markdown(prompt: dict[str, Any]) -> str:
+    lines = [
+        "# Operator Outbound Prompt",
+        "",
+        f"Generated at: {prompt.get('generated_at')}",
+        f"Pack: {prompt.get('pack_id')} status={prompt.get('pack_status')} reply_ready={prompt.get('reply_ready')}",
+    ]
+    if prompt.get("warning"):
+        lines.extend(["", f"Warning: {prompt['warning']}"])
+    lines.extend(["", "## Top Reply Items"])
+    for row in prompt.get("top_items", []):
+        lines.append(
+            f"- {row.get('default_reply_code')} task={row.get('task_id')} category={row.get('category')} reason={row.get('brief_reason')}"
+        )
+    lines.extend(["", "## Compact Reply Instructions"])
+    for row in prompt.get("compact_reply_instructions", []):
+        lines.append(f"- {row}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _reply_ack_guidance(result_kind: str, inbox: dict[str, Any]) -> tuple[str, list[str]]:
+    if result_kind == "applied":
+        return (
+            "Reply was applied through existing wrapper guards.",
+            [row.get("default_reply_code") for row in inbox.get("items", [])[:3] if row.get("default_reply_code")],
+        )
+    if result_kind in {"missing_inbox", "stale_inbox", "pack_refresh_required"}:
+        return ("Refresh the bounded pack/inbox before sending another execute reply.", ["B1", "X1"])
+    if result_kind == "duplicate_message":
+        return ("This source_message_id was already processed. Use a new message id if you truly intend to retry.", ["X1"])
+    if result_kind == "invalid_reply":
+        return ("Reply was not valid compact grammar for the current inbox.", [row.get("default_reply_code") for row in inbox.get("items", [])[:2]])
+    if result_kind == "ignored_non_reply":
+        return ("Message was ignored because it was not compact reply grammar.", [])
+    return ("Inspect the latest inbox or explain the target item before retrying.", [row.get("default_reply_code") for row in inbox.get("items", [])[:2]])
+
+
+def build_operator_reply_ack_data(root: Path, *, limit: int = 5, allow_inbox_rebuild: bool = False) -> dict[str, Any]:
+    inbox, inbox_path = resolve_decision_inbox(root, allow_rebuild=allow_inbox_rebuild, limit=max(limit, 5))
+    ingress_rows = list_reply_ingress_records(root)
+    result_rows = list_reply_ingress_results(root)
+    apply_rows = list_reply_applies(root)
+    plan_rows = list_reply_plans(root)
+    latest_ingress = ingress_rows[0] if ingress_rows else None
+    latest_result = result_rows[0] if result_rows else None
+    latest_apply = apply_rows[0] if apply_rows else None
+    latest_plan = plan_rows[0] if plan_rows else None
+    result_kind = (latest_ingress or {}).get("result_kind") or (latest_result or {}).get("result_kind") or ""
+    guidance, next_codes = _reply_ack_guidance(result_kind, inbox)
+    blocked_reasons: list[str] = []
+    if latest_apply:
+        for row in latest_apply.get("per_step_results", [])[:limit]:
+            if row.get("status") in {"skipped_stale", "skipped_idempotency", "failed_execution", "plan_blocked", "invalid_reply"}:
+                blocked_reasons.append(str(row.get("status")))
+    if latest_result and isinstance(latest_result.get("payload"), dict):
+        reason = latest_result["payload"].get("reason")
+        if reason:
+            blocked_reasons.append(str(reason))
+    return {
+        "generated_at": now_iso(),
+        "decision_inbox_path": str(inbox_path),
+        "latest_reply_received": latest_ingress,
+        "matched_plan": latest_plan if latest_plan and latest_plan.get("plan_id") == (latest_ingress or {}).get("matched_plan_id") else latest_plan,
+        "latest_apply_or_preview_outcome": latest_apply or (latest_result or {}).get("payload", {}).get("preview"),
+        "blocked_or_skipped_reasons": blocked_reasons,
+        "next_guidance": guidance,
+        "next_suggested_codes": [code for code in next_codes if code][: min(limit, 5)],
+        "reply_transport_ready": reply_transport_readiness(root, allow_inbox_rebuild=False, limit=max(limit, 5)),
+    }
+
+
+def build_operator_reply_ack_markdown(pack: dict[str, Any]) -> str:
+    latest = pack.get("latest_reply_received") or {}
+    lines = [
+        "# Operator Reply Ack",
+        "",
+        f"Generated at: {pack.get('generated_at')}",
+        f"Latest reply: message_id={latest.get('source_message_id')} result={latest.get('result_kind')} user={latest.get('source_user')}",
+        f"Guidance: {pack.get('next_guidance')}",
+    ]
+    if pack.get("blocked_or_skipped_reasons"):
+        lines.extend(["", "Blocked/Skipped"])
+        for row in pack.get("blocked_or_skipped_reasons", []):
+            lines.append(f"- {row}")
+    if pack.get("next_suggested_codes"):
+        lines.extend(["", "Next Suggested Codes"])
+        for row in pack.get("next_suggested_codes", []):
+            lines.append(f"- {row}")
     return "\n".join(lines).strip() + "\n"
 
 

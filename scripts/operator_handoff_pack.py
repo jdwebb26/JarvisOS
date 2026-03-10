@@ -266,6 +266,25 @@ def _reply_ingress_run_summary(rows: list[dict[str, Any]], *, limit: int) -> lis
     ]
 
 
+def _reply_transport_cycle_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "transport_cycle_id": row.get("transport_cycle_id"),
+            "ok": row.get("ok", False),
+            "mode": row.get("mode"),
+            "dry_run": row.get("dry_run", False),
+            "attempted_count": row.get("attempted_count", 0),
+            "applied_count": row.get("applied_count", 0),
+            "blocked_count": row.get("blocked_count", 0),
+            "ignored_count": row.get("ignored_count", 0),
+            "invalid_count": row.get("invalid_count", 0),
+            "stop_reason": row.get("stop_reason", ""),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
 def _ralph_memory_summary(
     consolidation_runs: list[dict[str, Any]],
     memory_candidates: list[dict[str, Any]],
@@ -449,6 +468,13 @@ def _build_markdown(pack: dict[str, Any]) -> str:
         f"- reply_ingest_ready={ingress.get('reply_ingest_ready')} latest_result={((pack.get('latest_reply_ingress') or {}).get('result_kind'))} "
         f"ignored={ingress.get('ignored_count')} invalid={ingress.get('invalid_count')} blocked={ingress.get('blocked_count')} applied={ingress.get('applied_count')}"
     )
+    prompt = pack.get("outbound_prompt_summary", {})
+    ack = pack.get("reply_ack_summary", {})
+    transport = pack.get("latest_reply_transport_cycle") or {}
+    lines.append(
+        f"- pending_inbound={ingress.get('pending_inbound_message_count')} transport_ready={ingress.get('reply_transport_ready')} "
+        f"prompt_pack={prompt.get('pack_id')} ack_result={ack.get('latest_result_kind')} latest_cycle={transport.get('transport_cycle_id')}"
+    )
 
     lines.extend(["", "## Action Pack"])
     action_pack = pack.get("current_action_pack", {})
@@ -503,6 +529,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     operator_reply_applies = _load_jsons(root / "state" / "operator_reply_applies")
     operator_reply_ingress = _load_jsons(root / "state" / "operator_reply_ingress")
     operator_reply_ingress_runs = _load_jsons(root / "state" / "operator_reply_ingress_runs")
+    operator_reply_transport_cycles = _load_jsons(root / "state" / "operator_reply_transport_cycles")
     recent_task_status = task_board["rows"][:limit]
     for row in recent_task_status:
         latest_success = latest_successful_action_for_task(root, row["task_id"])
@@ -556,9 +583,13 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     latest_compare_packs = None
     latest_compare_triage = None
     latest_compare_inbox = None
+    outbound_prompt = None
+    reply_ack = None
     compare_packs_path = root / "state" / "logs" / "operator_compare_packs_latest.json"
     compare_triage_path = root / "state" / "logs" / "operator_compare_triage_latest.json"
     compare_inbox_path = root / "state" / "logs" / "operator_compare_inbox_latest.json"
+    outbound_prompt_path = root / "state" / "logs" / "operator_outbound_prompt_latest.json"
+    reply_ack_path = root / "state" / "logs" / "operator_reply_ack_latest.json"
     if compare_packs_path.exists():
         try:
             latest_compare_packs = json.loads(compare_packs_path.read_text(encoding="utf-8"))
@@ -574,6 +605,16 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
             latest_compare_inbox = json.loads(compare_inbox_path.read_text(encoding="utf-8"))
         except Exception:
             latest_compare_inbox = None
+    if outbound_prompt_path.exists():
+        try:
+            outbound_prompt = json.loads(outbound_prompt_path.read_text(encoding="utf-8"))
+        except Exception:
+            outbound_prompt = None
+    if reply_ack_path.exists():
+        try:
+            reply_ack = json.loads(reply_ack_path.read_text(encoding="utf-8"))
+        except Exception:
+            reply_ack = None
 
     pack = {
         "generated_at": snapshot["status"].get("generated_at"),
@@ -611,6 +652,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "decision_shortlist_summary": decision_shortlist,
         "reply_ingress_summary": {
             "reply_ingest_ready": bool(decision_inbox.get("reply_ready")) and current_action_pack.get("status") == "valid",
+            "reply_transport_ready": bool(decision_inbox.get("reply_ready")) and current_action_pack.get("status") == "valid",
             "ignored_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "ignored_non_reply"),
             "invalid_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "invalid_reply"),
             "blocked_count": sum(
@@ -620,6 +662,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
             ),
             "applied_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "applied"),
             "duplicate_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "duplicate_message"),
+            "pending_inbound_message_count": sum(1 for row in _load_jsons(root / "state" / "operator_reply_messages") if not row.get("processed_at")),
             "latest_source_metadata": {
                 "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
                 "source_lane": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_lane"),
@@ -657,6 +700,24 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "latest_reply_ingress_run": _reply_ingress_run_summary(operator_reply_ingress_runs, limit=1)[0] if operator_reply_ingress_runs else None,
         "recent_reply_ingress": _reply_ingress_summary(operator_reply_ingress, limit=limit),
         "recent_reply_ingress_runs": _reply_ingress_run_summary(operator_reply_ingress_runs, limit=limit),
+        "latest_reply_transport_cycle": _reply_transport_cycle_summary(operator_reply_transport_cycles, limit=1)[0]
+        if operator_reply_transport_cycles
+        else None,
+        "recent_reply_transport_cycles": _reply_transport_cycle_summary(operator_reply_transport_cycles, limit=limit),
+        "outbound_prompt_summary": {
+            "generated_at": (outbound_prompt or {}).get("generated_at"),
+            "pack_id": (outbound_prompt or {}).get("pack_id"),
+            "pack_status": (outbound_prompt or {}).get("pack_status"),
+            "reply_ready": (outbound_prompt or {}).get("reply_ready"),
+            "warning": (outbound_prompt or {}).get("warning", ""),
+            "top_items": (outbound_prompt or {}).get("top_items", [])[:5],
+        },
+        "reply_ack_summary": {
+            "generated_at": (reply_ack or {}).get("generated_at"),
+            "latest_result_kind": ((reply_ack or {}).get("latest_reply_received") or {}).get("result_kind"),
+            "next_guidance": (reply_ack or {}).get("next_guidance", ""),
+            "next_suggested_codes": (reply_ack or {}).get("next_suggested_codes", [])[:5],
+        },
         "latest_compare_packs": latest_compare_packs,
         "latest_compare_triage": latest_compare_triage,
         "latest_compare_inbox": latest_compare_inbox,
