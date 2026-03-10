@@ -54,15 +54,25 @@ def run_operator_reply_transport_cycle(
         "reply_ack_path": ack["json_path"],
         "handoff_refreshed": refresh_handoff,
         "handoff_path": None if handoff is None else handoff["json_path"],
+        "outbound_prompt_pack_id": (outbound.get("pack") or {}).get("pack_id"),
+        "reply_ack_result_kind": ((ack.get("pack") or {}).get("latest_reply_received") or {}).get("result_kind"),
         "attempted_count": (ingress_payload.get("run") or {}).get("attempted_count", 0),
         "applied_count": (ingress_payload.get("run") or {}).get("applied_count", 0),
         "blocked_count": (ingress_payload.get("run") or {}).get("blocked_count", 0),
         "ignored_count": (ingress_payload.get("run") or {}).get("ignored_count", 0),
         "invalid_count": (ingress_payload.get("run") or {}).get("invalid_count", 0),
         "stop_reason": (ingress_payload.get("run") or {}).get("stop_reason", ""),
+        "processed_ingress_ids": list((ingress_payload.get("run") or {}).get("processed_ingress_ids", [])),
+        "processed_message_paths": [row.get("message_path") for row in ingress_payload.get("processed_messages", []) if row.get("message_path")],
+        "processed_source_message_ids": [
+            row.get("source_message_id") for row in ingress_payload.get("processed_messages", []) if row.get("source_message_id")
+        ],
     }
     save_reply_transport_cycle_record(root, record)
     handoff = build_operator_handoff_pack(root, limit=max(limit, 5)) if refresh_handoff else None
+    if handoff is not None:
+        record["handoff_path"] = handoff["json_path"]
+        save_reply_transport_cycle_record(root, record)
     payload = {
         "ok": record["ok"],
         "transport_cycle": record,
