@@ -161,6 +161,8 @@ def build_status(root: Path) -> dict[str, Any]:
     outputs = _load_jsons(root / "workspace" / "out")
     reviews = _load_jsons(root / "state" / "reviews")
     approvals = _load_jsons(root / "state" / "approvals")
+    memory_candidates = _load_jsons(root / "state" / "memory_candidates")
+    memory_retrievals = _load_jsons(root / "state" / "memory_retrievals")
     control_records = [record.to_dict() for record in list_control_records(root=root)]
     paused_controls = [row for row in control_records if row.get("run_state") == "paused"]
     stopped_controls = [row for row in control_records if row.get("run_state") == "stopped"]
@@ -241,6 +243,13 @@ def build_status(root: Path) -> dict[str, Any]:
 
     pending_reviews = [row for row in reviews if row.get("status") == "pending"]
     pending_approvals = [row for row in approvals if row.get("status") == "pending"]
+    promoted_memories = [row for row in memory_candidates if row.get("lifecycle_state") == RecordLifecycleState.PROMOTED.value]
+    candidate_memories = [row for row in memory_candidates if row.get("lifecycle_state") == RecordLifecycleState.CANDIDATE.value]
+    contradicted_memories = [
+        row
+        for row in memory_candidates
+        if row.get("contradiction_status") == "contradicted" or row.get("superseded_by_memory_candidate_id")
+    ]
 
     counts = {
         "total_tasks": len(task_rows),
@@ -259,6 +268,10 @@ def build_status(root: Path) -> dict[str, Any]:
         "revoked_outputs": len(revoked_outputs),
         "pending_reviews": len(pending_reviews),
         "pending_approvals": len(pending_approvals),
+        "promoted_memories": len(promoted_memories),
+        "candidate_memories": len(candidate_memories),
+        "contradicted_memories": len(contradicted_memories),
+        "memory_retrievals": len(memory_retrievals),
         "controls": len(control_records),
         "paused_controls": len(paused_controls),
         "stopped_controls": len(stopped_controls),

@@ -918,6 +918,18 @@ class MemoryCandidateRecord:
     title: str
     summary: str
     content: str
+    decision_status: str = "candidate"
+    confidence_score: float = 0.5
+    decision_reason: str = ""
+    decided_at: Optional[str] = None
+    decided_by: Optional[str] = None
+    contradiction_status: str = "none"
+    contradiction_reason: str = ""
+    contradicted_at: Optional[str] = None
+    contradicted_by: Optional[str] = None
+    superseded_by_memory_candidate_id: Optional[str] = None
+    promoted_at: Optional[str] = None
+    promoted_by: Optional[str] = None
     source_artifact_ids: list[str] = field(default_factory=list)
     source_trace_ids: list[str] = field(default_factory=list)
     source_eval_result_ids: list[str] = field(default_factory=list)
@@ -932,11 +944,59 @@ class MemoryCandidateRecord:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "MemoryCandidateRecord":
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("decision_status", "candidate")
+        data.setdefault("confidence_score", 0.5)
+        data.setdefault("decision_reason", "")
+        data.setdefault("decided_at", None)
+        data.setdefault("decided_by", None)
+        data.setdefault("contradiction_status", "none")
+        data.setdefault("contradiction_reason", "")
+        data.setdefault("contradicted_at", None)
+        data.setdefault("contradicted_by", None)
+        data.setdefault("superseded_by_memory_candidate_id", None)
+        data.setdefault("promoted_at", None)
+        data.setdefault("promoted_by", None)
         data.setdefault("source_artifact_ids", [])
         data.setdefault("source_trace_ids", [])
         data.setdefault("source_eval_result_ids", [])
         data.setdefault("lifecycle_state", RecordLifecycleState.CANDIDATE.value)
         data.setdefault("execution_backend", "ralph_adapter")
+        return cls(**data)
+
+
+@dataclass
+class MemoryRetrievalRecord:
+    memory_retrieval_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    promoted_only: bool
+    task_id: Optional[str] = None
+    memory_type: Optional[str] = None
+    source_artifact_id: Optional[str] = None
+    source_trace_id: Optional[str] = None
+    source_eval_result_id: Optional[str] = None
+    include_contradicted: bool = False
+    returned_memory_candidate_ids: list[str] = field(default_factory=list)
+    result_count: int = 0
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryRetrievalRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("task_id", None)
+        data.setdefault("memory_type", None)
+        data.setdefault("source_artifact_id", None)
+        data.setdefault("source_trace_id", None)
+        data.setdefault("source_eval_result_id", None)
+        data.setdefault("include_contradicted", False)
+        data.setdefault("returned_memory_candidate_ids", [])
+        data.setdefault("result_count", 0)
         return cls(**data)
 
 

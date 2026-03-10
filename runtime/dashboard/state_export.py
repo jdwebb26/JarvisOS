@@ -62,6 +62,7 @@ def build_state_export(root: Path) -> dict:
     consolidation_runs = _load_jsons(root / "state" / "consolidation_runs")
     digest_artifact_links = _load_jsons(root / "state" / "digest_artifact_links")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
+    memory_retrievals = _load_jsons(root / "state" / "memory_retrievals")
 
     summary = {
         "counts": {
@@ -86,6 +87,7 @@ def build_state_export(root: Path) -> dict:
             "consolidation_runs": len(consolidation_runs),
             "digest_artifact_links": len(digest_artifact_links),
             "memory_candidates": len(memory_candidates),
+            "memory_retrievals": len(memory_retrievals),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -105,6 +107,9 @@ def build_state_export(root: Path) -> dict:
         "eval_result_pass_counts": {},
         "consolidation_run_status_counts": {},
         "memory_candidate_type_counts": {},
+        "memory_candidate_decision_counts": {},
+        "memory_candidate_contradiction_counts": {},
+        "memory_retrieval_count": 0,
     }
 
     for task in tasks:
@@ -176,6 +181,12 @@ def build_state_export(root: Path) -> dict:
     for memory_candidate in memory_candidates:
         memory_type = memory_candidate.get("memory_type", "unknown")
         summary["memory_candidate_type_counts"][memory_type] = summary["memory_candidate_type_counts"].get(memory_type, 0) + 1
+        decision_status = memory_candidate.get("decision_status", "unknown")
+        contradiction_status = memory_candidate.get("contradiction_status", "unknown")
+        summary["memory_candidate_decision_counts"][decision_status] = summary["memory_candidate_decision_counts"].get(decision_status, 0) + 1
+        summary["memory_candidate_contradiction_counts"][contradiction_status] = summary["memory_candidate_contradiction_counts"].get(contradiction_status, 0) + 1
+
+    summary["memory_retrieval_count"] = len(memory_retrievals)
 
     out_path = root / "state" / "logs" / "state_export.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
