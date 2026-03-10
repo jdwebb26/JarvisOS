@@ -350,6 +350,9 @@ def resume_approval_from_checkpoint(
             root=root,
             provenance_ref=f"approval:{approval_id}",
         )
+        task = load_task(approval.task_id, root=root)
+        if task is None:
+            raise ValueError(f"Task not found after artifact promotion: {approval.task_id}")
 
     task.checkpoint_summary = checkpoint.checkpoint_summary or task.checkpoint_summary
     if not task.final_outcome and checkpoint.final_outcome_snapshot:
@@ -366,7 +369,14 @@ def resume_approval_from_checkpoint(
     }
     save_task(Path(root or ROOT).resolve(), task)
 
-    if checkpoint.resume_target_status == TaskStatus.READY_TO_SHIP.value:
+    resume_target_status = (
+        TaskStatus.READY_TO_SHIP.value
+        if _is_ready_for_live_apply(task)
+        else checkpoint.resume_target_status
+    )
+    checkpoint.resume_target_status = resume_target_status
+
+    if resume_target_status == TaskStatus.READY_TO_SHIP.value:
         result = ready_to_ship_task(
             root=Path(root or ROOT).resolve(),
             task_id=approval.task_id,

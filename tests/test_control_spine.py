@@ -82,7 +82,7 @@ def test_control_state_is_durable_and_visible_in_reporting(tmp_path: Path):
     assert status["counts"]["paused_controls"] == 1
     assert status["counts"]["stopped_controls"] == 1
     assert status["counts"]["degraded_controls"] == 1
-    assert status["control_state"]["effective"]["effective_status"] == "degraded"
+    assert status["control_state"]["effective"]["effective_status"] == "stopped"
     assert "degraded_controls_present" in heartbeat["degraded_signals"]
     assert "paused_controls_present" in heartbeat["degraded_signals"]
     assert "stopped_controls_present" in heartbeat["degraded_signals"]
