@@ -86,6 +86,10 @@ def build_state_export(root: Path) -> dict:
     operator_remediation_plans = _load_jsons(root / "state" / "operator_remediation_plans")
     operator_remediation_runs = _load_jsons(root / "state" / "operator_remediation_runs")
     operator_remediation_step_runs = _load_jsons(root / "state" / "operator_remediation_step_runs")
+    operator_recovery_cycles = _load_jsons(root / "state" / "operator_recovery_cycles")
+    operator_control_plane_checkpoints = _load_jsons(root / "state" / "operator_control_plane_checkpoints")
+    operator_incident_reports = _load_jsons(root / "state" / "operator_incident_reports")
+    operator_incident_snapshots = _load_jsons(root / "state" / "operator_incident_snapshots")
 
     summary = {
         "counts": {
@@ -134,6 +138,10 @@ def build_state_export(root: Path) -> dict:
             "operator_remediation_plans": len(operator_remediation_plans),
             "operator_remediation_runs": len(operator_remediation_runs),
             "operator_remediation_step_runs": len(operator_remediation_step_runs),
+            "operator_recovery_cycles": len(operator_recovery_cycles),
+            "operator_control_plane_checkpoints": len(operator_control_plane_checkpoints),
+            "operator_incident_reports": len(operator_incident_reports),
+            "operator_incident_snapshots": len(operator_incident_snapshots),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -335,6 +343,10 @@ def build_state_export(root: Path) -> dict:
         "latest_remediation_plan_count": len(operator_remediation_plans),
         "latest_remediation_run_count": len(operator_remediation_runs),
         "latest_remediation_step_run_count": len(operator_remediation_step_runs),
+        "latest_recovery_cycle_count": len(operator_recovery_cycles),
+        "latest_control_plane_checkpoint_count": len(operator_control_plane_checkpoints),
+        "latest_incident_report_count": len(operator_incident_reports),
+        "latest_incident_snapshot_count": len(operator_incident_snapshots),
         "latest_ingress_source": {
             "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
             "source_channel": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_channel"),
@@ -385,6 +397,7 @@ def build_state_export(root: Path) -> dict:
     }
     compare_reply_transport_path = root / "state" / "logs" / "operator_compare_reply_transport_cycles_latest.json"
     compare_bridge_cycles_path = root / "state" / "logs" / "operator_compare_bridge_cycles_latest.json"
+    compare_control_plane_checkpoints_path = root / "state" / "logs" / "operator_compare_control_plane_checkpoints_latest.json"
     if compare_reply_transport_path.exists():
         try:
             compare_reply_transport = json.loads(compare_reply_transport_path.read_text(encoding="utf-8"))
@@ -412,6 +425,26 @@ def build_state_export(root: Path) -> dict:
         "reply_transport_blocked_delta": compare_bridge_cycles.get("reply_transport_blocked_delta"),
         "latest_bridge_replay_id": (operator_bridge_replays[-1] if operator_bridge_replays else {}).get("bridge_replay_id"),
     }
+    if compare_control_plane_checkpoints_path.exists():
+        try:
+            compare_control_plane_checkpoints = json.loads(compare_control_plane_checkpoints_path.read_text(encoding="utf-8"))
+        except Exception:
+            compare_control_plane_checkpoints = {}
+    else:
+        compare_control_plane_checkpoints = {}
+    summary["control_plane_checkpoint_summary"] = {
+        "latest_control_plane_checkpoint_id": (operator_control_plane_checkpoints[-1] if operator_control_plane_checkpoints else {}).get("control_plane_checkpoint_id"),
+        "control_plane_checkpoint_count": len(operator_control_plane_checkpoints),
+        "latest_compare_checkpoint_id": compare_control_plane_checkpoints.get("current_checkpoint_id"),
+    }
+    summary["latest_compare_control_plane_checkpoints"] = compare_control_plane_checkpoints
+    summary["incident_summary"] = {
+        "latest_incident_report_id": (operator_incident_reports[-1] if operator_incident_reports else {}).get("incident_report_id"),
+        "latest_incident_code": (operator_incident_reports[-1] if operator_incident_reports else {}).get("incident_code"),
+        "latest_incident_severity": (operator_incident_reports[-1] if operator_incident_reports else {}).get("severity"),
+        "operator_incident_report_count": len(operator_incident_reports),
+        "operator_incident_snapshot_count": len(operator_incident_snapshots),
+    }
     summary["doctor_summary"] = {
         "latest_doctor_report_id": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("doctor_report_id"),
         "health_status": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("health_status"),
@@ -428,6 +461,16 @@ def build_state_export(root: Path) -> dict:
         "latest_remediation_run_attempted_step_count": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("attempted_step_count"),
         "latest_remediation_run_failed_step_count": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("failed_step_count"),
         "latest_remediation_run_stop_reason": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("stop_reason"),
+    }
+    summary["recovery_cycle_summary"] = {
+        "latest_recovery_cycle_id": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("recovery_cycle_id"),
+        "latest_recovery_cycle_ok": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("ok"),
+        "latest_recovery_cycle_dry_run": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("dry_run"),
+        "latest_recovery_cycle_active_issue_count_before": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_before"),
+        "latest_recovery_cycle_active_issue_count_after": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_after"),
+        "latest_recovery_cycle_issue_count_before": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_before"),
+        "latest_recovery_cycle_issue_count_after": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_after"),
+        "latest_recovery_cycle_stop_reason": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("stop_reason"),
     }
 
     out_path = root / "state" / "logs" / "state_export.json"

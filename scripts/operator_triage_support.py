@@ -169,6 +169,30 @@ def operator_remediation_step_runs_dir(root: Path) -> Path:
     return path
 
 
+def operator_recovery_cycles_dir(root: Path) -> Path:
+    path = root / "state" / "operator_recovery_cycles"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_control_plane_checkpoints_dir(root: Path) -> Path:
+    path = root / "state" / "operator_control_plane_checkpoints"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_incident_reports_dir(root: Path) -> Path:
+    path = root / "state" / "operator_incident_reports"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_incident_snapshots_dir(root: Path) -> Path:
+    path = root / "state" / "operator_incident_snapshots"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 REPLY_TOKEN_PATTERN = re.compile(r"^[A-Z]\d+$")
 EXECUTABLE_REPLY_PREFIXES = {"A", "R", "P", "F"}
 REPORT_ONLY_REPLY_PREFIXES = {"X", "B"}
@@ -296,6 +320,30 @@ def save_remediation_step_run_record(root: Path, record: dict[str, Any]) -> dict
     return record
 
 
+def save_recovery_cycle_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_recovery_cycles_dir(root) / f"{record['recovery_cycle_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_control_plane_checkpoint_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_control_plane_checkpoints_dir(root) / f"{record['control_plane_checkpoint_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_incident_snapshot_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_incident_snapshots_dir(root) / f"{record['incident_snapshot_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_incident_report_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_incident_reports_dir(root) / f"{record['incident_report_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
 def list_task_interventions(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_task_interventions_dir(root)), "completed_at", "started_at")
 
@@ -370,6 +418,22 @@ def list_remediation_runs(root: Path) -> list[dict[str, Any]]:
 
 def list_remediation_step_runs(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_remediation_step_runs_dir(root)), "completed_at", "started_at")
+
+
+def list_recovery_cycles(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_recovery_cycles_dir(root)), "completed_at", "started_at")
+
+
+def list_control_plane_checkpoints(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_control_plane_checkpoints_dir(root)), "created_at")
+
+
+def list_incident_reports(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_incident_reports_dir(root)), "created_at", "completed_at")
+
+
+def list_incident_snapshots(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_incident_snapshots_dir(root)), "created_at")
 
 
 def count_pending_reply_messages(root: Path) -> int:
@@ -3909,6 +3973,886 @@ def compact_remediation_run(row: dict[str, Any]) -> dict[str, Any]:
         "stop_reason": row.get("stop_reason", ""),
         "completed_at": row.get("completed_at"),
     }
+
+
+def classify_recovery_cycle_result(row: dict[str, Any]) -> str:
+    if row.get("stop_reason") == "doctor_failed":
+        return "doctor_failed"
+    if row.get("stop_reason") == "remediation_plan_failed":
+        return "plan_failed"
+    if row.get("stop_reason") == "handoff_refresh_failed":
+        return "handoff_refresh_failed"
+    if row.get("stop_reason") == "remediation_failed":
+        return "remediation_failed"
+    if row.get("active_issue_count_before", 0) == 0:
+        return "healthy_noop"
+    if row.get("dry_run", False):
+        return "dry_run_recovery"
+    if row.get("active_issue_count_after", 0) == 0:
+        return "healthy_after_recovery"
+    if row.get("active_issue_count_after", 0) < row.get("active_issue_count_before", 0):
+        return "issues_reduced"
+    return "completed"
+
+
+def compact_recovery_cycle(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "recovery_cycle_id": row.get("recovery_cycle_id"),
+        "doctor_report_id": row.get("doctor_report_id"),
+        "remediation_plan_id": row.get("remediation_plan_id"),
+        "remediation_run_id": row.get("remediation_run_id"),
+        "dry_run": row.get("dry_run", False),
+        "continue_on_failure": row.get("continue_on_failure", False),
+        "ok": row.get("ok", False),
+        "health_status_before": row.get("health_status_before"),
+        "health_status_after": row.get("health_status_after"),
+        "active_issue_count_before": row.get("active_issue_count_before", 0),
+        "active_issue_count_after": row.get("active_issue_count_after", 0),
+        "stop_reason": row.get("stop_reason", ""),
+        "handoff_path": row.get("handoff_path"),
+        "result_kind": row.get("result_kind") or classify_recovery_cycle_result(row),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def _compact_doctor_report_summary(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "doctor_report_id": row.get("doctor_report_id"),
+        "health_status": row.get("health_status"),
+        "highest_severity": row.get("highest_severity"),
+        "active_issue_count": row.get("active_issue_count", 0),
+        "top_issue_code": ((row.get("issues") or [{}])[0]).get("issue_code"),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def _compact_remediation_plan_summary(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "remediation_plan_id": row.get("remediation_plan_id"),
+        "health_status": row.get("health_status"),
+        "highest_severity": row.get("highest_severity"),
+        "active_issue_count": row.get("active_issue_count", 0),
+        "step_count": len(row.get("steps", [])),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def _compact_reply_transport_replay_summary(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "replay_id": row.get("replay_id"),
+        "source_transport_cycle_id": row.get("source_transport_cycle_id"),
+        "replay_plan_id": row.get("replay_plan_id"),
+        "replay_mode": row.get("replay_mode"),
+        "plan_only": row.get("plan_only", False),
+        "ok": row.get("ok", False),
+        "reason": row.get("reason", ""),
+        "transport_cycle_id": row.get("transport_cycle_id"),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def _compact_bridge_replay_summary(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "bridge_replay_id": row.get("bridge_replay_id"),
+        "source_bridge_cycle_id": row.get("source_bridge_cycle_id"),
+        "bridge_replay_plan_id": row.get("bridge_replay_plan_id"),
+        "replay_mode": row.get("replay_mode"),
+        "plan_only": row.get("plan_only", False),
+        "ok": row.get("ok", False),
+        "reason": row.get("reason", ""),
+        "bridge_cycle_id": row.get("bridge_cycle_id"),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def _current_action_pack_summary(root: Path) -> dict[str, Any]:
+    from scripts.operator_checkpoint_action_pack import classify_action_pack
+
+    path = current_action_pack_path(root)
+    payload = {
+        "path": str(path),
+        "status": "missing",
+        "fresh": False,
+        "pack_id": None,
+        "fingerprint": None,
+        "expires_at": None,
+    }
+    if not path.exists():
+        return payload
+    try:
+        row = json.loads(path.read_text(encoding="utf-8"))
+        classified = classify_action_pack(row)
+        payload.update(
+            {
+                "status": classified.get("status"),
+                "fresh": classified.get("fresh", False),
+                "pack_id": row.get("action_pack_id"),
+                "fingerprint": row.get("action_pack_fingerprint"),
+                "generated_at": row.get("generated_at"),
+                "recommended_ttl_seconds": row.get("recommended_ttl_seconds"),
+                "expires_at": row.get("expires_at"),
+                "stale_after_reason": row.get("stale_after_reason"),
+            }
+        )
+        if classified.get("reason"):
+            payload["reason"] = classified.get("reason")
+        return payload
+    except Exception as exc:
+        payload.update({"status": "malformed", "reason": str(exc)})
+        return payload
+
+
+def compact_control_plane_checkpoint(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "control_plane_checkpoint_id": row.get("control_plane_checkpoint_id"),
+        "created_at": row.get("created_at"),
+        "pack_id": ((row.get("current_action_pack") or {}).get("pack_id")),
+        "pack_status": ((row.get("current_action_pack") or {}).get("status")),
+        "decision_inbox_reply_ready": ((row.get("decision_inbox_summary") or {}).get("reply_ready")),
+        "latest_reply_transport_cycle_id": ((row.get("latest_reply_transport_cycle_summary") or {}).get("transport_cycle_id")),
+        "latest_bridge_cycle_id": ((row.get("latest_bridge_cycle_summary") or {}).get("bridge_cycle_id")),
+        "doctor_health_status": ((row.get("doctor_summary") or {}).get("health_status")),
+        "active_issue_count": ((row.get("doctor_summary") or {}).get("active_issue_count", 0)),
+        "latest_remediation_run_id": ((row.get("latest_remediation_run_summary") or {}).get("remediation_run_id")),
+        "latest_recovery_cycle_id": ((row.get("latest_recovery_cycle_summary") or {}).get("recovery_cycle_id")),
+        "key_counts": row.get("key_counts", {}),
+    }
+
+
+def build_control_plane_checkpoint(root: Path, *, limit: int = 5) -> dict[str, Any]:
+    from runtime.core.models import new_id
+
+    current_pack = _current_action_pack_summary(root)
+    decision_inbox, inbox_path = resolve_decision_inbox(root, allow_rebuild=False, limit=limit)
+    ingress_rows = list_reply_ingress_records(root)
+    latest_transport_cycle = list_reply_transport_cycles(root)[0] if list_reply_transport_cycles(root) else None
+    latest_transport_replay = list_reply_transport_replays(root)[0] if list_reply_transport_replays(root) else None
+    latest_bridge_cycle = list_bridge_cycles(root)[0] if list_bridge_cycles(root) else None
+    latest_bridge_replay = list_bridge_replays(root)[0] if list_bridge_replays(root) else None
+    latest_doctor_report = list_doctor_reports(root)[0] if list_doctor_reports(root) else None
+    latest_remediation_plan = list_remediation_plans(root)[0] if list_remediation_plans(root) else None
+    latest_remediation_run = list_remediation_runs(root)[0] if list_remediation_runs(root) else None
+    latest_recovery_cycle = list_recovery_cycles(root)[0] if list_recovery_cycles(root) else None
+    latest_transport_replay_safety = (
+        classify_reply_transport_replay_safety(root, cycle=latest_transport_cycle, live_apply_requested=False)
+        if latest_transport_cycle
+        else {"replay_allowed": False, "reason": "No reply transport cycle available."}
+    )
+    latest_bridge_replay_safety = (
+        classify_bridge_replay_safety(root, cycle=latest_bridge_cycle, live_apply_requested=False)
+        if latest_bridge_cycle
+        else {"replay_allowed": False, "reason": "No bridge cycle available."}
+    )
+    gateway_bridge = gateway_operator_bridge_readiness(root, allow_inbox_rebuild=False, limit=limit)
+    reply_transport = reply_transport_readiness(root, allow_inbox_rebuild=False, limit=limit)
+    doctor_summary = _compact_doctor_report_summary(latest_doctor_report) or {
+        "health_status": "unknown",
+        "highest_severity": "unknown",
+        "active_issue_count": 0,
+        "top_issue_code": None,
+    }
+    checkpoint = {
+        "control_plane_checkpoint_id": new_id("opcpckpt"),
+        "created_at": now_iso(),
+        "current_action_pack": current_pack,
+        "decision_inbox_summary": {
+            "path": str(inbox_path),
+            "generated_at": decision_inbox.get("generated_at"),
+            "pack_id": decision_inbox.get("pack_id"),
+            "pack_status": decision_inbox.get("pack_status"),
+            "reply_ready": decision_inbox.get("reply_ready", False),
+            "item_count": len(decision_inbox.get("items", [])),
+        },
+        "reply_ingress_summary": {
+            "reply_ingest_ready": bool(decision_inbox.get("reply_ready")) and current_pack.get("status") == "valid",
+            "reply_transport_ready": reply_transport.get("ready", False),
+            "pending_inbound_reply_count": count_pending_reply_messages(root),
+            "pending_gateway_import_count": count_pending_gateway_import_messages(root),
+            "ignored_count": sum(1 for row in ingress_rows if row.get("result_kind") == "ignored_non_reply"),
+            "invalid_count": sum(1 for row in ingress_rows if row.get("result_kind") == "invalid_reply"),
+            "blocked_count": sum(
+                1
+                for row in ingress_rows
+                if row.get("result_kind") in {"missing_inbox", "stale_inbox", "pack_refresh_required", "blocked", "duplicate_message"}
+            ),
+            "applied_count": sum(1 for row in ingress_rows if row.get("result_kind") == "applied"),
+            "duplicate_count": sum(1 for row in ingress_rows if row.get("result_kind") == "duplicate_message"),
+            "latest_result_kind": (ingress_rows[0] if ingress_rows else {}).get("result_kind"),
+        },
+        "latest_reply_transport_cycle_summary": compact_reply_transport_cycle(latest_transport_cycle) if latest_transport_cycle else None,
+        "latest_reply_transport_replay_summary": _compact_reply_transport_replay_summary(latest_transport_replay),
+        "gateway_bridge_summary": {
+            **gateway_bridge,
+            "latest_import_classification": (list_imported_reply_messages(root)[0] if list_imported_reply_messages(root) else {}).get("classification"),
+        },
+        "latest_bridge_cycle_summary": compact_bridge_cycle(latest_bridge_cycle) if latest_bridge_cycle else None,
+        "latest_bridge_replay_summary": _compact_bridge_replay_summary(latest_bridge_replay),
+        "doctor_summary": doctor_summary,
+        "latest_doctor_report_summary": _compact_doctor_report_summary(latest_doctor_report),
+        "latest_remediation_plan_summary": _compact_remediation_plan_summary(latest_remediation_plan),
+        "latest_remediation_run_summary": compact_remediation_run(latest_remediation_run) if latest_remediation_run else None,
+        "latest_recovery_cycle_summary": compact_recovery_cycle(latest_recovery_cycle) if latest_recovery_cycle else None,
+        "replay_safety_summary": {
+            "latest_reply_transport_replay_safety": latest_transport_replay_safety,
+            "latest_bridge_replay_safety": latest_bridge_replay_safety,
+        },
+        "key_counts": {
+            "pending_reviews": len(load_jsons(root / "state" / "reviews")),
+            "pending_approvals": len(load_jsons(root / "state" / "approvals")),
+            "memory_candidates": len(load_jsons(root / "state" / "memory_candidates")),
+            "operator_action_executions": len(load_jsons(root / "state" / "operator_action_executions")),
+            "operator_queue_runs": len(load_jsons(root / "state" / "operator_queue_runs")),
+            "operator_bulk_runs": len(load_jsons(root / "state" / "operator_bulk_runs")),
+            "operator_reply_ingress": len(ingress_rows),
+            "operator_reply_transport_cycles": len(list_reply_transport_cycles(root)),
+            "operator_reply_transport_replays": len(list_reply_transport_replays(root)),
+            "operator_outbound_packets": len(list_outbound_packets(root)),
+            "operator_imported_reply_messages": len(list_imported_reply_messages(root)),
+            "operator_bridge_cycles": len(list_bridge_cycles(root)),
+            "operator_bridge_replays": len(list_bridge_replays(root)),
+            "operator_doctor_reports": len(list_doctor_reports(root)),
+            "operator_remediation_plans": len(list_remediation_plans(root)),
+            "operator_remediation_runs": len(list_remediation_runs(root)),
+            "operator_remediation_step_runs": len(list_remediation_step_runs(root)),
+            "operator_recovery_cycles": len(list_recovery_cycles(root)),
+        },
+    }
+    save_control_plane_checkpoint_record(root, checkpoint)
+    return checkpoint
+
+
+def load_control_plane_checkpoint(root: Path, checkpoint_id: str) -> dict[str, Any] | None:
+    path = operator_control_plane_checkpoints_dir(root) / f"{checkpoint_id}.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+    for row in list_control_plane_checkpoints(root):
+        if row.get("control_plane_checkpoint_id") == checkpoint_id:
+            return row
+    return None
+
+
+def list_control_plane_checkpoints_view(root: Path, *, limit: int = 20) -> dict[str, Any]:
+    rows = list_control_plane_checkpoints(root)[:limit]
+    return {
+        "generated_at": now_iso(),
+        "count": len(rows),
+        "rows": [compact_control_plane_checkpoint(row) for row in rows],
+    }
+
+
+def explain_control_plane_checkpoint(root: Path, *, checkpoint_id: str | None = None) -> dict[str, Any]:
+    rows = list_control_plane_checkpoints(root)
+    checkpoint = load_control_plane_checkpoint(root, checkpoint_id) if checkpoint_id else (rows[0] if rows else None)
+    if checkpoint is None:
+        return {
+            "ok": False,
+            "error": f"Control-plane checkpoint not found: {checkpoint_id}" if checkpoint_id else "No control-plane checkpoints found.",
+        }
+    return {
+        "ok": True,
+        "checkpoint": compact_control_plane_checkpoint(checkpoint),
+        "details": checkpoint,
+    }
+
+
+def compare_control_plane_checkpoint_records(current: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    current_counts = current.get("key_counts", {})
+    previous_counts = (previous or {}).get("key_counts", {})
+    count_keys = sorted(set(current_counts) | set(previous_counts))
+    return {
+        "current_checkpoint_id": current.get("control_plane_checkpoint_id"),
+        "other_checkpoint_id": (previous or {}).get("control_plane_checkpoint_id"),
+        "pack_id_before": ((previous or {}).get("current_action_pack") or {}).get("pack_id"),
+        "pack_id_after": (current.get("current_action_pack") or {}).get("pack_id"),
+        "pack_status_before": ((previous or {}).get("current_action_pack") or {}).get("status"),
+        "pack_status_after": (current.get("current_action_pack") or {}).get("status"),
+        "inbox_status_before": ((previous or {}).get("decision_inbox_summary") or {}).get("pack_status"),
+        "inbox_status_after": (current.get("decision_inbox_summary") or {}).get("pack_status"),
+        "reply_ready_before": ((previous or {}).get("decision_inbox_summary") or {}).get("reply_ready"),
+        "reply_ready_after": (current.get("decision_inbox_summary") or {}).get("reply_ready"),
+        "pending_inbound_reply_count_delta": (current.get("reply_ingress_summary") or {}).get("pending_inbound_reply_count", 0)
+        - (((previous or {}).get("reply_ingress_summary") or {}).get("pending_inbound_reply_count", 0)),
+        "pending_gateway_import_count_delta": (current.get("reply_ingress_summary") or {}).get("pending_gateway_import_count", 0)
+        - (((previous or {}).get("reply_ingress_summary") or {}).get("pending_gateway_import_count", 0)),
+        "reply_transport_cycle_id_before": ((previous or {}).get("latest_reply_transport_cycle_summary") or {}).get("transport_cycle_id"),
+        "reply_transport_cycle_id_after": (current.get("latest_reply_transport_cycle_summary") or {}).get("transport_cycle_id"),
+        "bridge_cycle_id_before": ((previous or {}).get("latest_bridge_cycle_summary") or {}).get("bridge_cycle_id"),
+        "bridge_cycle_id_after": (current.get("latest_bridge_cycle_summary") or {}).get("bridge_cycle_id"),
+        "doctor_health_before": ((previous or {}).get("doctor_summary") or {}).get("health_status"),
+        "doctor_health_after": (current.get("doctor_summary") or {}).get("health_status"),
+        "active_issue_count_delta": (current.get("doctor_summary") or {}).get("active_issue_count", 0)
+        - (((previous or {}).get("doctor_summary") or {}).get("active_issue_count", 0)),
+        "remediation_run_id_before": ((previous or {}).get("latest_remediation_run_summary") or {}).get("remediation_run_id"),
+        "remediation_run_id_after": (current.get("latest_remediation_run_summary") or {}).get("remediation_run_id"),
+        "recovery_cycle_id_before": ((previous or {}).get("latest_recovery_cycle_summary") or {}).get("recovery_cycle_id"),
+        "recovery_cycle_id_after": (current.get("latest_recovery_cycle_summary") or {}).get("recovery_cycle_id"),
+        "count_deltas": {
+            key: current_counts.get(key, 0) - previous_counts.get(key, 0)
+            for key in count_keys
+            if current_counts.get(key, 0) != previous_counts.get(key, 0)
+        },
+        "changed_flags": {
+            "pack_changed": ((previous or {}).get("current_action_pack") or {}).get("pack_id") != (current.get("current_action_pack") or {}).get("pack_id"),
+            "reply_ready_changed": ((previous or {}).get("decision_inbox_summary") or {}).get("reply_ready")
+            != (current.get("decision_inbox_summary") or {}).get("reply_ready"),
+            "doctor_health_changed": ((previous or {}).get("doctor_summary") or {}).get("health_status")
+            != (current.get("doctor_summary") or {}).get("health_status"),
+            "latest_transport_changed": ((previous or {}).get("latest_reply_transport_cycle_summary") or {}).get("transport_cycle_id")
+            != (current.get("latest_reply_transport_cycle_summary") or {}).get("transport_cycle_id"),
+            "latest_bridge_changed": ((previous or {}).get("latest_bridge_cycle_summary") or {}).get("bridge_cycle_id")
+            != (current.get("latest_bridge_cycle_summary") or {}).get("bridge_cycle_id"),
+            "latest_remediation_run_changed": ((previous or {}).get("latest_remediation_run_summary") or {}).get("remediation_run_id")
+            != (current.get("latest_remediation_run_summary") or {}).get("remediation_run_id"),
+            "latest_recovery_cycle_changed": ((previous or {}).get("latest_recovery_cycle_summary") or {}).get("recovery_cycle_id")
+            != (current.get("latest_recovery_cycle_summary") or {}).get("recovery_cycle_id"),
+        },
+    }
+
+
+def compare_control_plane_checkpoints(
+    root: Path,
+    *,
+    checkpoint_id: str | None = None,
+    other_checkpoint_id: str | None = None,
+) -> dict[str, Any]:
+    rows = list_control_plane_checkpoints(root)
+    if not rows:
+        return {"ok": False, "error": "No control-plane checkpoints found."}
+    current = load_control_plane_checkpoint(root, checkpoint_id) if checkpoint_id else rows[0]
+    if current is None:
+        return {"ok": False, "error": f"Control-plane checkpoint not found: {checkpoint_id}"}
+    if other_checkpoint_id:
+        other = load_control_plane_checkpoint(root, other_checkpoint_id)
+        if other is None:
+            return {"ok": False, "error": f"Control-plane checkpoint not found: {other_checkpoint_id}"}
+    else:
+        other = rows[1] if len(rows) > 1 and rows[0].get("control_plane_checkpoint_id") == current.get("control_plane_checkpoint_id") else (rows[0] if len(rows) > 1 else None)
+        if other is not None and other.get("control_plane_checkpoint_id") == current.get("control_plane_checkpoint_id"):
+            other = rows[1] if len(rows) > 1 else None
+    payload = compare_control_plane_checkpoint_records(current, other)
+    latest_path = triage_logs_dir(root) / "operator_compare_control_plane_checkpoints_latest.json"
+    latest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
+INCIDENT_SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3}
+
+
+def _incident_record(
+    *,
+    code: str,
+    severity: str,
+    reason: str,
+    evidence_refs: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "incident_code": code,
+        "severity": severity,
+        "reason": reason,
+        "evidence_refs": evidence_refs,
+    }
+
+
+def compact_incident_report(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "incident_report_id": row.get("incident_report_id"),
+        "incident_snapshot_id": row.get("incident_snapshot_id"),
+        "created_at": row.get("created_at"),
+        "incident_code": row.get("incident_code"),
+        "severity": row.get("severity"),
+        "health_status": row.get("health_status"),
+        "worsened": row.get("worsened", False),
+        "reason": row.get("reason", ""),
+        "linked_ids": row.get("linked_ids", {}),
+    }
+
+
+def _load_latest_compare_control_plane_checkpoints(root: Path) -> dict[str, Any] | None:
+    path = triage_logs_dir(root) / "operator_compare_control_plane_checkpoints_latest.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _build_operator_incident_snapshot(root: Path, *, limit: int = 5) -> dict[str, Any]:
+    from runtime.core.models import new_id
+
+    checkpoints = list_control_plane_checkpoints(root)
+    latest_checkpoint = checkpoints[0] if checkpoints else None
+    previous_checkpoint = checkpoints[1] if len(checkpoints) > 1 else None
+    checkpoint_compare = _load_latest_compare_control_plane_checkpoints(root)
+    if checkpoint_compare is None and latest_checkpoint is not None:
+        checkpoint_compare = compare_control_plane_checkpoint_records(latest_checkpoint, previous_checkpoint)
+    latest_doctor = list_doctor_reports(root)[0] if list_doctor_reports(root) else None
+    latest_remediation_run = list_remediation_runs(root)[0] if list_remediation_runs(root) else None
+    latest_recovery_cycle = list_recovery_cycles(root)[0] if list_recovery_cycles(root) else None
+    latest_transport_cycle = list_reply_transport_cycles(root)[0] if list_reply_transport_cycles(root) else None
+    latest_bridge_cycle = list_bridge_cycles(root)[0] if list_bridge_cycles(root) else None
+
+    doctor_health = (latest_doctor or {}).get("health_status", "unknown")
+    active_issues = int((latest_doctor or {}).get("active_issue_count", 0) or 0)
+    pending_inbound = count_pending_reply_messages(root)
+    pending_gateway = count_pending_gateway_import_messages(root)
+    delta_active_issues = int((checkpoint_compare or {}).get("active_issue_count_delta", 0) or 0)
+    delta_pending_inbound = int((checkpoint_compare or {}).get("pending_inbound_reply_count_delta", 0) or 0)
+    delta_pending_gateway = int((checkpoint_compare or {}).get("pending_gateway_import_count_delta", 0) or 0)
+    latest_transport_ok = None if latest_transport_cycle is None else bool(latest_transport_cycle.get("ok", False))
+    latest_bridge_ok = None if latest_bridge_cycle is None else bool(latest_bridge_cycle.get("ok", False))
+    latest_remediation_ok = None if latest_remediation_run is None else bool(latest_remediation_run.get("ok", False))
+    latest_recovery_ok = None if latest_recovery_cycle is None else bool(latest_recovery_cycle.get("ok", False))
+    recovery_before = int((latest_recovery_cycle or {}).get("active_issue_count_before", 0) or 0)
+    recovery_after = int((latest_recovery_cycle or {}).get("active_issue_count_after", 0) or 0)
+    repeated_degraded = sum(1 for row in list_doctor_reports(root)[:3] if row.get("health_status") in {"blocked", "degraded"})
+
+    incidents: list[dict[str, Any]] = []
+    if doctor_health == "blocked":
+        incidents.append(
+            _incident_record(
+                code="blocked_health_regression",
+                severity="high",
+                reason="Latest doctor report is blocked.",
+                evidence_refs={
+                    "doctor_report_id": (latest_doctor or {}).get("doctor_report_id"),
+                    "top_issue_code": (((latest_doctor or {}).get("issues") or [{}])[0]).get("incident_code")
+                    or (((latest_doctor or {}).get("issues") or [{}])[0]).get("issue_code"),
+                },
+            )
+        )
+    if latest_transport_ok is False:
+        incidents.append(
+            _incident_record(
+                code="transport_failure_regression",
+                severity="high" if delta_active_issues > 0 else "medium",
+                reason="Latest reply transport cycle failed.",
+                evidence_refs={"transport_cycle_id": (latest_transport_cycle or {}).get("transport_cycle_id")},
+            )
+        )
+    if latest_bridge_ok is False:
+        incidents.append(
+            _incident_record(
+                code="bridge_failure_regression",
+                severity="high" if delta_active_issues > 0 else "medium",
+                reason="Latest gateway bridge cycle failed.",
+                evidence_refs={"bridge_cycle_id": (latest_bridge_cycle or {}).get("bridge_cycle_id")},
+            )
+        )
+    latest_transport_replay_safety = (
+        classify_reply_transport_replay_safety(root, cycle=latest_transport_cycle, live_apply_requested=False)
+        if latest_transport_cycle
+        else {"replay_allowed": False}
+    )
+    latest_bridge_replay_safety = (
+        classify_bridge_replay_safety(root, cycle=latest_bridge_cycle, live_apply_requested=False)
+        if latest_bridge_cycle
+        else {"replay_allowed": False}
+    )
+    if latest_transport_cycle and not latest_transport_replay_safety.get("replay_allowed", False):
+        incidents.append(
+            _incident_record(
+                code="replay_regression",
+                severity="medium",
+                reason=latest_transport_replay_safety.get("reason") or "Latest transport replay is blocked.",
+                evidence_refs={"transport_cycle_id": latest_transport_cycle.get("transport_cycle_id")},
+            )
+        )
+    if latest_bridge_cycle and not latest_bridge_replay_safety.get("replay_allowed", False):
+        incidents.append(
+            _incident_record(
+                code="bridge_replay_regression",
+                severity="medium",
+                reason=latest_bridge_replay_safety.get("reason") or "Latest bridge replay is blocked.",
+                evidence_refs={"bridge_cycle_id": latest_bridge_cycle.get("bridge_cycle_id")},
+            )
+        )
+    if latest_remediation_ok is False:
+        incidents.append(
+            _incident_record(
+                code="remediation_failure_regression",
+                severity="medium",
+                reason="Latest remediation run failed.",
+                evidence_refs={"remediation_run_id": (latest_remediation_run or {}).get("remediation_run_id")},
+            )
+        )
+    if latest_recovery_cycle and recovery_before > 0 and recovery_after >= recovery_before and not (latest_recovery_cycle or {}).get("dry_run", False):
+        incidents.append(
+            _incident_record(
+                code="recovery_no_improvement",
+                severity="medium",
+                reason="Latest live recovery cycle did not reduce the active issue count.",
+                evidence_refs={"recovery_cycle_id": latest_recovery_cycle.get("recovery_cycle_id")},
+            )
+        )
+    if delta_pending_inbound > 0 or delta_pending_gateway > 0:
+        incidents.append(
+            _incident_record(
+                code="queue_backlog_regression",
+                severity="medium" if (delta_pending_inbound + delta_pending_gateway) > 0 else "low",
+                reason="Pending inbound reply or gateway import backlog is growing.",
+                evidence_refs={
+                    "checkpoint_id": (latest_checkpoint or {}).get("control_plane_checkpoint_id"),
+                    "pending_inbound_reply_count_delta": delta_pending_inbound,
+                    "pending_gateway_import_count_delta": delta_pending_gateway,
+                },
+            )
+        )
+    if delta_active_issues > 0 or ((checkpoint_compare or {}).get("doctor_health_before") == "healthy" and (checkpoint_compare or {}).get("doctor_health_after") != "healthy"):
+        incidents.append(
+            _incident_record(
+                code="checkpoint_worsened",
+                severity="medium",
+                reason="Latest control-plane checkpoint is worse than the previous checkpoint.",
+                evidence_refs={
+                    "current_checkpoint_id": (latest_checkpoint or {}).get("control_plane_checkpoint_id"),
+                    "other_checkpoint_id": (previous_checkpoint or {}).get("control_plane_checkpoint_id"),
+                    "active_issue_count_delta": delta_active_issues,
+                },
+            )
+        )
+    if repeated_degraded >= 2:
+        incidents.append(
+            _incident_record(
+                code="repeated_degraded_state",
+                severity="medium",
+                reason="Recent doctor reports show repeated degraded or blocked state.",
+                evidence_refs={"recent_doctor_report_ids": [row.get("doctor_report_id") for row in list_doctor_reports(root)[:3]]},
+            )
+        )
+
+    if not incidents:
+        incidents.append(
+            _incident_record(
+                code="control_plane_healthy",
+                severity="low",
+                reason="Current control-plane state is healthy.",
+                evidence_refs={"doctor_report_id": (latest_doctor or {}).get("doctor_report_id")},
+            )
+        )
+
+    incidents = sorted(incidents, key=lambda row: (-INCIDENT_SEVERITY_ORDER.get(str(row.get("severity")), 0), str(row.get("incident_code"))))
+    return {
+        "incident_snapshot_id": new_id("opincidentsnap"),
+        "created_at": now_iso(),
+        "latest_checkpoint_id": (latest_checkpoint or {}).get("control_plane_checkpoint_id"),
+        "previous_checkpoint_id": (previous_checkpoint or {}).get("control_plane_checkpoint_id"),
+        "checkpoint_compare": checkpoint_compare,
+        "doctor_health_status": doctor_health,
+        "active_issue_count": active_issues,
+        "pending_inbound_reply_count": pending_inbound,
+        "pending_gateway_import_count": pending_gateway,
+        "latest_transport_cycle_id": (latest_transport_cycle or {}).get("transport_cycle_id"),
+        "latest_bridge_cycle_id": (latest_bridge_cycle or {}).get("bridge_cycle_id"),
+        "latest_remediation_run_id": (latest_remediation_run or {}).get("remediation_run_id"),
+        "latest_recovery_cycle_id": (latest_recovery_cycle or {}).get("recovery_cycle_id"),
+        "latest_transport_ok": latest_transport_ok,
+        "latest_bridge_ok": latest_bridge_ok,
+        "latest_remediation_ok": latest_remediation_ok,
+        "latest_recovery_ok": latest_recovery_ok,
+        "latest_transport_replay_allowed": latest_transport_replay_safety.get("replay_allowed"),
+        "latest_bridge_replay_allowed": latest_bridge_replay_safety.get("replay_allowed"),
+        "repeated_degraded_report_count": repeated_degraded,
+        "incidents": incidents[:limit],
+    }
+
+
+def detect_operator_incidents(root: Path, *, limit: int = 5) -> dict[str, Any]:
+    from runtime.core.models import new_id
+
+    snapshot = _build_operator_incident_snapshot(root, limit=limit)
+    incident = (snapshot.get("incidents") or [{}])[0]
+    severity = incident.get("severity", "low")
+    health_status = "healthy" if incident.get("incident_code") == "control_plane_healthy" else ("blocked" if severity == "high" else "degraded")
+    report = {
+        "incident_report_id": new_id("opincident"),
+        "incident_snapshot_id": snapshot.get("incident_snapshot_id"),
+        "created_at": now_iso(),
+        "incident_code": incident.get("incident_code"),
+        "severity": severity,
+        "health_status": health_status,
+        "worsened": bool(((snapshot.get("checkpoint_compare") or {}).get("active_issue_count_delta", 0) or 0) > 0),
+        "reason": incident.get("reason", ""),
+        "linked_ids": {
+            "latest_checkpoint_id": snapshot.get("latest_checkpoint_id"),
+            "previous_checkpoint_id": snapshot.get("previous_checkpoint_id"),
+            "doctor_report_id": snapshot.get("incidents", [{}])[0].get("evidence_refs", {}).get("doctor_report_id")
+            or ((list_doctor_reports(root)[0] if list_doctor_reports(root) else {}) .get("doctor_report_id")),
+            "latest_remediation_run_id": snapshot.get("latest_remediation_run_id"),
+            "latest_recovery_cycle_id": snapshot.get("latest_recovery_cycle_id"),
+            "latest_transport_cycle_id": snapshot.get("latest_transport_cycle_id"),
+            "latest_bridge_cycle_id": snapshot.get("latest_bridge_cycle_id"),
+        },
+        "evidence_refs": incident.get("evidence_refs", {}),
+        "all_incident_codes": [row.get("incident_code") for row in snapshot.get("incidents", [])],
+        "completed_at": now_iso(),
+    }
+    save_incident_snapshot_record(root, snapshot)
+    save_incident_report_record(root, report)
+    return {"report": report, "snapshot": snapshot}
+
+
+def list_incident_reports_view(root: Path, *, limit: int = 20) -> dict[str, Any]:
+    rows = list_incident_reports(root)[:limit]
+    return {"generated_at": now_iso(), "count": len(rows), "rows": [compact_incident_report(row) for row in rows]}
+
+
+def explain_incident_report(root: Path, *, report_id: str | None = None) -> dict[str, Any]:
+    rows = list_incident_reports(root)
+    report = None
+    if report_id:
+        for row in rows:
+            if row.get("incident_report_id") == report_id:
+                report = row
+                break
+    else:
+        report = rows[0] if rows else None
+    if report is None:
+        return {"ok": False, "error": f"Incident report not found: {report_id}" if report_id else "No incident reports found."}
+    snapshot = None
+    snapshot_id = report.get("incident_snapshot_id")
+    if snapshot_id:
+        for row in list_incident_snapshots(root):
+            if row.get("incident_snapshot_id") == snapshot_id:
+                snapshot = row
+                break
+    return {
+        "ok": True,
+        "incident_report": compact_incident_report(report),
+        "incident_snapshot": snapshot,
+        "linked_ids": report.get("linked_ids", {}),
+    }
+
+
+def list_recovery_cycles_view(root: Path, *, limit: int = 20) -> dict[str, Any]:
+    rows = list_recovery_cycles(root)[:limit]
+    return {
+        "generated_at": now_iso(),
+        "count": len(rows),
+        "rows": [compact_recovery_cycle(row) for row in rows],
+    }
+
+
+def explain_recovery_cycle(root: Path, *, recovery_cycle_id: str | None = None) -> dict[str, Any]:
+    rows = list_recovery_cycles(root)
+    cycle = None
+    if recovery_cycle_id:
+        for row in rows:
+            if row.get("recovery_cycle_id") == recovery_cycle_id:
+                cycle = row
+                break
+    else:
+        cycle = rows[0] if rows else None
+    if cycle is None:
+        return {
+            "ok": False,
+            "error": f"Recovery cycle not found: {recovery_cycle_id}" if recovery_cycle_id else "No recovery cycles found.",
+        }
+    remediation_run = None
+    remediation_run_id = cycle.get("remediation_run_id")
+    if remediation_run_id:
+        for row in list_remediation_runs(root):
+            if row.get("remediation_run_id") == remediation_run_id:
+                remediation_run = compact_remediation_run(row)
+                break
+    doctor_report = None
+    doctor_report_id = cycle.get("doctor_report_id")
+    if doctor_report_id:
+        for row in list_doctor_reports(root):
+            if row.get("doctor_report_id") == doctor_report_id:
+                doctor_report = row
+                break
+    return {
+        "ok": True,
+        "recovery_cycle": compact_recovery_cycle(cycle),
+        "doctor_report": doctor_report,
+        "remediation_plan": load_remediation_plan(root, cycle.get("remediation_plan_id")),
+        "remediation_run": remediation_run,
+    }
+
+
+RECOVERY_ALLOWED_SCRIPTS = {
+    "operator_doctor.py",
+    "operator_plan_remediation.py",
+    "operator_run_remediation_plan.py",
+    "operator_handoff_pack.py",
+}
+
+
+def _validate_recovery_script(root: Path, script_name: str) -> Path:
+    script_path = (ROOT / "scripts" / script_name).resolve()
+    scripts_root = (ROOT / "scripts").resolve()
+    script_path.relative_to(scripts_root)
+    if script_name not in RECOVERY_ALLOWED_SCRIPTS or not script_path.exists():
+        raise ValueError(f"Recovery script is not allowed: {script_name}")
+    return script_path
+
+
+def _run_recovery_wrapper(
+    root: Path,
+    *,
+    script_name: str,
+    extra_args: list[str] | None = None,
+) -> tuple[dict[str, Any] | None, subprocess.CompletedProcess[str]]:
+    script_path = _validate_recovery_script(root, script_name)
+    cmd = [sys.executable, str(script_path), "--root", str(root)]
+    if extra_args:
+        cmd.extend(extra_args)
+    completed = subprocess.run(cmd, capture_output=True, text=True, shell=False)
+    payload: dict[str, Any] | None = None
+    if completed.stdout.strip():
+        try:
+            payload = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            payload = None
+    return payload, completed
+
+
+def execute_operator_recovery_cycle(
+    root: Path,
+    *,
+    dry_run: bool,
+    continue_on_failure: bool,
+    execute_remediation: bool,
+    refresh_handoff: bool,
+) -> tuple[dict[str, Any], int]:
+    from runtime.core.models import new_id
+
+    cycle = {
+        "recovery_cycle_id": new_id("oprecovery"),
+        "started_at": now_iso(),
+        "completed_at": None,
+        "doctor_report_id": None,
+        "post_remediation_doctor_report_id": None,
+        "remediation_plan_id": None,
+        "remediation_run_id": None,
+        "dry_run": dry_run,
+        "continue_on_failure": continue_on_failure,
+        "ok": False,
+        "health_status_before": "unknown",
+        "health_status_after": "unknown",
+        "active_issue_count_before": 0,
+        "active_issue_count_after": 0,
+        "stop_reason": "",
+        "handoff_path": None,
+        "result_kind": "",
+    }
+    exit_code = 0
+
+    doctor_payload, doctor_completed = _run_recovery_wrapper(root, script_name="operator_doctor.py")
+    doctor_report = (doctor_payload or {}).get("report") if doctor_completed.returncode == 0 else None
+    if doctor_report is None:
+        cycle["stop_reason"] = "doctor_failed"
+        cycle["completed_at"] = now_iso()
+        cycle["result_kind"] = classify_recovery_cycle_result(cycle)
+        save_recovery_cycle_record(root, cycle)
+        return {"ok": False, "recovery_cycle": cycle, "doctor_report": None, "remediation_plan": None, "remediation_run": None}, 1
+
+    cycle["doctor_report_id"] = doctor_report.get("doctor_report_id")
+    cycle["health_status_before"] = doctor_report.get("health_status", "unknown")
+    cycle["active_issue_count_before"] = doctor_report.get("active_issue_count", 0)
+
+    remediation_plan_payload, plan_completed = _run_recovery_wrapper(root, script_name="operator_plan_remediation.py")
+    remediation_plan = (remediation_plan_payload or {}).get("plan") if plan_completed.returncode == 0 else None
+    if remediation_plan is None:
+        cycle["stop_reason"] = "remediation_plan_failed"
+        cycle["completed_at"] = now_iso()
+        cycle["result_kind"] = classify_recovery_cycle_result(cycle)
+        save_recovery_cycle_record(root, cycle)
+        return {
+            "ok": False,
+            "recovery_cycle": cycle,
+            "doctor_report": doctor_report,
+            "remediation_plan": None,
+            "remediation_run": None,
+        }, 1
+
+    cycle["remediation_plan_id"] = remediation_plan.get("remediation_plan_id")
+
+    remediation_run = None
+    plan_steps = remediation_plan.get("steps", [])
+    if execute_remediation and cycle["active_issue_count_before"] > 0 and plan_steps:
+        step_args = ["--plan-id", str(remediation_plan.get("remediation_plan_id"))]
+        if dry_run:
+            step_args.append("--dry-run")
+        if continue_on_failure:
+            step_args.append("--continue-on-failure")
+        remediation_payload, remediation_completed = _run_recovery_wrapper(
+            root,
+            script_name="operator_run_remediation_plan.py",
+            extra_args=step_args,
+        )
+        remediation_run = (remediation_payload or {}).get("remediation_run")
+        if remediation_run is not None:
+            cycle["remediation_run_id"] = remediation_run.get("remediation_run_id")
+        if remediation_completed.returncode != 0:
+            cycle["stop_reason"] = "remediation_failed"
+            exit_code = 1
+            if not continue_on_failure:
+                cycle["completed_at"] = now_iso()
+                cycle["result_kind"] = classify_recovery_cycle_result(cycle)
+                save_recovery_cycle_record(root, cycle)
+                return {
+                    "ok": False,
+                    "recovery_cycle": cycle,
+                    "doctor_report": doctor_report,
+                    "remediation_plan": remediation_plan,
+                    "remediation_run": remediation_run,
+                }, exit_code
+
+    if refresh_handoff:
+        handoff_payload, handoff_completed = _run_recovery_wrapper(root, script_name="operator_handoff_pack.py")
+        if handoff_completed.returncode == 0:
+            cycle["handoff_path"] = (handoff_payload or {}).get("json_path")
+        else:
+            cycle["stop_reason"] = "handoff_refresh_failed"
+            exit_code = 1
+            if not continue_on_failure:
+                cycle["completed_at"] = now_iso()
+                cycle["result_kind"] = classify_recovery_cycle_result(cycle)
+                save_recovery_cycle_record(root, cycle)
+                return {
+                    "ok": False,
+                    "recovery_cycle": cycle,
+                    "doctor_report": doctor_report,
+                    "remediation_plan": remediation_plan,
+                    "remediation_run": remediation_run,
+                }, exit_code
+
+    after_payload, after_completed = _run_recovery_wrapper(root, script_name="operator_doctor.py")
+    after_report = (after_payload or {}).get("report") if after_completed.returncode == 0 else None
+    if after_report is not None:
+        cycle["post_remediation_doctor_report_id"] = after_report.get("doctor_report_id")
+        cycle["health_status_after"] = after_report.get("health_status", cycle["health_status_before"])
+        cycle["active_issue_count_after"] = after_report.get("active_issue_count", cycle["active_issue_count_before"])
+    else:
+        cycle["health_status_after"] = cycle["health_status_before"]
+        cycle["active_issue_count_after"] = cycle["active_issue_count_before"]
+        cycle["stop_reason"] = cycle["stop_reason"] or "doctor_failed"
+        exit_code = 1
+
+    cycle["ok"] = exit_code == 0
+    cycle["completed_at"] = now_iso()
+    cycle["result_kind"] = classify_recovery_cycle_result(cycle)
+    save_recovery_cycle_record(root, cycle)
+    return {
+        "ok": cycle["ok"],
+        "recovery_cycle": cycle,
+        "doctor_report": doctor_report,
+        "remediation_plan": remediation_plan,
+        "remediation_run": remediation_run,
+    }, exit_code
 
 
 def list_remediation_runs_view(root: Path, *, limit: int = 20) -> dict[str, Any]:

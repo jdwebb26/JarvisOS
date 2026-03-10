@@ -413,6 +413,57 @@ def _remediation_run_summary(rows: list[dict[str, Any]], *, limit: int) -> list[
     ]
 
 
+def _recovery_cycle_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "recovery_cycle_id": row.get("recovery_cycle_id"),
+            "doctor_report_id": row.get("doctor_report_id"),
+            "remediation_plan_id": row.get("remediation_plan_id"),
+            "remediation_run_id": row.get("remediation_run_id"),
+            "dry_run": row.get("dry_run", False),
+            "ok": row.get("ok", False),
+            "health_status_before": row.get("health_status_before"),
+            "health_status_after": row.get("health_status_after"),
+            "active_issue_count_before": row.get("active_issue_count_before", 0),
+            "active_issue_count_after": row.get("active_issue_count_after", 0),
+            "stop_reason": row.get("stop_reason", ""),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
+def _control_plane_checkpoint_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "control_plane_checkpoint_id": row.get("control_plane_checkpoint_id"),
+            "pack_id": ((row.get("current_action_pack") or {}).get("pack_id")),
+            "pack_status": ((row.get("current_action_pack") or {}).get("status")),
+            "decision_inbox_reply_ready": ((row.get("decision_inbox_summary") or {}).get("reply_ready")),
+            "doctor_health_status": ((row.get("doctor_summary") or {}).get("health_status")),
+            "active_issue_count": ((row.get("doctor_summary") or {}).get("active_issue_count", 0)),
+            "latest_recovery_cycle_id": ((row.get("latest_recovery_cycle_summary") or {}).get("recovery_cycle_id")),
+            "created_at": row.get("created_at"),
+        }
+        for row in _sort_recent(rows, "created_at")[:limit]
+    ]
+
+
+def _incident_report_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "incident_report_id": row.get("incident_report_id"),
+            "incident_snapshot_id": row.get("incident_snapshot_id"),
+            "incident_code": row.get("incident_code"),
+            "severity": row.get("severity"),
+            "health_status": row.get("health_status"),
+            "worsened": row.get("worsened", False),
+            "created_at": row.get("created_at"),
+        }
+        for row in _sort_recent(rows, "created_at", "completed_at")[:limit]
+    ]
+
+
 def _ralph_memory_summary(
     consolidation_runs: list[dict[str, Any]],
     memory_candidates: list[dict[str, Any]],
@@ -687,6 +738,10 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     operator_remediation_plans = _load_jsons(root / "state" / "operator_remediation_plans")
     operator_remediation_runs = _load_jsons(root / "state" / "operator_remediation_runs")
     operator_remediation_step_runs = _load_jsons(root / "state" / "operator_remediation_step_runs")
+    operator_recovery_cycles = _load_jsons(root / "state" / "operator_recovery_cycles")
+    operator_control_plane_checkpoints = _load_jsons(root / "state" / "operator_control_plane_checkpoints")
+    operator_incident_reports = _load_jsons(root / "state" / "operator_incident_reports")
+    operator_incident_snapshots = _load_jsons(root / "state" / "operator_incident_snapshots")
     recent_task_status = task_board["rows"][:limit]
     for row in recent_task_status:
         latest_success = latest_successful_action_for_task(root, row["task_id"])
@@ -749,11 +804,13 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     reply_ack = None
     latest_compare_reply_transport = None
     latest_compare_bridge_cycles = None
+    latest_compare_control_plane_checkpoints = None
     compare_packs_path = root / "state" / "logs" / "operator_compare_packs_latest.json"
     compare_triage_path = root / "state" / "logs" / "operator_compare_triage_latest.json"
     compare_inbox_path = root / "state" / "logs" / "operator_compare_inbox_latest.json"
     compare_reply_transport_path = root / "state" / "logs" / "operator_compare_reply_transport_cycles_latest.json"
     compare_bridge_cycles_path = root / "state" / "logs" / "operator_compare_bridge_cycles_latest.json"
+    compare_control_plane_checkpoints_path = root / "state" / "logs" / "operator_compare_control_plane_checkpoints_latest.json"
     outbound_prompt_path = root / "state" / "logs" / "operator_outbound_prompt_latest.json"
     reply_ack_path = root / "state" / "logs" / "operator_reply_ack_latest.json"
     if compare_packs_path.exists():
@@ -781,6 +838,11 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
             latest_compare_bridge_cycles = json.loads(compare_bridge_cycles_path.read_text(encoding="utf-8"))
         except Exception:
             latest_compare_bridge_cycles = None
+    if compare_control_plane_checkpoints_path.exists():
+        try:
+            latest_compare_control_plane_checkpoints = json.loads(compare_control_plane_checkpoints_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_control_plane_checkpoints = None
     if outbound_prompt_path.exists():
         try:
             outbound_prompt = json.loads(outbound_prompt_path.read_text(encoding="utf-8"))
@@ -911,6 +973,14 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "recent_remediation_plans": _remediation_plan_summary(operator_remediation_plans, limit=limit),
         "latest_remediation_run": _remediation_run_summary(operator_remediation_runs, limit=1)[0] if operator_remediation_runs else None,
         "recent_remediation_runs": _remediation_run_summary(operator_remediation_runs, limit=limit),
+        "latest_recovery_cycle": _recovery_cycle_summary(operator_recovery_cycles, limit=1)[0] if operator_recovery_cycles else None,
+        "recent_recovery_cycles": _recovery_cycle_summary(operator_recovery_cycles, limit=limit),
+        "latest_control_plane_checkpoint": _control_plane_checkpoint_summary(operator_control_plane_checkpoints, limit=1)[0]
+        if operator_control_plane_checkpoints
+        else None,
+        "recent_control_plane_checkpoints": _control_plane_checkpoint_summary(operator_control_plane_checkpoints, limit=limit),
+        "latest_incident_report": _incident_report_summary(operator_incident_reports, limit=1)[0] if operator_incident_reports else None,
+        "recent_incident_reports": _incident_report_summary(operator_incident_reports, limit=limit),
         "doctor_summary": {
             "health_status": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("health_status", "unknown"),
             "highest_severity": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("highest_severity", "unknown"),
@@ -926,6 +996,29 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
             "latest_remediation_run_stop_reason": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("stop_reason"),
             "remediation_run_count": len(operator_remediation_runs),
             "remediation_step_run_count": len(operator_remediation_step_runs),
+        },
+        "recovery_cycle_summary": {
+            "latest_recovery_cycle_id": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("recovery_cycle_id"),
+            "latest_recovery_cycle_ok": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("ok"),
+            "latest_recovery_cycle_dry_run": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("dry_run"),
+            "latest_recovery_cycle_active_issue_count_before": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_before"),
+            "latest_recovery_cycle_active_issue_count_after": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_after"),
+            "latest_recovery_cycle_issue_count_before": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_before"),
+            "latest_recovery_cycle_issue_count_after": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_after"),
+            "latest_recovery_cycle_stop_reason": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("stop_reason"),
+            "recovery_cycle_count": len(operator_recovery_cycles),
+        },
+        "control_plane_checkpoint_summary": {
+            "latest_control_plane_checkpoint_id": (operator_control_plane_checkpoints[-1] if operator_control_plane_checkpoints else {}).get("control_plane_checkpoint_id"),
+            "control_plane_checkpoint_count": len(operator_control_plane_checkpoints),
+            "latest_compare_checkpoint_id": (latest_compare_control_plane_checkpoints or {}).get("current_checkpoint_id"),
+        },
+        "incident_summary": {
+            "latest_incident_report_id": (operator_incident_reports[-1] if operator_incident_reports else {}).get("incident_report_id"),
+            "latest_incident_code": (operator_incident_reports[-1] if operator_incident_reports else {}).get("incident_code"),
+            "latest_incident_severity": (operator_incident_reports[-1] if operator_incident_reports else {}).get("severity"),
+            "operator_incident_report_count": len(operator_incident_reports),
+            "operator_incident_snapshot_count": len(operator_incident_snapshots),
         },
         "outbound_prompt_summary": {
             "generated_at": (outbound_prompt or {}).get("generated_at"),
@@ -953,6 +1046,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         },
         "latest_compare_reply_transport_cycles": latest_compare_reply_transport,
         "latest_compare_bridge_cycles": latest_compare_bridge_cycles,
+        "latest_compare_control_plane_checkpoints": latest_compare_control_plane_checkpoints,
         "latest_compare_packs": latest_compare_packs,
         "latest_compare_triage": latest_compare_triage,
         "latest_compare_inbox": latest_compare_inbox,

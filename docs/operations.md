@@ -589,6 +589,47 @@ python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_remedia
 python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_explain_remediation_run.py --root /home/rollan/.openclaw/workspace/jarvis-v5
 ```
 
+To run one bounded operator recovery cycle over the saved doctor/remediation state:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_recovery_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_recovery_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --live
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_recovery_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --skip-remediation
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_recovery_cycles.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_explain_recovery_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Recovery-cycle durable artifacts:
+
+- `state/operator_recovery_cycles/*.json`
+
+To capture and compare compact control-plane checkpoints:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_checkpoint_control_plane.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_control_plane_checkpoints.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_explain_control_plane_checkpoint.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_compare_control_plane_checkpoints.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Control-plane checkpoint artifacts:
+
+- `state/operator_control_plane_checkpoints/*.json`
+- `state/logs/operator_compare_control_plane_checkpoints_latest.json`
+
+To detect and inspect compact operator incidents/regressions:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_detect_incidents.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_incident_reports.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_explain_incident_report.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Incident artifacts:
+
+- `state/operator_incident_reports/*.json`
+- `state/operator_incident_snapshots/*.json`
+
 To compare inbox snapshots:
 
 ```bash

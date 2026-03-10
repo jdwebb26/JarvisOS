@@ -185,6 +185,10 @@ def build_status(root: Path) -> dict[str, Any]:
     operator_remediation_plans = _load_jsons(root / "state" / "operator_remediation_plans")
     operator_remediation_runs = _load_jsons(root / "state" / "operator_remediation_runs")
     operator_remediation_step_runs = _load_jsons(root / "state" / "operator_remediation_step_runs")
+    operator_recovery_cycles = _load_jsons(root / "state" / "operator_recovery_cycles")
+    operator_control_plane_checkpoints = _load_jsons(root / "state" / "operator_control_plane_checkpoints")
+    operator_incident_reports = _load_jsons(root / "state" / "operator_incident_reports")
+    operator_incident_snapshots = _load_jsons(root / "state" / "operator_incident_snapshots")
     from scripts.operator_checkpoint_action_pack import classify_action_pack
     from scripts.operator_triage_support import (
         build_decision_inbox_data,
@@ -339,6 +343,10 @@ def build_status(root: Path) -> dict[str, Any]:
         "operator_remediation_plans": len(operator_remediation_plans),
         "operator_remediation_runs": len(operator_remediation_runs),
         "operator_remediation_step_runs": len(operator_remediation_step_runs),
+        "operator_recovery_cycles": len(operator_recovery_cycles),
+        "operator_control_plane_checkpoints": len(operator_control_plane_checkpoints),
+        "operator_incident_reports": len(operator_incident_reports),
+        "operator_incident_snapshots": len(operator_incident_snapshots),
     }
     triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
     decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
@@ -350,6 +358,7 @@ def build_status(root: Path) -> dict[str, Any]:
     compare_inbox_path = root / "state" / "logs" / "operator_compare_inbox_latest.json"
     compare_reply_transport_path = root / "state" / "logs" / "operator_compare_reply_transport_cycles_latest.json"
     compare_bridge_cycles_path = root / "state" / "logs" / "operator_compare_bridge_cycles_latest.json"
+    compare_control_plane_checkpoints_path = root / "state" / "logs" / "operator_compare_control_plane_checkpoints_latest.json"
     outbound_prompt_path = root / "state" / "logs" / "operator_outbound_prompt_latest.json"
     outbound_packet_path = root / "state" / "logs" / "operator_outbound_packet_latest.json"
     reply_ack_path = root / "state" / "logs" / "operator_reply_ack_latest.json"
@@ -363,6 +372,7 @@ def build_status(root: Path) -> dict[str, Any]:
     current_reply_ack = None
     latest_compare_reply_transport = None
     latest_compare_bridge_cycles = None
+    latest_compare_control_plane_checkpoints = None
     if command_center_path.exists():
         try:
             current_command_center = json.loads(command_center_path.read_text(encoding="utf-8"))
@@ -398,6 +408,11 @@ def build_status(root: Path) -> dict[str, Any]:
             latest_compare_bridge_cycles = json.loads(compare_bridge_cycles_path.read_text(encoding="utf-8"))
         except Exception:
             latest_compare_bridge_cycles = None
+    if compare_control_plane_checkpoints_path.exists():
+        try:
+            latest_compare_control_plane_checkpoints = json.loads(compare_control_plane_checkpoints_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_control_plane_checkpoints = None
     if outbound_prompt_path.exists():
         try:
             current_outbound_prompt = json.loads(outbound_prompt_path.read_text(encoding="utf-8"))
@@ -486,6 +501,10 @@ def build_status(root: Path) -> dict[str, Any]:
             "recent_remediation_plan_count": len(operator_remediation_plans),
             "recent_remediation_run_count": len(operator_remediation_runs),
             "recent_remediation_step_run_count": len(operator_remediation_step_runs),
+            "recent_recovery_cycle_count": len(operator_recovery_cycles),
+            "recent_control_plane_checkpoint_count": len(operator_control_plane_checkpoints),
+            "recent_incident_report_count": len(operator_incident_reports),
+            "recent_incident_snapshot_count": len(operator_incident_snapshots),
             "latest_queue_run": operator_queue_runs[-1] if operator_queue_runs else None,
             "latest_bulk_run": operator_bulk_runs[-1] if operator_bulk_runs else None,
             "latest_task_intervention": operator_task_interventions[-1] if operator_task_interventions else None,
@@ -503,6 +522,12 @@ def build_status(root: Path) -> dict[str, Any]:
             "latest_doctor_report": operator_doctor_reports[-1] if operator_doctor_reports else None,
             "latest_remediation_plan": operator_remediation_plans[-1] if operator_remediation_plans else None,
             "latest_remediation_run": operator_remediation_runs[-1] if operator_remediation_runs else None,
+            "latest_recovery_cycle": operator_recovery_cycles[-1] if operator_recovery_cycles else None,
+            "recent_recovery_cycles": operator_recovery_cycles[-5:],
+            "latest_control_plane_checkpoint": operator_control_plane_checkpoints[-1] if operator_control_plane_checkpoints else None,
+            "recent_control_plane_checkpoints": operator_control_plane_checkpoints[-5:],
+            "latest_incident_report": operator_incident_reports[-1] if operator_incident_reports else None,
+            "recent_incident_reports": operator_incident_reports[-5:],
             "reply_transport_replay_summary": latest_cycle_replay_safety or {},
             "bridge_replay_summary": latest_bridge_replay_safety or {},
             "doctor_summary": {
@@ -518,6 +543,28 @@ def build_status(root: Path) -> dict[str, Any]:
                 "latest_remediation_run_attempted_step_count": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("attempted_step_count"),
                 "latest_remediation_run_failed_step_count": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("failed_step_count"),
                 "latest_remediation_run_stop_reason": (operator_remediation_runs[-1] if operator_remediation_runs else {}).get("stop_reason"),
+            },
+            "recovery_cycle_summary": {
+                "latest_recovery_cycle_id": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("recovery_cycle_id"),
+                "latest_recovery_cycle_ok": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("ok"),
+                "latest_recovery_cycle_dry_run": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("dry_run"),
+                "latest_recovery_cycle_active_issue_count_before": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_before"),
+                "latest_recovery_cycle_active_issue_count_after": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_after"),
+                "latest_recovery_cycle_issue_count_before": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_before"),
+                "latest_recovery_cycle_issue_count_after": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_after"),
+                "latest_recovery_cycle_stop_reason": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("stop_reason"),
+            },
+            "control_plane_checkpoint_summary": {
+                "latest_control_plane_checkpoint_id": (operator_control_plane_checkpoints[-1] if operator_control_plane_checkpoints else {}).get("control_plane_checkpoint_id"),
+                "control_plane_checkpoint_count": len(operator_control_plane_checkpoints),
+                "latest_compare_checkpoint_id": (latest_compare_control_plane_checkpoints or {}).get("current_checkpoint_id"),
+            },
+            "incident_summary": {
+                "latest_incident_report_id": (operator_incident_reports[-1] if operator_incident_reports else {}).get("incident_report_id"),
+                "latest_incident_code": (operator_incident_reports[-1] if operator_incident_reports else {}).get("incident_code"),
+                "latest_incident_severity": (operator_incident_reports[-1] if operator_incident_reports else {}).get("severity"),
+                "operator_incident_report_count": len(operator_incident_reports),
+                "operator_incident_snapshot_count": len(operator_incident_snapshots),
             },
             "reply_ingress_summary": {
                 "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
@@ -571,6 +618,7 @@ def build_status(root: Path) -> dict[str, Any]:
             },
             "latest_compare_reply_transport_cycles": latest_compare_reply_transport,
             "latest_compare_bridge_cycles": latest_compare_bridge_cycles,
+            "latest_compare_control_plane_checkpoints": latest_compare_control_plane_checkpoints,
             "current_action_pack": current_action_pack,
             "current_command_center": {
                 "health_label": ((current_command_center or {}).get("now") or {}).get("control_plane_health_label"),
