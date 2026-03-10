@@ -91,6 +91,12 @@ REQUIRED_FILES = [
     "runtime/core/publish_complete.py",
     "runtime/core/run_runtime_regression_pack.py",
     "runtime/gateway/complete_from_artifact.py",
+    "runtime/gateway/hermes_execute.py",
+    "runtime/gateway/autoresearch_campaign.py",
+    "runtime/gateway/replay_eval.py",
+    "runtime/gateway/ralph_consolidate.py",
+    "runtime/gateway/memory_retrieve.py",
+    "runtime/gateway/memory_decision.py",
     "runtime/gateway/discord_intake.py",
     "runtime/dashboard/operator_snapshot.py",
 ]
@@ -110,6 +116,12 @@ KEY_MODULES = [
     "runtime.core.publish_complete",
     "runtime.core.run_runtime_regression_pack",
     "runtime.gateway.complete_from_artifact",
+    "runtime.gateway.hermes_execute",
+    "runtime.gateway.autoresearch_campaign",
+    "runtime.gateway.replay_eval",
+    "runtime.gateway.ralph_consolidate",
+    "runtime.gateway.memory_retrieve",
+    "runtime.gateway.memory_decision",
     "runtime.dashboard.operator_snapshot",
 ]
 

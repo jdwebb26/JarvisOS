@@ -151,3 +151,113 @@ def task_update_ack(result: dict) -> dict:
         "task_id": result["task_id"],
         "status": status,
     }
+
+
+def hermes_execute_ack(result: dict) -> dict:
+    record = result["result"]
+    status = result.get("task_status", "unknown")
+    candidate_artifact_id = result.get("candidate_artifact_id")
+    trace_id = record.get("trace_id")
+    reply = [
+        f"Hermes finished task `{record['task_id']}` with result `{record['status']}`.",
+        f"Task status is now `{status}`.",
+    ]
+    if candidate_artifact_id:
+        reply.append(f"Candidate artifact: `{candidate_artifact_id}`.")
+    if trace_id:
+        reply.append(f"Trace: `{trace_id}`.")
+    return {
+        "kind": "hermes_execute_ack",
+        "reply": " ".join(reply),
+        "task_id": record["task_id"],
+        "result_id": record["result_id"],
+        "trace_id": trace_id,
+        "candidate_artifact_id": candidate_artifact_id,
+        "task_status_after": status,
+    }
+
+
+def autoresearch_campaign_ack(result: dict) -> dict:
+    campaign = result["campaign"]
+    recommendation = result.get("recommendation") or {}
+    reply = [
+        f"Autoresearch campaign `{campaign['campaign_id']}` finished with status `{campaign['status']}`.",
+        f"Completed passes: {campaign['completed_passes']}/{campaign['max_passes']}.",
+        f"Budget used: {campaign['budget_used']}/{campaign['max_budget_units']}.",
+    ]
+    if result.get("candidate_artifact_id"):
+        reply.append(f"Recommendation artifact: `{result['candidate_artifact_id']}`.")
+    if recommendation.get("recommendation_id"):
+        reply.append(f"Recommendation: `{recommendation['recommendation_id']}`.")
+    return {
+        "kind": "autoresearch_campaign_ack",
+        "reply": " ".join(reply),
+        "task_id": campaign["task_id"],
+        "campaign_id": campaign["campaign_id"],
+        "recommendation_id": recommendation.get("recommendation_id"),
+        "candidate_artifact_id": result.get("candidate_artifact_id"),
+        "task_status_after": result.get("task_status"),
+    }
+
+
+def replay_eval_ack(result: dict) -> dict:
+    eval_result = result["eval_result"]
+    return {
+        "kind": "replay_eval_ack",
+        "reply": (
+            f"Replay eval `{eval_result['eval_result_id']}` completed for trace "
+            f"`{eval_result['trace_id']}` with score `{eval_result['score']:.4f}` "
+            f"and passed=`{eval_result['passed']}`."
+        ),
+        "task_id": eval_result["task_id"],
+        "trace_id": eval_result["trace_id"],
+        "eval_result_id": eval_result["eval_result_id"],
+        "report_artifact_id": result.get("report_artifact_id"),
+    }
+
+
+def ralph_consolidation_ack(result: dict) -> dict:
+    run = result["consolidation_run"]
+    return {
+        "kind": "ralph_consolidation_ack",
+        "reply": (
+            f"Ralph consolidation `{run['consolidation_run_id']}` completed for task "
+            f"`{run['task_id']}`. Digest artifact: `{result['digest_artifact_id']}`. "
+            f"Memory candidates: {len(result['memory_candidate_ids'])}."
+        ),
+        "task_id": run["task_id"],
+        "consolidation_run_id": run["consolidation_run_id"],
+        "digest_artifact_id": result["digest_artifact_id"],
+        "memory_candidate_ids": result["memory_candidate_ids"],
+        "task_status_after": result.get("task_status"),
+    }
+
+
+def memory_retrieval_ack(result: dict) -> dict:
+    retrieval = result["retrieval"]
+    return {
+        "kind": "memory_retrieval_ack",
+        "reply": (
+            f"Retrieved {retrieval['result_count']} memory candidates for "
+            f"task `{retrieval.get('task_id') or 'all'}`."
+        ),
+        "memory_retrieval_id": retrieval["memory_retrieval_id"],
+        "task_id": retrieval.get("task_id"),
+        "result_count": retrieval["result_count"],
+        "returned_memory_candidate_ids": retrieval["returned_memory_candidate_ids"],
+    }
+
+
+def memory_decision_ack(action: str, record: dict) -> dict:
+    return {
+        "kind": "memory_decision_ack",
+        "reply": (
+            f"Memory candidate `{record['memory_candidate_id']}` recorded as `{action}` "
+            f"for task `{record['task_id']}`."
+        ),
+        "action": action,
+        "task_id": record["task_id"],
+        "memory_candidate_id": record["memory_candidate_id"],
+        "lifecycle_state": record["lifecycle_state"],
+        "decision_status": record.get("decision_status"),
+    }
