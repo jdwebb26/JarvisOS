@@ -199,6 +199,52 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
             str(tmp_path),
         ]
     )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_enqueue_reply_message.py"),
+            "--root",
+            str(tmp_path),
+            "--raw-text",
+            "A1",
+            "--source-message-id",
+            "handoff_cycle_msg_1",
+            "--apply",
+            "--dry-run",
+        ]
+    )
+    cycle = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_reply_transport_cycle.py"),
+            "--root",
+            str(tmp_path),
+            "--apply",
+            "--dry-run",
+            "--continue-on-failure",
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_replay_transport_cycle.py"),
+            "--root",
+            str(tmp_path),
+            "--cycle-id",
+            cycle["transport_cycle"]["transport_cycle_id"],
+            "--plan-only",
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_compare_reply_transport_cycles.py"),
+            "--root",
+            str(tmp_path),
+            "--cycle-id",
+            cycle["transport_cycle"]["transport_cycle_id"],
+        ]
+    )
 
     payload = _run_json(
         [
@@ -234,6 +280,9 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
     assert pack["reply_ingress_summary"]["reply_ingest_ready"] in {True, False}
     assert pack["outbound_prompt_summary"]["pack_id"] == pack["decision_inbox_summary"]["pack_id"]
     assert "latest_result_kind" in pack["reply_ack_summary"]
+    assert pack["latest_reply_transport_cycle"] is not None
+    assert "replay_allowed" in pack["reply_transport_replay_summary"]
+    assert pack["latest_compare_reply_transport_cycles"] is not None
     assert pack["latest_reply_plan"] is not None
     assert pack["latest_reply_apply"] is not None
     assert pack["latest_reply_ingress"] is not None

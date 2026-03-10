@@ -285,6 +285,69 @@ def _reply_transport_cycle_summary(rows: list[dict[str, Any]], *, limit: int) ->
     ]
 
 
+def _reply_transport_replay_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "replay_id": row.get("replay_id"),
+            "source_transport_cycle_id": row.get("source_transport_cycle_id"),
+            "replay_plan_id": row.get("replay_plan_id"),
+            "replay_mode": row.get("replay_mode"),
+            "plan_only": row.get("plan_only", False),
+            "live_apply_requested": row.get("live_apply_requested", False),
+            "ok": row.get("ok", False),
+            "reason": row.get("reason", ""),
+            "transport_cycle_id": row.get("transport_cycle_id"),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
+def _outbound_packet_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "outbound_packet_id": row.get("outbound_packet_id"),
+            "pack_id": row.get("pack_id"),
+            "pack_status": row.get("pack_status"),
+            "reply_ready": row.get("reply_ready"),
+            "top_item_count": len(row.get("top_items", [])),
+            "warning": row.get("minimal_warning", ""),
+            "generated_at": row.get("generated_at"),
+        }
+        for row in _sort_recent(rows, "generated_at", "created_at")[:limit]
+    ]
+
+
+def _imported_reply_message_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "import_id": row.get("import_id"),
+            "source_message_id": row.get("source_message_id"),
+            "classification": row.get("classification"),
+            "imported": row.get("imported", False),
+            "reply_message_path": row.get("reply_message_path"),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "created_at")[:limit]
+    ]
+
+
+def _bridge_cycle_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "bridge_cycle_id": row.get("bridge_cycle_id"),
+            "ok": row.get("ok", False),
+            "bridge_ready": row.get("bridge_ready", False),
+            "outbound_packet_id": row.get("outbound_packet_id"),
+            "imported_count": row.get("imported_count", 0),
+            "reply_transport_cycle_id": row.get("reply_transport_cycle_id"),
+            "reply_ack_result_kind": row.get("reply_ack_result_kind"),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
 def _ralph_memory_summary(
     consolidation_runs: list[dict[str, Any]],
     memory_candidates: list[dict[str, Any]],
@@ -475,6 +538,15 @@ def _build_markdown(pack: dict[str, Any]) -> str:
         f"- pending_inbound={ingress.get('pending_inbound_message_count')} transport_ready={ingress.get('reply_transport_ready')} "
         f"prompt_pack={prompt.get('pack_id')} ack_result={ack.get('latest_result_kind')} latest_cycle={transport.get('transport_cycle_id')}"
     )
+    lines.append(
+        f"- replay_safe={ingress.get('latest_cycle_replay_safe')} latest_compare={((pack.get('latest_compare_reply_transport_cycles') or {}).get('current_cycle_id'))} "
+        f"latest_replay={((pack.get('latest_reply_transport_replay') or {}).get('replay_id'))}"
+    )
+    bridge = pack.get("gateway_bridge_summary", {})
+    lines.append(
+        f"- outbound_publish_ready={bridge.get('outbound_publish_ready')} inbound_import_ready={bridge.get('inbound_import_ready')} "
+        f"bridge_ready={bridge.get('bridge_ready')} latest_import={bridge.get('latest_import_classification')} latest_bridge={bridge.get('latest_bridge_result')}"
+    )
 
     lines.extend(["", "## Action Pack"])
     action_pack = pack.get("current_action_pack", {})
@@ -530,6 +602,10 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     operator_reply_ingress = _load_jsons(root / "state" / "operator_reply_ingress")
     operator_reply_ingress_runs = _load_jsons(root / "state" / "operator_reply_ingress_runs")
     operator_reply_transport_cycles = _load_jsons(root / "state" / "operator_reply_transport_cycles")
+    operator_reply_transport_replays = _load_jsons(root / "state" / "operator_reply_transport_replays")
+    operator_outbound_packets = _load_jsons(root / "state" / "operator_outbound_packets")
+    operator_imported_reply_messages = _load_jsons(root / "state" / "operator_imported_reply_messages")
+    operator_bridge_cycles = _load_jsons(root / "state" / "operator_bridge_cycles")
     recent_task_status = task_board["rows"][:limit]
     for row in recent_task_status:
         latest_success = latest_successful_action_for_task(root, row["task_id"])
@@ -542,6 +618,9 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         build_decision_inbox_data,
         build_decision_shortlist_data,
         build_triage_data,
+        classify_reply_transport_replay_safety,
+        gateway_operator_bridge_readiness,
+        load_reply_transport_cycle,
     )
     from scripts.operator_triage_support import build_command_center_data, build_decision_manifest_data
 
@@ -585,9 +664,11 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     latest_compare_inbox = None
     outbound_prompt = None
     reply_ack = None
+    latest_compare_reply_transport = None
     compare_packs_path = root / "state" / "logs" / "operator_compare_packs_latest.json"
     compare_triage_path = root / "state" / "logs" / "operator_compare_triage_latest.json"
     compare_inbox_path = root / "state" / "logs" / "operator_compare_inbox_latest.json"
+    compare_reply_transport_path = root / "state" / "logs" / "operator_compare_reply_transport_cycles_latest.json"
     outbound_prompt_path = root / "state" / "logs" / "operator_outbound_prompt_latest.json"
     reply_ack_path = root / "state" / "logs" / "operator_reply_ack_latest.json"
     if compare_packs_path.exists():
@@ -605,6 +686,11 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
             latest_compare_inbox = json.loads(compare_inbox_path.read_text(encoding="utf-8"))
         except Exception:
             latest_compare_inbox = None
+    if compare_reply_transport_path.exists():
+        try:
+            latest_compare_reply_transport = json.loads(compare_reply_transport_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_reply_transport = None
     if outbound_prompt_path.exists():
         try:
             outbound_prompt = json.loads(outbound_prompt_path.read_text(encoding="utf-8"))
@@ -615,6 +701,10 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
             reply_ack = json.loads(reply_ack_path.read_text(encoding="utf-8"))
         except Exception:
             reply_ack = None
+    latest_cycle_record = load_reply_transport_cycle(root, operator_reply_transport_cycles[-1]["transport_cycle_id"]) if operator_reply_transport_cycles else None
+    latest_cycle_replay_safety = (
+        classify_reply_transport_replay_safety(root, cycle=latest_cycle_record, live_apply_requested=False) if latest_cycle_record else None
+    )
 
     pack = {
         "generated_at": snapshot["status"].get("generated_at"),
@@ -663,6 +753,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
             "applied_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "applied"),
             "duplicate_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "duplicate_message"),
             "pending_inbound_message_count": sum(1 for row in _load_jsons(root / "state" / "operator_reply_messages") if not row.get("processed_at")),
+            "latest_cycle_replay_safe": bool((latest_cycle_replay_safety or {}).get("replay_allowed")),
             "latest_source_metadata": {
                 "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
                 "source_lane": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_lane"),
@@ -704,6 +795,19 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         if operator_reply_transport_cycles
         else None,
         "recent_reply_transport_cycles": _reply_transport_cycle_summary(operator_reply_transport_cycles, limit=limit),
+        "latest_reply_transport_replay": _reply_transport_replay_summary(operator_reply_transport_replays, limit=1)[0]
+        if operator_reply_transport_replays
+        else None,
+        "recent_reply_transport_replays": _reply_transport_replay_summary(operator_reply_transport_replays, limit=limit),
+        "reply_transport_replay_summary": latest_cycle_replay_safety or {},
+        "latest_outbound_packet": _outbound_packet_summary(operator_outbound_packets, limit=1)[0] if operator_outbound_packets else None,
+        "recent_outbound_packets": _outbound_packet_summary(operator_outbound_packets, limit=limit),
+        "latest_imported_reply_message": _imported_reply_message_summary(operator_imported_reply_messages, limit=1)[0]
+        if operator_imported_reply_messages
+        else None,
+        "recent_imported_reply_messages": _imported_reply_message_summary(operator_imported_reply_messages, limit=limit),
+        "latest_bridge_cycle": _bridge_cycle_summary(operator_bridge_cycles, limit=1)[0] if operator_bridge_cycles else None,
+        "recent_bridge_cycles": _bridge_cycle_summary(operator_bridge_cycles, limit=limit),
         "outbound_prompt_summary": {
             "generated_at": (outbound_prompt or {}).get("generated_at"),
             "pack_id": (outbound_prompt or {}).get("pack_id"),
@@ -718,6 +822,15 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
             "next_guidance": (reply_ack or {}).get("next_guidance", ""),
             "next_suggested_codes": (reply_ack or {}).get("next_suggested_codes", [])[:5],
         },
+        "gateway_bridge_summary": {
+            **gateway_operator_bridge_readiness(root, allow_inbox_rebuild=False, limit=min(limit, 5)),
+            "latest_import_classification": (operator_imported_reply_messages[-1] if operator_imported_reply_messages else {}).get("classification"),
+            "latest_bridge_result": (operator_bridge_cycles[-1] if operator_bridge_cycles else {}).get("ok"),
+            "outbound_packet_count": len(operator_outbound_packets),
+            "imported_reply_message_count": len(operator_imported_reply_messages),
+            "bridge_cycle_count": len(operator_bridge_cycles),
+        },
+        "latest_compare_reply_transport_cycles": latest_compare_reply_transport,
         "latest_compare_packs": latest_compare_packs,
         "latest_compare_triage": latest_compare_triage,
         "latest_compare_inbox": latest_compare_inbox,

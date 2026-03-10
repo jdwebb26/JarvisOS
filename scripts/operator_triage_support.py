@@ -95,6 +95,42 @@ def operator_reply_transport_cycles_dir(root: Path) -> Path:
     return path
 
 
+def operator_reply_transport_replay_plans_dir(root: Path) -> Path:
+    path = root / "state" / "operator_reply_transport_replay_plans"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_reply_transport_replays_dir(root: Path) -> Path:
+    path = root / "state" / "operator_reply_transport_replays"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_outbound_packets_dir(root: Path) -> Path:
+    path = root / "state" / "operator_outbound_packets"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_imported_reply_messages_dir(root: Path) -> Path:
+    path = root / "state" / "operator_imported_reply_messages"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_gateway_inbound_messages_dir(root: Path) -> Path:
+    path = root / "state" / "operator_gateway_inbound_messages"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_bridge_cycles_dir(root: Path) -> Path:
+    path = root / "state" / "operator_bridge_cycles"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 REPLY_TOKEN_PATTERN = re.compile(r"^[A-Z]\d+$")
 EXECUTABLE_REPLY_PREFIXES = {"A", "R", "P", "F"}
 REPORT_ONLY_REPLY_PREFIXES = {"X", "B"}
@@ -150,6 +186,40 @@ def save_reply_transport_cycle_record(root: Path, record: dict[str, Any]) -> dic
     return record
 
 
+def save_reply_transport_replay_plan_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_reply_transport_replay_plans_dir(root) / f"{record['replay_plan_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_reply_transport_replay_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_reply_transport_replays_dir(root) / f"{record['replay_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_outbound_packet_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_outbound_packets_dir(root) / f"{record['outbound_packet_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    latest_path = triage_logs_dir(root) / "operator_outbound_packet_latest.json"
+    latest_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_imported_reply_message_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_imported_reply_messages_dir(root) / f"{record['import_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    latest_path = triage_logs_dir(root) / "operator_import_reply_message_latest.json"
+    latest_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_bridge_cycle_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_bridge_cycles_dir(root) / f"{record['bridge_cycle_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
 def list_task_interventions(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_task_interventions_dir(root)), "completed_at", "started_at")
 
@@ -180,6 +250,26 @@ def list_reply_ingress_runs(root: Path) -> list[dict[str, Any]]:
 
 def list_reply_transport_cycles(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_reply_transport_cycles_dir(root)), "completed_at", "started_at")
+
+
+def list_reply_transport_replay_plans(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_reply_transport_replay_plans_dir(root)), "created_at", "started_at")
+
+
+def list_reply_transport_replays(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_reply_transport_replays_dir(root)), "completed_at", "started_at")
+
+
+def list_outbound_packets(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_outbound_packets_dir(root)), "generated_at", "created_at")
+
+
+def list_imported_reply_messages(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_imported_reply_messages_dir(root)), "completed_at", "created_at")
+
+
+def list_bridge_cycles(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_bridge_cycles_dir(root)), "completed_at", "started_at")
 
 
 def count_pending_reply_messages(root: Path) -> int:
@@ -2235,6 +2325,174 @@ def build_operator_outbound_prompt_markdown(prompt: dict[str, Any]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def gateway_operator_bridge_readiness(root: Path, *, allow_inbox_rebuild: bool = False, limit: int = 5) -> dict[str, Any]:
+    reply_ready = reply_transport_readiness(root, allow_inbox_rebuild=allow_inbox_rebuild, limit=limit)
+    outbound_publish_ready = reply_ready["ready"]
+    inbound_import_ready = True
+    bridge_ready = outbound_publish_ready and inbound_import_ready
+    return {
+        "outbound_publish_ready": outbound_publish_ready,
+        "inbound_import_ready": inbound_import_ready,
+        "bridge_ready": bridge_ready,
+        "reason": reply_ready["reason"],
+        "pack_id": reply_ready["pack_id"],
+        "pack_status": reply_ready["pack_status"],
+        "pending_inbound_message_count": reply_ready["pending_inbound_message_count"],
+    }
+
+
+def build_operator_outbound_packet_data(root: Path, *, limit: int = 5, allow_inbox_rebuild: bool = True) -> dict[str, Any]:
+    prompt = build_operator_outbound_prompt_data(root, limit=limit, allow_inbox_rebuild=allow_inbox_rebuild)
+    ack = build_operator_reply_ack_data(root, limit=min(limit, 5), allow_inbox_rebuild=False)
+    readiness = gateway_operator_bridge_readiness(root, allow_inbox_rebuild=False, limit=limit)
+    return {
+        "generated_at": now_iso(),
+        "pack_id": prompt.get("pack_id"),
+        "pack_status": prompt.get("pack_status"),
+        "reply_ready": prompt.get("reply_ready"),
+        "top_items": prompt.get("top_items", [])[: min(limit, 5)],
+        "compact_reply_instructions": prompt.get("compact_reply_instructions", []),
+        "minimal_warning": prompt.get("warning", "") or readiness["reason"],
+        "reply_ack_context": {
+            "latest_result_kind": ((ack.get("latest_reply_received") or {}).get("result_kind")),
+            "next_guidance": ack.get("next_guidance", ""),
+            "next_suggested_codes": ack.get("next_suggested_codes", [])[:3],
+        },
+        "bridge_readiness": readiness,
+    }
+
+
+def build_operator_outbound_packet_markdown(packet: dict[str, Any]) -> str:
+    lines = [
+        "# Operator Outbound Packet",
+        "",
+        f"Generated at: {packet.get('generated_at')}",
+        f"Pack: {packet.get('pack_id')} status={packet.get('pack_status')} reply_ready={packet.get('reply_ready')}",
+    ]
+    if packet.get("minimal_warning"):
+        lines.extend(["", f"Warning: {packet['minimal_warning']}"])
+    lines.extend(["", "## Top Items"])
+    for row in packet.get("top_items", []):
+        lines.append(f"- {row.get('default_reply_code')} task={row.get('task_id')} reason={row.get('brief_reason')}")
+    lines.extend(["", "## Reply Instructions"])
+    for row in packet.get("compact_reply_instructions", []):
+        lines.append(f"- {row}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def compact_outbound_packet_summary(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "outbound_packet_id": row.get("outbound_packet_id"),
+        "generated_at": row.get("generated_at"),
+        "pack_id": row.get("pack_id"),
+        "pack_status": row.get("pack_status"),
+        "reply_ready": row.get("reply_ready"),
+        "top_item_count": len(row.get("top_items", [])),
+        "warning": row.get("minimal_warning", ""),
+    }
+
+
+def classify_gateway_inbound_operator_message(payload: dict[str, Any]) -> dict[str, Any]:
+    raw_text = str(payload.get("raw_text", ""))
+    classification = classify_compact_reply_text(raw_text)
+    if classification["classification"] == "reply_candidate":
+        return {
+            **classification,
+            "classification": "importable_compact_reply",
+            "reason": "Inbound payload matches the deterministic compact reply grammar.",
+        }
+    if classification["classification"] == "invalid_reply":
+        return {
+            **classification,
+            "reason": "Inbound payload looks like compact reply grammar but uses unsupported tokens.",
+        }
+    return {
+        **classification,
+        "reason": classification["ignore_reason"],
+    }
+
+
+def import_gateway_reply_message(
+    root: Path,
+    *,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    from runtime.core.models import new_id
+    from scripts.operator_enqueue_reply_message import enqueue_reply_message
+
+    created_at = now_iso()
+    source_message_id = str(payload.get("source_message_id", "")).strip() or new_id("opgwmsg")
+    classification = classify_gateway_inbound_operator_message(payload)
+    record = {
+        "import_id": new_id("opimport"),
+        "created_at": created_at,
+        "completed_at": None,
+        "source_kind": str(payload.get("source_kind", "gateway")),
+        "source_lane": str(payload.get("source_lane", "operator")),
+        "source_channel": str(payload.get("source_channel", "gateway")),
+        "source_message_id": source_message_id,
+        "source_user": str(payload.get("source_user", "operator")),
+        "raw_text": str(payload.get("raw_text", "")),
+        "normalized_text": classification.get("normalized_text"),
+        "reply_tokens": classification.get("reply_tokens", []),
+        "classification": classification.get("classification"),
+        "imported": False,
+        "import_reason": classification.get("reason", ""),
+        "reply_message_path": None,
+    }
+    if classification["classification"] == "importable_compact_reply":
+        enqueued = enqueue_reply_message(
+            root,
+            raw_text=record["raw_text"],
+            source_kind=record["source_kind"],
+            source_lane=record["source_lane"],
+            source_channel=record["source_channel"],
+            source_message_id=record["source_message_id"],
+            source_user=record["source_user"],
+            apply=bool(payload.get("apply", False)),
+            preview=bool(payload.get("preview", False)),
+            dry_run=bool(payload.get("dry_run", False)),
+            continue_on_failure=bool(payload.get("continue_on_failure", False)),
+        )
+        record["imported"] = True
+        record["reply_message_path"] = enqueued["path"]
+    record["completed_at"] = now_iso()
+    save_imported_reply_message_record(root, record)
+    return record
+
+
+def compact_imported_reply_message_summary(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "import_id": row.get("import_id"),
+        "source_message_id": row.get("source_message_id"),
+        "source_kind": row.get("source_kind"),
+        "source_channel": row.get("source_channel"),
+        "source_user": row.get("source_user"),
+        "classification": row.get("classification"),
+        "imported": row.get("imported", False),
+        "reply_message_path": row.get("reply_message_path"),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def list_imported_reply_messages_view(root: Path, *, limit: int = 20) -> dict[str, Any]:
+    rows = list_imported_reply_messages(root)[:limit]
+    return {
+        "generated_at": now_iso(),
+        "count": len(rows),
+        "rows": [compact_imported_reply_message_summary(row) for row in rows],
+    }
+
+
+def list_outbound_packets_view(root: Path, *, limit: int = 20) -> dict[str, Any]:
+    rows = list_outbound_packets(root)[:limit]
+    return {
+        "generated_at": now_iso(),
+        "count": len(rows),
+        "rows": [compact_outbound_packet_summary(row) for row in rows],
+    }
+
+
 def _reply_ack_guidance(result_kind: str, inbox: dict[str, Any]) -> tuple[str, list[str]]:
     if result_kind == "applied":
         return (
@@ -2304,6 +2562,378 @@ def build_operator_reply_ack_markdown(pack: dict[str, Any]) -> str:
         for row in pack.get("next_suggested_codes", []):
             lines.append(f"- {row}")
     return "\n".join(lines).strip() + "\n"
+
+
+def compact_reply_transport_cycle(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "transport_cycle_id": row.get("transport_cycle_id"),
+        "mode": row.get("mode"),
+        "dry_run": row.get("dry_run", False),
+        "ok": row.get("ok", False),
+        "attempted_count": row.get("attempted_count", 0),
+        "applied_count": row.get("applied_count", 0),
+        "blocked_count": row.get("blocked_count", 0),
+        "ignored_count": row.get("ignored_count", 0),
+        "invalid_count": row.get("invalid_count", 0),
+        "stop_reason": row.get("stop_reason", ""),
+        "outbound_prompt_pack_id": row.get("outbound_prompt_pack_id"),
+        "reply_ack_result_kind": row.get("reply_ack_result_kind"),
+        "processed_source_message_ids": row.get("processed_source_message_ids", [])[:5],
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def list_reply_transport_cycles_view(
+    root: Path,
+    *,
+    limit: int = 20,
+    failed_only: bool = False,
+    mode: str | None = None,
+) -> dict[str, Any]:
+    rows = list_reply_transport_cycles(root)
+    if failed_only:
+        rows = [row for row in rows if not row.get("ok", False)]
+    if mode:
+        rows = [row for row in rows if row.get("mode") == mode]
+    rows = rows[:limit]
+    return {
+        "generated_at": now_iso(),
+        "count": len(rows),
+        "rows": [compact_reply_transport_cycle(row) for row in rows],
+    }
+
+
+def load_reply_transport_cycle(root: Path, cycle_id: str) -> dict[str, Any] | None:
+    path = operator_reply_transport_cycles_dir(root) / f"{cycle_id}.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+    for row in list_reply_transport_cycles(root):
+        if row.get("transport_cycle_id") == cycle_id:
+            return row
+    return None
+
+
+def _load_json_file(path: Path | str | None) -> dict[str, Any] | None:
+    if not path:
+        return None
+    p = Path(path)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _load_reply_messages_for_cycle(root: Path, cycle: dict[str, Any]) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
+    for path_text in cycle.get("processed_message_paths", []):
+        payload = _load_json_file(path_text)
+        if payload is not None:
+            payload["_message_path"] = str(path_text)
+            messages.append(payload)
+    if messages:
+        return messages
+    message_rows = load_jsons(operator_reply_messages_dir(root))
+    source_ids = set(cycle.get("processed_source_message_ids", []))
+    ingress_ids = set(cycle.get("processed_ingress_ids", []))
+    for row in message_rows:
+        if row.get("source_message_id") in source_ids or row.get("ingress_id") in ingress_ids:
+            messages.append(row)
+    return messages
+
+
+def inspect_reply_transport_cycle(root: Path, *, cycle_id: str | None = None) -> dict[str, Any]:
+    rows = list_reply_transport_cycles(root)
+    cycle = load_reply_transport_cycle(root, cycle_id) if cycle_id else (rows[0] if rows else None)
+    if cycle is None:
+        return {"ok": False, "error": f"Reply transport cycle not found: {cycle_id}" if cycle_id else "No reply transport cycles found."}
+    outbound = _load_json_file(cycle.get("outbound_prompt_path"))
+    ack = _load_json_file(cycle.get("reply_ack_path"))
+    handoff = _load_json_file(cycle.get("handoff_path"))
+    ingress_run = None
+    ingress_run_id = cycle.get("reply_ingress_run_id")
+    if ingress_run_id:
+        ingress_run = _load_json_file(operator_reply_ingress_runs_dir(root) / f"{ingress_run_id}.json")
+    messages = _load_reply_messages_for_cycle(root, cycle)
+    replay_safety = classify_reply_transport_replay_safety(root, cycle=cycle, live_apply_requested=False)
+    return {
+        "ok": True,
+        "cycle": compact_reply_transport_cycle(cycle),
+        "paths": {
+            "outbound_prompt_path": cycle.get("outbound_prompt_path"),
+            "reply_ack_path": cycle.get("reply_ack_path"),
+            "handoff_path": cycle.get("handoff_path"),
+            "ingress_run_id": ingress_run_id,
+        },
+        "counts": {
+            "message_count": len(messages),
+            "processed_ingress_count": len(cycle.get("processed_ingress_ids", [])),
+            "attempted_count": cycle.get("attempted_count", 0),
+            "blocked_count": cycle.get("blocked_count", 0),
+        },
+        "stop_reason": cycle.get("stop_reason", ""),
+        "result_summary": {
+            "reply_ack_result_kind": cycle.get("reply_ack_result_kind"),
+            "outbound_prompt_pack_id": cycle.get("outbound_prompt_pack_id"),
+        },
+        "provenance": {
+            "outbound_prompt": {"path": cycle.get("outbound_prompt_path"), "pack_id": (outbound or {}).get("pack_id")},
+            "reply_ack": {"path": cycle.get("reply_ack_path"), "latest_result_kind": ((ack or {}).get("latest_reply_received") or {}).get("result_kind")},
+            "handoff": {"path": cycle.get("handoff_path"), "generated_at": (handoff or {}).get("generated_at")},
+            "ingress_run": ingress_run,
+        },
+        "replay_safety": replay_safety,
+        "messages": [
+            {
+                "source_message_id": row.get("source_message_id"),
+                "raw_text": row.get("raw_text"),
+                "apply": row.get("apply", False),
+                "preview": row.get("preview", False),
+                "dry_run": row.get("dry_run", False),
+                "processed_at": row.get("processed_at"),
+                "result_kind": row.get("result_kind"),
+            }
+            for row in messages[:10]
+        ],
+    }
+
+
+def compare_reply_transport_cycle_records(current: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    current_ids = set(current.get("processed_source_message_ids", []))
+    previous_ids = set((previous or {}).get("processed_source_message_ids", []))
+    return {
+        "current_cycle_id": current.get("transport_cycle_id"),
+        "other_cycle_id": (previous or {}).get("transport_cycle_id"),
+        "mode_changed": None if previous is None else current.get("mode") != previous.get("mode"),
+        "ok_changed": None if previous is None else current.get("ok") != previous.get("ok"),
+        "attempted_count_delta": current.get("attempted_count", 0) - ((previous or {}).get("attempted_count", 0)),
+        "applied_count_delta": current.get("applied_count", 0) - ((previous or {}).get("applied_count", 0)),
+        "blocked_count_delta": current.get("blocked_count", 0) - ((previous or {}).get("blocked_count", 0)),
+        "invalid_count_delta": current.get("invalid_count", 0) - ((previous or {}).get("invalid_count", 0)),
+        "stop_reason_before": (previous or {}).get("stop_reason"),
+        "stop_reason_after": current.get("stop_reason"),
+        "message_ids_added": sorted(current_ids - previous_ids),
+        "message_ids_removed": sorted(previous_ids - current_ids),
+        "pack_id_before": (previous or {}).get("outbound_prompt_pack_id"),
+        "pack_id_after": current.get("outbound_prompt_pack_id"),
+        "reply_ack_result_before": (previous or {}).get("reply_ack_result_kind"),
+        "reply_ack_result_after": current.get("reply_ack_result_kind"),
+    }
+
+
+def compare_reply_transport_cycles(
+    root: Path,
+    *,
+    current_cycle_id: str | None = None,
+    other_cycle_id: str | None = None,
+) -> dict[str, Any]:
+    rows = list_reply_transport_cycles(root)
+    if not rows:
+        return {"ok": False, "error": "No reply transport cycles found."}
+    current = load_reply_transport_cycle(root, current_cycle_id) if current_cycle_id else rows[0]
+    if current is None:
+        return {"ok": False, "error": f"Reply transport cycle not found: {current_cycle_id}"}
+    if other_cycle_id:
+        other = load_reply_transport_cycle(root, other_cycle_id)
+        if other is None:
+            return {"ok": False, "error": f"Reply transport cycle not found: {other_cycle_id}"}
+    else:
+        other = rows[1] if len(rows) > 1 and rows[0].get("transport_cycle_id") == current.get("transport_cycle_id") else (rows[0] if len(rows) > 1 else None)
+        if other is not None and other.get("transport_cycle_id") == current.get("transport_cycle_id"):
+            other = rows[1] if len(rows) > 1 else None
+    payload = compare_reply_transport_cycle_records(current, other)
+    latest_path = triage_logs_dir(root) / "operator_compare_reply_transport_cycles_latest.json"
+    latest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
+def classify_reply_transport_replay_safety(
+    root: Path,
+    *,
+    cycle: dict[str, Any],
+    live_apply_requested: bool,
+) -> dict[str, Any]:
+    readiness = reply_transport_readiness(root, allow_inbox_rebuild=False, limit=5)
+    messages = _load_reply_messages_for_cycle(root, cycle)
+    if not messages:
+        return {
+            "replay_allowed": False,
+            "replay_mode": "blocked",
+            "reason": "No stored inbound reply intent was found for this cycle.",
+            "would": "blocked",
+            "reply_transport_ready": readiness["ready"],
+        }
+    for row in messages:
+        classification = classify_compact_reply_text(str(row.get("raw_text", "")))
+        if classification["classification"] in {"ignored_non_reply", "invalid_reply"}:
+            return {
+                "replay_allowed": False,
+                "replay_mode": "blocked",
+                "reason": f"Stored inbound reply `{row.get('source_message_id')}` is not replay-safe.",
+                "would": "blocked",
+                "reply_transport_ready": readiness["ready"],
+            }
+        if row.get("result_kind") == "duplicate_message":
+            return {
+                "replay_allowed": False,
+                "replay_mode": "blocked",
+                "reason": "Original cycle already resolved as a duplicate message and should not be replayed as execution intent.",
+                "would": "blocked",
+                "reply_transport_ready": readiness["ready"],
+            }
+    if not readiness["ready"]:
+        return {
+            "replay_allowed": False,
+            "replay_mode": "blocked",
+            "reason": readiness["reason"],
+            "would": "blocked",
+            "reply_transport_ready": readiness["ready"],
+        }
+    mode = str(cycle.get("mode") or "plan")
+    if mode == "apply":
+        return {
+            "replay_allowed": True,
+            "replay_mode": "apply_live" if live_apply_requested else "apply_dry_run",
+            "reason": "Replay is allowed through the existing transport cycle.",
+            "would": "apply_live" if live_apply_requested else "apply_dry_run",
+            "reply_transport_ready": readiness["ready"],
+        }
+    if mode == "preview":
+        return {
+            "replay_allowed": True,
+            "replay_mode": "preview_only",
+            "reason": "Original cycle was preview-only, so replay stays preview-only.",
+            "would": "preview_only",
+            "reply_transport_ready": readiness["ready"],
+        }
+    return {
+        "replay_allowed": True,
+        "replay_mode": "plan_only",
+        "reason": "Original cycle was plan-only, so replay remains plan-only.",
+        "would": "plan_only",
+        "reply_transport_ready": readiness["ready"],
+    }
+
+
+def build_reply_transport_replay_plan(
+    root: Path,
+    *,
+    cycle_id: str,
+    live_apply_requested: bool = False,
+) -> dict[str, Any]:
+    from runtime.core.models import new_id
+
+    cycle = load_reply_transport_cycle(root, cycle_id)
+    if cycle is None:
+        payload = {"ok": False, "error": f"Reply transport cycle not found: {cycle_id}"}
+        return payload
+    messages = _load_reply_messages_for_cycle(root, cycle)
+    safety = classify_reply_transport_replay_safety(root, cycle=cycle, live_apply_requested=live_apply_requested)
+    replay_plan = {
+        "replay_plan_id": new_id("opreplyreplayplan"),
+        "created_at": now_iso(),
+        "source_transport_cycle_id": cycle.get("transport_cycle_id"),
+        "source_outbound_prompt_path": cycle.get("outbound_prompt_path"),
+        "source_reply_ingress_run_id": cycle.get("reply_ingress_run_id"),
+        "source_reply_ack_path": cycle.get("reply_ack_path"),
+        "source_handoff_path": cycle.get("handoff_path"),
+        "replay_safety": safety,
+        "ok": bool(safety.get("replay_allowed")),
+        "steps": [],
+    }
+    for index, row in enumerate(messages, start=1):
+        source_message_id = str(row.get("source_message_id") or f"cycle_msg_{index}")
+        replay_message_id = f"{source_message_id}__replay_{replay_plan['replay_plan_id']}_{index:02d}"
+        mode = safety.get("replay_mode")
+        replay_plan["steps"].append(
+            {
+                "index": index,
+                "source_message_id": source_message_id,
+                "replay_source_message_id": replay_message_id,
+                "raw_text": row.get("raw_text", ""),
+                "planned_operation_kind": mode,
+                "apply": mode in {"apply_dry_run", "apply_live"},
+                "preview": mode == "preview_only",
+                "dry_run": mode != "apply_live",
+                "continue_on_failure": bool(row.get("continue_on_failure", False)),
+                "executable": bool(safety.get("replay_allowed")),
+                "reason": safety.get("reason"),
+            }
+        )
+    save_reply_transport_replay_plan_record(root, replay_plan)
+    return replay_plan
+
+
+def execute_reply_transport_replay(
+    root: Path,
+    *,
+    cycle_id: str,
+    plan_only: bool,
+    live_apply: bool,
+    continue_on_failure: bool,
+) -> tuple[dict[str, Any], int]:
+    from runtime.core.models import new_id
+    from scripts.operator_enqueue_reply_message import enqueue_reply_message
+    from scripts.operator_reply_transport_cycle import run_operator_reply_transport_cycle
+
+    replay_plan = build_reply_transport_replay_plan(root, cycle_id=cycle_id, live_apply_requested=live_apply)
+    replay = {
+        "replay_id": new_id("opreplyreplay"),
+        "started_at": now_iso(),
+        "completed_at": None,
+        "source_transport_cycle_id": cycle_id,
+        "replay_plan_id": replay_plan.get("replay_plan_id"),
+        "live_apply_requested": live_apply,
+        "plan_only": plan_only,
+        "ok": False,
+        "replay_mode": (replay_plan.get("replay_safety") or {}).get("replay_mode"),
+        "reason": "",
+        "enqueued_message_paths": [],
+        "transport_cycle_id": None,
+    }
+    if not replay_plan.get("ok", False) or plan_only:
+        replay["ok"] = bool(replay_plan.get("ok", False))
+        replay["reason"] = "Plan only." if plan_only and replay_plan.get("ok", False) else replay_plan.get("error") or (replay_plan.get("replay_safety") or {}).get("reason", "")
+        replay["completed_at"] = now_iso()
+        save_reply_transport_replay_record(root, replay)
+        return {"ok": replay["ok"], "replay": replay, "replay_plan": replay_plan}, 0 if replay["ok"] else 1
+
+    mode = (replay_plan.get("replay_safety") or {}).get("replay_mode")
+    for step in replay_plan.get("steps", []):
+        enqueued = enqueue_reply_message(
+            root,
+            raw_text=str(step.get("raw_text", "")),
+            source_kind="replay",
+            source_lane="reply_replay",
+            source_channel="transport_replay",
+            source_message_id=str(step.get("replay_source_message_id")),
+            source_user="operator_replay",
+            apply=bool(step.get("apply")),
+            preview=bool(step.get("preview")),
+            dry_run=bool(step.get("dry_run")),
+            continue_on_failure=bool(step.get("continue_on_failure")) or continue_on_failure,
+        )
+        replay["enqueued_message_paths"].append(enqueued["path"])
+
+    transport_payload, exit_code = run_operator_reply_transport_cycle(
+        root,
+        limit=len(replay_plan.get("steps", [])),
+        apply=mode in {"apply_dry_run", "apply_live"},
+        preview=mode == "preview_only",
+        dry_run=mode != "apply_live",
+        continue_on_failure=continue_on_failure,
+        refresh_handoff=True,
+    )
+    replay["ok"] = bool(transport_payload.get("ok"))
+    replay["transport_cycle_id"] = ((transport_payload.get("transport_cycle") or {}).get("transport_cycle_id"))
+    replay["reason"] = (transport_payload.get("transport_cycle") or {}).get("stop_reason", "")
+    replay["completed_at"] = now_iso()
+    save_reply_transport_replay_record(root, replay)
+    return {"ok": replay["ok"], "replay": replay, "replay_plan": replay_plan, "transport_cycle": transport_payload}, exit_code
 
 
 def compare_inbox_snapshots(current: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:

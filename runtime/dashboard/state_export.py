@@ -74,7 +74,12 @@ def build_state_export(root: Path) -> dict:
     operator_reply_ingress_results = _load_jsons(root / "state" / "operator_reply_ingress_results")
     operator_reply_ingress_runs = _load_jsons(root / "state" / "operator_reply_ingress_runs")
     operator_reply_transport_cycles = _load_jsons(root / "state" / "operator_reply_transport_cycles")
+    operator_reply_transport_replay_plans = _load_jsons(root / "state" / "operator_reply_transport_replay_plans")
+    operator_reply_transport_replays = _load_jsons(root / "state" / "operator_reply_transport_replays")
     operator_reply_messages = _load_jsons(root / "state" / "operator_reply_messages")
+    operator_outbound_packets = _load_jsons(root / "state" / "operator_outbound_packets")
+    operator_imported_reply_messages = _load_jsons(root / "state" / "operator_imported_reply_messages")
+    operator_bridge_cycles = _load_jsons(root / "state" / "operator_bridge_cycles")
 
     summary = {
         "counts": {
@@ -111,7 +116,12 @@ def build_state_export(root: Path) -> dict:
             "operator_reply_ingress_results": len(operator_reply_ingress_results),
             "operator_reply_ingress_runs": len(operator_reply_ingress_runs),
             "operator_reply_transport_cycles": len(operator_reply_transport_cycles),
+            "operator_reply_transport_replay_plans": len(operator_reply_transport_replay_plans),
+            "operator_reply_transport_replays": len(operator_reply_transport_replays),
             "operator_reply_messages": len(operator_reply_messages),
+            "operator_outbound_packets": len(operator_outbound_packets),
+            "operator_imported_reply_messages": len(operator_imported_reply_messages),
+            "operator_bridge_cycles": len(operator_bridge_cycles),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -285,6 +295,8 @@ def build_state_export(root: Path) -> dict:
         "latest_reply_ingress_count": len(operator_reply_ingress),
         "latest_reply_ingress_run_count": len(operator_reply_ingress_runs),
         "latest_reply_transport_cycle_count": len(operator_reply_transport_cycles),
+        "latest_reply_transport_replay_plan_count": len(operator_reply_transport_replay_plans),
+        "latest_reply_transport_replay_count": len(operator_reply_transport_replays),
         "invalid_reply_count": sum(1 for row in operator_reply_plans if row.get("unknown_tokens")),
         "blocked_reply_count": sum(
             1
@@ -302,6 +314,9 @@ def build_state_export(root: Path) -> dict:
         "applied_ingress_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "applied"),
         "duplicate_ingress_count": sum(1 for row in operator_reply_ingress if row.get("result_kind") == "duplicate_message"),
         "pending_inbound_message_count": sum(1 for row in operator_reply_messages if not row.get("processed_at")),
+        "latest_outbound_packet_count": len(operator_outbound_packets),
+        "latest_imported_reply_message_count": len(operator_imported_reply_messages),
+        "latest_bridge_cycle_count": len(operator_bridge_cycles),
         "latest_ingress_source": {
             "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
             "source_channel": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_channel"),
@@ -325,12 +340,41 @@ def build_state_export(root: Path) -> dict:
             reply_ack = {}
     else:
         reply_ack = {}
+    outbound_packet_path = root / "state" / "logs" / "operator_outbound_packet_latest.json"
+    if outbound_packet_path.exists():
+        try:
+            outbound_packet = json.loads(outbound_packet_path.read_text(encoding="utf-8"))
+        except Exception:
+            outbound_packet = {}
+    else:
+        outbound_packet = {}
     summary["reply_transport_summary"] = {
         "reply_transport_ready": bool(outbound_prompt.get("reply_ready")) and outbound_prompt.get("pack_status") == "valid",
         "outbound_prompt_pack_id": outbound_prompt.get("pack_id"),
+        "outbound_packet_pack_id": outbound_packet.get("pack_id"),
         "outbound_prompt_warning": outbound_prompt.get("warning", ""),
+        "outbound_publish_ready": bool(outbound_packet.get("reply_ready")) and outbound_packet.get("pack_status") == "valid",
+        "inbound_import_ready": True,
+        "bridge_ready": bool(outbound_packet.get("reply_ready")) and outbound_packet.get("pack_status") == "valid",
         "latest_reply_ack_result_kind": ((reply_ack.get("latest_reply_received") or {}).get("result_kind")),
         "latest_reply_ack_guidance": reply_ack.get("next_guidance", ""),
+        "latest_reply_transport_replay_ok": (operator_reply_transport_replays[-1] if operator_reply_transport_replays else {}).get("ok"),
+        "latest_import_classification": (operator_imported_reply_messages[-1] if operator_imported_reply_messages else {}).get("classification"),
+        "latest_bridge_result": (operator_bridge_cycles[-1] if operator_bridge_cycles else {}).get("ok"),
+    }
+    compare_reply_transport_path = root / "state" / "logs" / "operator_compare_reply_transport_cycles_latest.json"
+    if compare_reply_transport_path.exists():
+        try:
+            compare_reply_transport = json.loads(compare_reply_transport_path.read_text(encoding="utf-8"))
+        except Exception:
+            compare_reply_transport = {}
+    else:
+        compare_reply_transport = {}
+    summary["reply_transport_compare_summary"] = {
+        "current_cycle_id": compare_reply_transport.get("current_cycle_id"),
+        "other_cycle_id": compare_reply_transport.get("other_cycle_id"),
+        "blocked_count_delta": compare_reply_transport.get("blocked_count_delta"),
+        "invalid_count_delta": compare_reply_transport.get("invalid_count_delta"),
     }
 
     out_path = root / "state" / "logs" / "state_export.json"

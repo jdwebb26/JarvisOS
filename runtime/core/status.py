@@ -174,8 +174,20 @@ def build_status(root: Path) -> dict[str, Any]:
     operator_reply_ingress_results = _load_jsons(root / "state" / "operator_reply_ingress_results")
     operator_reply_ingress_runs = _load_jsons(root / "state" / "operator_reply_ingress_runs")
     operator_reply_transport_cycles = _load_jsons(root / "state" / "operator_reply_transport_cycles")
+    operator_reply_transport_replay_plans = _load_jsons(root / "state" / "operator_reply_transport_replay_plans")
+    operator_reply_transport_replays = _load_jsons(root / "state" / "operator_reply_transport_replays")
+    operator_outbound_packets = _load_jsons(root / "state" / "operator_outbound_packets")
+    operator_imported_reply_messages = _load_jsons(root / "state" / "operator_imported_reply_messages")
+    operator_bridge_cycles = _load_jsons(root / "state" / "operator_bridge_cycles")
     from scripts.operator_checkpoint_action_pack import classify_action_pack
-    from scripts.operator_triage_support import build_decision_inbox_data, build_decision_shortlist_data, build_triage_data
+    from scripts.operator_triage_support import (
+        build_decision_inbox_data,
+        build_decision_shortlist_data,
+        build_triage_data,
+        classify_reply_transport_replay_safety,
+        gateway_operator_bridge_readiness,
+        load_reply_transport_cycle,
+    )
     control_records = [record.to_dict() for record in list_control_records(root=root)]
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
@@ -308,6 +320,11 @@ def build_status(root: Path) -> dict[str, Any]:
         "operator_reply_ingress_results": len(operator_reply_ingress_results),
         "operator_reply_ingress_runs": len(operator_reply_ingress_runs),
         "operator_reply_transport_cycles": len(operator_reply_transport_cycles),
+        "operator_reply_transport_replay_plans": len(operator_reply_transport_replay_plans),
+        "operator_reply_transport_replays": len(operator_reply_transport_replays),
+        "operator_outbound_packets": len(operator_outbound_packets),
+        "operator_imported_reply_messages": len(operator_imported_reply_messages),
+        "operator_bridge_cycles": len(operator_bridge_cycles),
     }
     triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
     decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
@@ -317,7 +334,9 @@ def build_status(root: Path) -> dict[str, Any]:
     compare_packs_path = root / "state" / "logs" / "operator_compare_packs_latest.json"
     compare_triage_path = root / "state" / "logs" / "operator_compare_triage_latest.json"
     compare_inbox_path = root / "state" / "logs" / "operator_compare_inbox_latest.json"
+    compare_reply_transport_path = root / "state" / "logs" / "operator_compare_reply_transport_cycles_latest.json"
     outbound_prompt_path = root / "state" / "logs" / "operator_outbound_prompt_latest.json"
+    outbound_packet_path = root / "state" / "logs" / "operator_outbound_packet_latest.json"
     reply_ack_path = root / "state" / "logs" / "operator_reply_ack_latest.json"
     current_command_center = None
     current_decision_manifest = None
@@ -325,7 +344,9 @@ def build_status(root: Path) -> dict[str, Any]:
     latest_compare_triage = None
     latest_compare_inbox = None
     current_outbound_prompt = None
+    current_outbound_packet = None
     current_reply_ack = None
+    latest_compare_reply_transport = None
     if command_center_path.exists():
         try:
             current_command_center = json.loads(command_center_path.read_text(encoding="utf-8"))
@@ -351,16 +372,30 @@ def build_status(root: Path) -> dict[str, Any]:
             latest_compare_inbox = json.loads(compare_inbox_path.read_text(encoding="utf-8"))
         except Exception:
             latest_compare_inbox = None
+    if compare_reply_transport_path.exists():
+        try:
+            latest_compare_reply_transport = json.loads(compare_reply_transport_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_reply_transport = None
     if outbound_prompt_path.exists():
         try:
             current_outbound_prompt = json.loads(outbound_prompt_path.read_text(encoding="utf-8"))
         except Exception:
             current_outbound_prompt = None
+    if outbound_packet_path.exists():
+        try:
+            current_outbound_packet = json.loads(outbound_packet_path.read_text(encoding="utf-8"))
+        except Exception:
+            current_outbound_packet = None
     if reply_ack_path.exists():
         try:
             current_reply_ack = json.loads(reply_ack_path.read_text(encoding="utf-8"))
         except Exception:
             current_reply_ack = None
+    latest_cycle_record = load_reply_transport_cycle(root, operator_reply_transport_cycles[-1]["transport_cycle_id"]) if operator_reply_transport_cycles else None
+    latest_cycle_replay_safety = (
+        classify_reply_transport_replay_safety(root, cycle=latest_cycle_record, live_apply_requested=False) if latest_cycle_record else None
+    )
 
     if control_records:
         next_move = "Inspect active control-state before resuming apply, promotion, or publish work."
@@ -415,6 +450,11 @@ def build_status(root: Path) -> dict[str, Any]:
             "recent_reply_ingress_result_count": len(operator_reply_ingress_results),
             "recent_reply_ingress_run_count": len(operator_reply_ingress_runs),
             "recent_reply_transport_cycle_count": len(operator_reply_transport_cycles),
+            "recent_reply_transport_replay_plan_count": len(operator_reply_transport_replay_plans),
+            "recent_reply_transport_replay_count": len(operator_reply_transport_replays),
+            "recent_outbound_packet_count": len(operator_outbound_packets),
+            "recent_imported_reply_message_count": len(operator_imported_reply_messages),
+            "recent_bridge_cycle_count": len(operator_bridge_cycles),
             "latest_queue_run": operator_queue_runs[-1] if operator_queue_runs else None,
             "latest_bulk_run": operator_bulk_runs[-1] if operator_bulk_runs else None,
             "latest_task_intervention": operator_task_interventions[-1] if operator_task_interventions else None,
@@ -424,6 +464,11 @@ def build_status(root: Path) -> dict[str, Any]:
             "latest_reply_ingress": operator_reply_ingress[-1] if operator_reply_ingress else None,
             "latest_reply_ingress_run": operator_reply_ingress_runs[-1] if operator_reply_ingress_runs else None,
             "latest_reply_transport_cycle": operator_reply_transport_cycles[-1] if operator_reply_transport_cycles else None,
+            "latest_reply_transport_replay": operator_reply_transport_replays[-1] if operator_reply_transport_replays else None,
+            "latest_outbound_packet": operator_outbound_packets[-1] if operator_outbound_packets else None,
+            "latest_imported_reply_message": operator_imported_reply_messages[-1] if operator_imported_reply_messages else None,
+            "latest_bridge_cycle": operator_bridge_cycles[-1] if operator_bridge_cycles else None,
+            "reply_transport_replay_summary": latest_cycle_replay_safety or {},
             "reply_ingress_summary": {
                 "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
                 "reply_transport_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
@@ -454,12 +499,26 @@ def build_status(root: Path) -> dict[str, Any]:
                 "warning": (current_outbound_prompt or {}).get("warning", ""),
                 "top_items": (current_outbound_prompt or {}).get("top_items", [])[:5],
             },
+            "current_outbound_packet": {
+                "generated_at": (current_outbound_packet or {}).get("generated_at"),
+                "pack_id": (current_outbound_packet or {}).get("pack_id"),
+                "pack_status": (current_outbound_packet or {}).get("pack_status"),
+                "reply_ready": (current_outbound_packet or {}).get("reply_ready"),
+                "minimal_warning": (current_outbound_packet or {}).get("minimal_warning", ""),
+                "top_items": (current_outbound_packet or {}).get("top_items", [])[:5],
+            },
             "current_reply_ack": {
                 "generated_at": (current_reply_ack or {}).get("generated_at"),
                 "latest_result_kind": ((current_reply_ack or {}).get("latest_reply_received") or {}).get("result_kind"),
                 "next_guidance": (current_reply_ack or {}).get("next_guidance", ""),
                 "next_suggested_codes": (current_reply_ack or {}).get("next_suggested_codes", [])[:5],
             },
+            "gateway_bridge_summary": {
+                **gateway_operator_bridge_readiness(root, allow_inbox_rebuild=False, limit=5),
+                "latest_import_classification": (operator_imported_reply_messages[-1] if operator_imported_reply_messages else {}).get("classification"),
+                "latest_bridge_result": (operator_bridge_cycles[-1] if operator_bridge_cycles else {}).get("ok"),
+            },
+            "latest_compare_reply_transport_cycles": latest_compare_reply_transport,
             "current_action_pack": current_action_pack,
             "current_command_center": {
                 "health_label": ((current_command_center or {}).get("now") or {}).get("control_plane_health_label"),

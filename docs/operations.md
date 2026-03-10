@@ -479,6 +479,58 @@ Use enqueue when you want to feed the file-backed inbound folder without hand-wr
 Use reply ack when you want the latest compact “what happened” summary after ingress/apply.
 Use the transport cycle when you want one explicit bounded prompt -> inbound batch -> ack loop with no daemon.
 
+To audit, compare, and replay reply transport cycles:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_reply_transport_cycles.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_explain_reply_transport_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id OPCYCLE_ID
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_compare_reply_transport_cycles.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id OPCYCLE_ID --other-cycle-id OTHER_OPCYCLE_ID
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_replay_transport_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id OPCYCLE_ID --plan-only
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_replay_transport_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id OPCYCLE_ID
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_replay_transport_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id OPCYCLE_ID --live-apply
+```
+
+Replay defaults to the safest allowed form:
+
+- original `plan` cycles replay as plan-only
+- original `preview` cycles replay as preview-only
+- original `apply` cycles replay as apply dry-run unless `--live-apply` is explicitly requested
+
+Replay never bypasses duplicate, stale, idempotency, or policy guards. It rebuilds replay intent from stored file-backed inbound rows and reuses the existing enqueue + transport-cycle wrappers.
+
+Additional durable artifacts:
+
+- `state/operator_reply_transport_replay_plans/*.json`
+- `state/operator_reply_transport_replays/*.json`
+- `state/logs/operator_compare_reply_transport_cycles_latest.json`
+
+To bridge gateway-style operator traffic into the existing reply transport path:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_publish_outbound_packet.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_import_reply_message.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --raw-text "A1" --source-kind gateway --source-channel phone --source-message-id msg_400 --apply --dry-run
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_outbound_packets.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_imported_reply_messages.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_bridge_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --import-from-folder --apply --dry-run --continue-on-failure
+```
+
+Bridge-layer durable artifacts:
+
+- `state/operator_outbound_packets/*.json`
+- `state/operator_imported_reply_messages/*.json`
+- `state/operator_gateway_inbound_messages/*.json`
+- `state/operator_bridge_cycles/*.json`
+- `state/logs/operator_outbound_packet_latest.json`
+- `state/logs/operator_outbound_packet_latest.md`
+- `state/logs/operator_import_reply_message_latest.json`
+
+Behavior rules:
+
+- outbound packet publish is read-only and never executes anything
+- reply import only classifies and converts inbound payloads into `state/operator_reply_messages/*.json`
+- only the existing reply transport cycle performs plan/preview/apply work
+- bridge cycle is explicit, bounded, file-backed, and daemon-free
+
 To compare inbox snapshots:
 
 ```bash
