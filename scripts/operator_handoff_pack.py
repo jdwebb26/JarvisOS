@@ -107,6 +107,22 @@ def _operator_action_execution_summary(rows: list[dict[str, Any]], *, limit: int
     ]
 
 
+def _operator_queue_run_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "queue_run_id": row.get("queue_run_id"),
+            "ok": row.get("ok", False),
+            "attempted_count": row.get("attempted_count", 0),
+            "succeeded_count": row.get("succeeded_count", 0),
+            "failed_count": row.get("failed_count", 0),
+            "stopped_on_action_id": row.get("stopped_on_action_id"),
+            "filters": row.get("filters", {}),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
 def _ralph_memory_summary(
     consolidation_runs: list[dict[str, Any]],
     memory_candidates: list[dict[str, Any]],
@@ -216,6 +232,14 @@ def _build_markdown(pack: dict[str, Any]) -> str:
     if not pack["recent_operator_action_executions"]:
         lines.append("- none")
 
+    lines.extend(["", "## Recent Queue Runs"])
+    for row in pack["recent_operator_queue_runs"]:
+        lines.append(
+            f"- {row['queue_run_id']}: ok={row['ok']} attempted={row['attempted_count']} failed={row['failed_count']} stopped_on={row['stopped_on_action_id']}"
+        )
+    if not pack["recent_operator_queue_runs"]:
+        lines.append("- none")
+
     lines.extend(["", "## Pending Review / Approval"])
     for row in pack["pending_review_items"]:
         lines.append(f"- review {row['review_id']} task={row['task_id']} reviewer={row['reviewer_role']} summary={row['summary']}")
@@ -255,6 +279,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     consolidation_runs = _load_jsons(root / "state" / "consolidation_runs")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
     operator_action_executions = _load_jsons(root / "state" / "operator_action_executions")
+    operator_queue_runs = _load_jsons(root / "state" / "operator_queue_runs")
     recent_task_status = task_board["rows"][:limit]
     for row in recent_task_status:
         latest_success = latest_successful_action_for_task(root, row["task_id"])
@@ -272,6 +297,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "latest_trace_summary": _trace_summary(run_traces, limit=limit),
         "latest_eval_summary": _eval_summary(eval_results, limit=limit),
         "recent_operator_action_executions": _operator_action_execution_summary(operator_action_executions, limit=limit),
+        "recent_operator_queue_runs": _operator_queue_run_summary(operator_queue_runs, limit=limit),
         "pending_review_items": review_inbox["pending_reviews"],
         "pending_approval_items": review_inbox["pending_approvals"],
         "ralph_memory_summary": _ralph_memory_summary(consolidation_runs, memory_candidates, limit=limit),

@@ -197,6 +197,25 @@ To explicitly replay the latest successful action:
 python3 scripts/operator_resume_action.py --task-id TASK_ID --replay-success
 ```
 
+To run the current recommended checkpoint actions as a bounded queue:
+
+```bash
+python3 scripts/operator_queue_runner.py
+```
+
+Useful filters:
+
+```bash
+python3 scripts/operator_queue_runner.py --task-id TASK_ID
+python3 scripts/operator_queue_runner.py --category memory_candidate
+python3 scripts/operator_queue_runner.py --max-actions 3 --dry-run
+python3 scripts/operator_queue_runner.py --continue-on-failure
+```
+
+Queue-run records are written to:
+
+- `state/operator_queue_runs/*.json`
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.
