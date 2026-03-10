@@ -143,6 +143,27 @@ The handoff pack summarizes:
 - latest Ralph digest and memory candidate activity
 - recommended next operator actions
 
+## Checkpoint Action Pack
+
+When you want copy-paste commands for the next manual checkpoint decisions, run:
+
+```bash
+python3 scripts/operator_checkpoint_action_pack.py
+```
+
+This writes:
+
+- `state/logs/operator_checkpoint_action_pack.json`
+- `state/logs/operator_checkpoint_action_pack.md`
+
+The action pack includes:
+
+- pending review commands
+- pending approval commands
+- memory promote/reject/supersede commands
+- artifact inspection and follow-up commands where task state makes them relevant
+- a recommended execution order
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.
