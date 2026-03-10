@@ -75,6 +75,7 @@ REQUIRED_FILES = [
     "scripts/bootstrap.py",
     "scripts/doctor.py",
     "scripts/generate_config.py",
+    "scripts/overnight_operator_run.py",
     "scripts/smoke_test.py",
     "scripts/validate.py",
     "runtime/core/intake.py",

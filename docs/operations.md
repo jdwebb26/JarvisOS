@@ -71,6 +71,56 @@ After the baseline is green:
 
 Use [docs/operator-first-run.md](docs/operator-first-run.md) as the first-live operator checklist.
 
+## Overnight Operator Flow Tonight
+
+Use the thin orchestration wrapper when you want one bounded happy-path run over the new v5.1 subsystems.
+
+Hermes -> replay eval -> Ralph -> memory retrieval:
+
+```bash
+python3 scripts/overnight_operator_run.py \
+  --task-id TASK_ID \
+  --flow hermes \
+  --include-candidate-memory \
+  --hermes-response-file /tmp/hermes_response.json
+```
+
+Autoresearch -> Ralph -> memory retrieval:
+
+```bash
+python3 scripts/overnight_operator_run.py \
+  --task-id TASK_ID \
+  --flow research \
+  --objective "Improve benchmark score on the bounded slice" \
+  --objective-metric accuracy \
+  --primary-metric accuracy \
+  --include-candidate-memory \
+  --research-response-file /tmp/research_runs.json
+```
+
+What this wrapper does:
+
+- calls the existing gateway wrappers only
+- returns one stable JSON object with `steps`, `summary`, `ok`, and `failed_step`
+- stops at the first failing step and reports where it failed
+- respects the existing control-state, review, approval, and promotion rules because it does not bypass subsystem gateways
+
+What it does not do:
+
+- it does not auto-promote artifacts or memory
+- it does not auto-clear review or approval queues
+- it does not schedule recurring runs or start background daemons
+
+If you want promoted memory after the run, do that explicitly:
+
+```bash
+python3 runtime/gateway/memory_decision.py \
+  --action promote \
+  --memory-candidate-id MEMCAND_ID \
+  --reason "Approved for promoted retrieval" \
+  --confidence-score 0.85
+```
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.
