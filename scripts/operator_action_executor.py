@@ -21,33 +21,38 @@ from scripts.operator_action_ledger import (
     latest_successful_action_for_action_id,
     save_execution_record,
 )
-from scripts.operator_checkpoint_action_pack import build_operator_checkpoint_action_pack
+from scripts.operator_checkpoint_action_pack import resolve_action_pack
 
 
-def _load_or_build_action_pack(root: Path, *, limit: int) -> tuple[dict[str, Any], Path]:
-    pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
-    if pack_path.exists():
-        try:
-            return json.loads(pack_path.read_text(encoding="utf-8")), pack_path
-        except Exception:
-            pass
-    result = build_operator_checkpoint_action_pack(root, limit=limit)
-    return result["pack"], Path(result["json_path"])
-
-
-def _base_record(*, action_id: str, action: dict[str, Any] | None, action_pack_path: Path, dry_run: bool) -> dict[str, Any]:
+def _base_record(
+    *,
+    action_id: str,
+    action: dict[str, Any] | None,
+    action_pack_path: Path,
+    dry_run: bool,
+    invoked_by: str,
+) -> dict[str, Any]:
     command = action.get("command", {}) if action else {}
     return {
         "execution_id": new_id("opexec"),
         "action_id": action_id,
+        "invoked_by": invoked_by,
         "selected_action": action,
         "source_action_pack_path": str(action_pack_path),
+        "source_action_pack_id": None,
+        "source_action_pack_fingerprint": None,
+        "source_action_pack_validation_status": "",
+        "source_action_pack_resolution": "",
+        "source_action_pack_rebuild_reason": "",
+        "source_action_pack_requested_explicit": False,
         "command_argv": list(command.get("argv", [])),
         "command_string": str(command.get("command", "")),
         "started_at": now_iso(),
         "completed_at": None,
         "success": False,
         "failure": False,
+        "failure_kind": "",
+        "failure_reason": "",
         "dry_run": dry_run,
         "return_code": None,
         "ack_summary": "",
@@ -178,15 +183,29 @@ def execute_selected_action(
     action_id: str,
     action: dict[str, Any],
     action_pack_path: Path,
+    invoked_by: str = "executor",
     dry_run: bool = False,
     force: bool = False,
+    source_action_pack_id: str | None = None,
+    source_action_pack_fingerprint: str | None = None,
+    source_action_pack_validation_status: str = "valid",
+    source_action_pack_resolution: str = "current",
+    source_action_pack_rebuild_reason: str = "",
+    source_action_pack_requested_explicit: bool = False,
 ) -> tuple[dict[str, Any], int]:
     record = _base_record(
         action_id=action_id,
         action=action,
         action_pack_path=action_pack_path,
         dry_run=dry_run,
+        invoked_by=invoked_by,
     )
+    record["source_action_pack_id"] = source_action_pack_id
+    record["source_action_pack_fingerprint"] = source_action_pack_fingerprint
+    record["source_action_pack_validation_status"] = source_action_pack_validation_status
+    record["source_action_pack_resolution"] = source_action_pack_resolution
+    record["source_action_pack_rebuild_reason"] = source_action_pack_rebuild_reason
+    record["source_action_pack_requested_explicit"] = source_action_pack_requested_explicit
 
     previous_success = None if dry_run else latest_successful_action_for_action_id(root, action_id)
     if previous_success is not None and not force:
@@ -202,6 +221,8 @@ def execute_selected_action(
             stdout_snapshot="",
             stderr_snapshot=stderr_snapshot,
         )
+        record["failure_kind"] = "already_executed"
+        record["failure_reason"] = stderr_snapshot
         save_execution_record(root, record)
         payload = {
             "ok": False,
@@ -228,6 +249,8 @@ def execute_selected_action(
             stdout_snapshot="",
             stderr_snapshot=failure_reason,
         )
+        record["failure_kind"] = failure_kind
+        record["failure_reason"] = failure_reason
         save_execution_record(root, record)
         payload = {
             "ok": False,
@@ -281,6 +304,8 @@ def execute_selected_action(
             stdout_snapshot=str(detail_payload.get("stdout", "")),
             stderr_snapshot=str(detail_payload.get("stderr", "")),
         )
+        record["failure_kind"] = "command_failed"
+        record["failure_reason"] = str(detail_payload.get("stderr", "") or detail_payload.get("stdout", "") or detail_payload)
         save_execution_record(root, record)
         payload = {
             "ok": False,
@@ -320,10 +345,54 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=10, help="Action-pack rebuild limit if the pack is missing")
     parser.add_argument("--dry-run", action="store_true", help="Resolve and log the action without executing the command")
     parser.add_argument("--force", action="store_true", help="Re-execute an action even if it already succeeded previously")
+    parser.add_argument("--action-pack-path", default="", help="Explicit action pack JSON path to use without rebuilding")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
-    pack, pack_path = _load_or_build_action_pack(root, limit=args.limit)
+    explicit_pack_path = Path(args.action_pack_path).resolve() if args.action_pack_path else None
+    pack, pack_path, pack_meta, pack_error = resolve_action_pack(
+        root,
+        limit=args.limit,
+        explicit_pack_path=explicit_pack_path,
+    )
+    if pack_error is not None or pack is None:
+        failure_kind = "expired_pack" if pack_meta.get("status") == "expired" else "pinned_pack_validation_failed"
+        record = _base_record(
+            action_id=args.action_id,
+            action=None,
+            action_pack_path=pack_path,
+            dry_run=args.dry_run,
+            invoked_by="executor",
+        )
+        record["source_action_pack_validation_status"] = pack_meta.get("status", "")
+        record["source_action_pack_resolution"] = pack_meta.get("resolution", "")
+        record["source_action_pack_rebuild_reason"] = pack_meta.get("rebuild_reason") or ""
+        record["source_action_pack_requested_explicit"] = bool(pack_meta.get("requested_explicit"))
+        _complete_record(
+            record,
+            success=False,
+            return_code=1,
+            ack_summary="",
+            stdout_snapshot="",
+            stderr_snapshot=pack_error or "Unable to load action pack.",
+        )
+        record["failure_kind"] = failure_kind
+        record["failure_reason"] = pack_error or "Unable to load action pack."
+        save_execution_record(root, record)
+        payload = {
+            "ok": False,
+            "error": pack_error or "Unable to load action pack.",
+            "failure": {
+                "kind": failure_kind,
+                "error": pack_error or "Unable to load action pack.",
+            },
+            "action_id": args.action_id,
+            "action_pack_path": str(pack_path),
+            "action_pack_validation": pack_meta,
+            "execution_record": record,
+        }
+        print(json.dumps(payload, indent=2))
+        return 1
     action = pack.get("action_index", {}).get(args.action_id)
     if action is None:
         record = _base_record(
@@ -331,7 +400,14 @@ def main() -> int:
             action=None,
             action_pack_path=pack_path,
             dry_run=args.dry_run,
+            invoked_by="executor",
         )
+        record["source_action_pack_id"] = pack.get("action_pack_id")
+        record["source_action_pack_fingerprint"] = pack.get("action_pack_fingerprint")
+        record["source_action_pack_validation_status"] = pack_meta.get("status", "")
+        record["source_action_pack_resolution"] = pack_meta.get("resolution", "")
+        record["source_action_pack_rebuild_reason"] = pack_meta.get("rebuild_reason") or ""
+        record["source_action_pack_requested_explicit"] = bool(pack_meta.get("requested_explicit"))
         _complete_record(
             record,
             success=False,
@@ -340,12 +416,15 @@ def main() -> int:
             stdout_snapshot="",
             stderr_snapshot=f"Action id not found: {args.action_id}",
         )
+        record["failure_kind"] = "action_not_found"
+        record["failure_reason"] = f"Action id not found: {args.action_id}"
         save_execution_record(root, record)
         payload = {
             "ok": False,
             "error": f"Action id not found: {args.action_id}",
             "action_id": args.action_id,
             "action_pack_path": str(pack_path),
+            "action_pack_validation": pack_meta,
             "execution_record": record,
         }
         print(json.dumps(payload, indent=2))
@@ -358,7 +437,14 @@ def main() -> int:
         action_pack_path=pack_path,
         dry_run=args.dry_run,
         force=args.force,
+        source_action_pack_id=pack.get("action_pack_id"),
+        source_action_pack_fingerprint=pack.get("action_pack_fingerprint"),
+        source_action_pack_validation_status=pack_meta.get("status", "valid"),
+        source_action_pack_resolution=pack_meta.get("resolution", "current"),
+        source_action_pack_rebuild_reason=pack_meta.get("rebuild_reason") or "",
+        source_action_pack_requested_explicit=bool(pack_meta.get("requested_explicit")),
     )
+    payload["action_pack_validation"] = pack_meta
     print(json.dumps(payload, indent=2))
     return exit_code
 

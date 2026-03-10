@@ -109,6 +109,66 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
             "--dry-run",
         ]
     )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_bulk_action_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--category",
+            "pending_review",
+            "--dry-run",
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_task_intervene.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task_review.task_id,
+            "--dry-run",
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_safe_autofix.py"),
+            "--root",
+            str(tmp_path),
+            "--dry-run-top-action",
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_decision_inbox.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_reply_plan.py"),
+            "--root",
+            str(tmp_path),
+            "--reply",
+            "A1",
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_apply_reply.py"),
+            "--root",
+            str(tmp_path),
+            "--reply",
+            "A1",
+            "--dry-run",
+        ]
+    )
 
     payload = _run_json(
         [
@@ -132,6 +192,17 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
     assert pack["latest_trace_summary"]
     assert pack["latest_eval_summary"]
     assert pack["recent_operator_action_executions"]
+    assert pack["recent_operator_bulk_runs"]
+    assert pack["recent_operator_task_interventions"]
+    assert pack["recent_operator_safe_autofix_runs"]
+    assert pack["current_action_pack"]["status"] == "valid"
+    assert pack["operator_control_plane_counts"]
+    assert pack["triage_summary"]["control_plane_health_summary"]
+    assert pack["command_center_summary"]["health_label"] in {"green", "yellow", "red"}
+    assert "ranked_next_commands" in pack["decision_manifest_summary"]
+    assert pack["decision_inbox_summary"]["reply_ready"] in {True, False}
+    assert pack["latest_reply_plan"] is not None
+    assert pack["latest_reply_apply"] is not None
     assert any(
         row.get("last_successful_operator_action") or row.get("last_failed_operator_action")
         for row in pack["recent_task_status"]

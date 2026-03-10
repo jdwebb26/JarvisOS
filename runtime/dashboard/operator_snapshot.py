@@ -84,6 +84,16 @@ def build_operator_snapshot(root: Path) -> dict:
         if item.get("processing_status") == "awaiting_promotion_approval"
     ]
 
+    from scripts.operator_checkpoint_action_pack import classify_action_pack
+
+    current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
+    current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
+    if current_action_pack_path.exists():
+        try:
+            current_action_pack = {"path": str(current_action_pack_path), **classify_action_pack(json.loads(current_action_pack_path.read_text(encoding="utf-8")))}
+        except Exception as exc:
+            current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "reason": str(exc), "fresh": False}
+
     candidate_apply_ready = [
         {
             "task_id": task["task_id"],
@@ -125,6 +135,12 @@ def build_operator_snapshot(root: Path) -> dict:
 
     snapshot = {
         "status": status,
+        "operator_control_plane": status.get("operator_control_plane", {}),
+        "current_action_pack": current_action_pack,
+        "current_command_center": (status.get("operator_control_plane", {}) or {}).get("current_command_center", {}),
+        "current_decision_manifest": (status.get("operator_control_plane", {}) or {}).get("current_decision_manifest", {}),
+        "current_decision_inbox": (status.get("operator_control_plane", {}) or {}).get("current_decision_inbox", {}),
+        "current_decision_shortlist": (status.get("operator_control_plane", {}) or {}).get("current_decision_shortlist", {}),
         "pending_reviews": pending_reviews,
         "pending_approvals": pending_approvals,
         "candidate_apply_ready": candidate_apply_ready,
@@ -147,6 +163,11 @@ def build_operator_snapshot(root: Path) -> dict:
             "stopped_controls": status.get("counts", {}).get("stopped_controls", 0),
             "degraded_controls": status.get("counts", {}).get("degraded_controls", 0),
             "revoked_controls": status.get("counts", {}).get("revoked_controls", 0),
+            "operator_action_executions": status.get("counts", {}).get("operator_action_executions", 0),
+            "operator_queue_runs": status.get("counts", {}).get("operator_queue_runs", 0),
+            "operator_bulk_runs": status.get("counts", {}).get("operator_bulk_runs", 0),
+            "operator_task_interventions": status.get("counts", {}).get("operator_task_interventions", 0),
+            "operator_safe_autofix_runs": status.get("counts", {}).get("operator_safe_autofix_runs", 0),
         },
     }
 

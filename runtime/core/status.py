@@ -163,7 +163,23 @@ def build_status(root: Path) -> dict[str, Any]:
     approvals = _load_jsons(root / "state" / "approvals")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
     memory_retrievals = _load_jsons(root / "state" / "memory_retrievals")
+    operator_action_executions = _load_jsons(root / "state" / "operator_action_executions")
+    operator_queue_runs = _load_jsons(root / "state" / "operator_queue_runs")
+    operator_bulk_runs = _load_jsons(root / "state" / "operator_bulk_runs")
+    operator_task_interventions = _load_jsons(root / "state" / "operator_task_interventions")
+    operator_safe_autofix_runs = _load_jsons(root / "state" / "operator_safe_autofix_runs")
+    operator_reply_plans = _load_jsons(root / "state" / "operator_reply_plans")
+    operator_reply_applies = _load_jsons(root / "state" / "operator_reply_applies")
+    from scripts.operator_checkpoint_action_pack import classify_action_pack
+    from scripts.operator_triage_support import build_decision_inbox_data, build_decision_shortlist_data, build_triage_data
     control_records = [record.to_dict() for record in list_control_records(root=root)]
+    current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
+    current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
+    if current_action_pack_path.exists():
+        try:
+            current_action_pack = {"path": str(current_action_pack_path), **classify_action_pack(json.loads(current_action_pack_path.read_text(encoding="utf-8")))}
+        except Exception as exc:
+            current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "reason": str(exc), "fresh": False}
     paused_controls = [row for row in control_records if row.get("run_state") == "paused"]
     stopped_controls = [row for row in control_records if row.get("run_state") == "stopped"]
     degraded_controls = [row for row in control_records if row.get("safety_mode") == "degraded"]
@@ -277,7 +293,52 @@ def build_status(root: Path) -> dict[str, Any]:
         "stopped_controls": len(stopped_controls),
         "degraded_controls": len(degraded_controls),
         "revoked_controls": len(revoked_controls),
+        "operator_action_executions": len(operator_action_executions),
+        "operator_queue_runs": len(operator_queue_runs),
+        "operator_bulk_runs": len(operator_bulk_runs),
+        "operator_task_interventions": len(operator_task_interventions),
+        "operator_safe_autofix_runs": len(operator_safe_autofix_runs),
+        "operator_reply_plans": len(operator_reply_plans),
+        "operator_reply_applies": len(operator_reply_applies),
     }
+    triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
+    decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
+    decision_shortlist = build_decision_shortlist_data(root, limit=5, allow_inbox_rebuild=False)
+    command_center_path = root / "state" / "logs" / "operator_command_center.json"
+    decision_manifest_path = root / "state" / "logs" / "operator_decision_manifest.json"
+    compare_packs_path = root / "state" / "logs" / "operator_compare_packs_latest.json"
+    compare_triage_path = root / "state" / "logs" / "operator_compare_triage_latest.json"
+    compare_inbox_path = root / "state" / "logs" / "operator_compare_inbox_latest.json"
+    current_command_center = None
+    current_decision_manifest = None
+    latest_compare_packs = None
+    latest_compare_triage = None
+    latest_compare_inbox = None
+    if command_center_path.exists():
+        try:
+            current_command_center = json.loads(command_center_path.read_text(encoding="utf-8"))
+        except Exception:
+            current_command_center = None
+    if decision_manifest_path.exists():
+        try:
+            current_decision_manifest = json.loads(decision_manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            current_decision_manifest = None
+    if compare_packs_path.exists():
+        try:
+            latest_compare_packs = json.loads(compare_packs_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_packs = None
+    if compare_triage_path.exists():
+        try:
+            latest_compare_triage = json.loads(compare_triage_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_triage = None
+    if compare_inbox_path.exists():
+        try:
+            latest_compare_inbox = json.loads(compare_inbox_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_inbox = None
 
     if control_records:
         next_move = "Inspect active control-state before resuming apply, promotion, or publish work."
@@ -319,6 +380,44 @@ def build_status(root: Path) -> dict[str, Any]:
             "stopped": stopped_controls,
             "degraded": degraded_controls,
             "revoked": revoked_controls,
+        },
+        "operator_control_plane": {
+            "recent_execution_count": len(operator_action_executions),
+            "recent_queue_run_count": len(operator_queue_runs),
+            "recent_bulk_run_count": len(operator_bulk_runs),
+            "recent_task_intervention_count": len(operator_task_interventions),
+            "recent_safe_autofix_run_count": len(operator_safe_autofix_runs),
+            "recent_reply_plan_count": len(operator_reply_plans),
+            "recent_reply_apply_count": len(operator_reply_applies),
+            "latest_queue_run": operator_queue_runs[-1] if operator_queue_runs else None,
+            "latest_bulk_run": operator_bulk_runs[-1] if operator_bulk_runs else None,
+            "latest_task_intervention": operator_task_interventions[-1] if operator_task_interventions else None,
+            "latest_safe_autofix_run": operator_safe_autofix_runs[-1] if operator_safe_autofix_runs else None,
+            "latest_reply_plan": operator_reply_plans[-1] if operator_reply_plans else None,
+            "latest_reply_apply": operator_reply_applies[-1] if operator_reply_applies else None,
+            "current_action_pack": current_action_pack,
+            "current_command_center": {
+                "health_label": ((current_command_center or {}).get("now") or {}).get("control_plane_health_label"),
+                "top_next_commands": (current_command_center or {}).get("next_actions", [])[:5],
+                "recent_deltas": (current_command_center or {}).get("recent_deltas", {}),
+            },
+            "current_decision_manifest": {
+                "ranked_next_commands": (current_decision_manifest or {}).get("ranked_next_commands", [])[:5],
+                "do_not_run_items": (current_decision_manifest or {}).get("do_not_run_items", [])[:5],
+            },
+            "current_decision_inbox": {
+                "reply_ready": decision_inbox.get("reply_ready"),
+                "top_items": decision_inbox.get("items", [])[:5],
+            },
+            "current_decision_shortlist": decision_shortlist,
+            "latest_compare_packs": latest_compare_packs,
+            "latest_compare_triage": latest_compare_triage,
+            "latest_compare_inbox": latest_compare_inbox,
+            "triage_summary": {
+                "control_plane_health_summary": triage_summary.get("control_plane_health_summary", {}),
+                "repeated_problem_detectors": triage_summary.get("repeated_problem_detectors", {}),
+                "recommended_operator_interventions": triage_summary.get("recommended_operator_interventions", [])[:5],
+            },
         },
         "counts": counts,
         "next_recommended_move": next_move,

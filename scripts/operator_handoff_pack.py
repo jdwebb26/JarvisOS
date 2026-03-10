@@ -101,6 +101,10 @@ def _operator_action_execution_summary(rows: list[dict[str, Any]], *, limit: int
             "success": row.get("success", False),
             "return_code": row.get("return_code"),
             "ack_summary": row.get("ack_summary", ""),
+            "failure_kind": row.get("failure_kind", ""),
+            "source_action_pack_id": row.get("source_action_pack_id"),
+            "source_action_pack_validation_status": row.get("source_action_pack_validation_status"),
+            "source_action_pack_resolution": row.get("source_action_pack_resolution"),
             "completed_at": row.get("completed_at"),
         }
         for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
@@ -111,6 +115,11 @@ def _operator_queue_run_summary(rows: list[dict[str, Any]], *, limit: int) -> li
     return [
         {
             "queue_run_id": row.get("queue_run_id"),
+            "source_action_pack_id": row.get("source_action_pack_id"),
+            "source_action_pack_fingerprint": row.get("source_action_pack_fingerprint"),
+            "source_action_pack_validation_status": row.get("source_action_pack_validation_status"),
+            "source_action_pack_resolution": row.get("source_action_pack_resolution"),
+            "source_action_pack_rebuild_reason": row.get("source_action_pack_rebuild_reason", ""),
             "ok": row.get("ok", False),
             "attempted_count": row.get("attempted_count", 0),
             "succeeded_count": row.get("succeeded_count", 0),
@@ -125,6 +134,94 @@ def _operator_queue_run_summary(rows: list[dict[str, Any]], *, limit: int) -> li
             "filters": row.get("filters", {}),
             "policy_summary": row.get("policy_summary", {}),
             "recent_skip_reasons": [item.get("skip_reason", "") for item in row.get("skipped_actions", [])[:3]],
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
+def _operator_bulk_run_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "bulk_run_id": row.get("bulk_run_id"),
+            "source_action_pack_id": row.get("source_action_pack_id"),
+            "source_action_pack_validation_status": row.get("pack_validation_status"),
+            "source_action_pack_resolution": row.get("pack_resolution"),
+            "source_action_pack_rebuild_reason": row.get("pack_rebuild_reason", ""),
+            "ok": row.get("ok", False),
+            "attempted_count": row.get("attempted_count", 0),
+            "succeeded_count": row.get("succeeded_count", 0),
+            "failed_count": row.get("failed_count", 0),
+            "skipped_count": row.get("skipped_count", 0),
+            "policy_skipped_count": sum(1 for item in row.get("skipped_actions", []) if item.get("skip_kind") == "policy"),
+            "idempotency_skipped_count": sum(1 for item in row.get("skipped_actions", []) if item.get("skip_kind") == "idempotency"),
+            "stale_skipped_count": sum(1 for item in row.get("skipped_actions", []) if item.get("skip_kind") == "stale_action"),
+            "stop_reason": row.get("stop_reason", ""),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
+def _task_intervention_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "intervention_id": row.get("intervention_id"),
+            "task_id": row.get("task_id"),
+            "dry_run": row.get("dry_run", False),
+            "selected_action_id": row.get("selected_action_id"),
+            "source_action_pack_id": row.get("source_action_pack_id"),
+            "source_action_pack_validation_status": row.get("source_action_pack_validation_status"),
+            "ok": row.get("ok", False),
+            "execution_record_id": row.get("execution_record_id"),
+            "blocker_summary": row.get("blocker_summary", []),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
+def _safe_autofix_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "autofix_run_id": row.get("autofix_run_id"),
+            "ok": row.get("ok", False),
+            "rebuild_happened": row.get("rebuild_happened", False),
+            "safe_action_selected": row.get("safe_action_selected"),
+            "safe_action_executed": row.get("safe_action_executed", False),
+            "safe_action_dry_run": row.get("safe_action_dry_run", False),
+            "execution_record_id": row.get("execution_record_id"),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
+def _reply_plan_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "plan_id": row.get("plan_id"),
+            "reply_string": row.get("reply_string"),
+            "ok": row.get("ok", False),
+            "unknown_tokens": row.get("unknown_tokens", []),
+            "step_count": len(row.get("steps", [])),
+            "created_at": row.get("created_at"),
+        }
+        for row in _sort_recent(rows, "created_at", "started_at")[:limit]
+    ]
+
+
+def _reply_apply_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "reply_apply_id": row.get("reply_apply_id"),
+            "reply_string": row.get("reply_string"),
+            "ok": row.get("ok", False),
+            "attempted_count": row.get("attempted_count", 0),
+            "succeeded_count": row.get("succeeded_count", 0),
+            "failed_count": row.get("failed_count", 0),
+            "skipped_count": row.get("skipped_count", 0),
+            "stop_reason": row.get("stop_reason", ""),
             "completed_at": row.get("completed_at"),
         }
         for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
@@ -235,7 +332,7 @@ def _build_markdown(pack: dict[str, Any]) -> str:
     lines.extend(["", "## Recent Operator Actions"])
     for row in pack["recent_operator_action_executions"]:
         lines.append(
-            f"- {row['execution_id']}: action={row['action_id']} success={row['success']} dry_run={row['dry_run']} ack={row['ack_summary']}"
+            f"- {row['execution_id']}: action={row['action_id']} success={row['success']} dry_run={row['dry_run']} pack={row['source_action_pack_id']} status={row['source_action_pack_validation_status']} ack={row['ack_summary']}"
         )
     if not pack["recent_operator_action_executions"]:
         lines.append("- none")
@@ -252,6 +349,67 @@ def _build_markdown(pack: dict[str, Any]) -> str:
             lines.append(f"  skips={row['recent_skip_reasons']}")
     if not pack["recent_operator_queue_runs"]:
         lines.append("- none")
+
+    lines.extend(["", "## Recent Bulk Runs"])
+    for row in pack["recent_operator_bulk_runs"]:
+        lines.append(
+            f"- {row['bulk_run_id']}: ok={row['ok']} attempted={row['attempted_count']} failed={row['failed_count']} skipped={row['skipped_count']} pack={row['source_action_pack_id']} status={row['source_action_pack_validation_status']} stop_reason={row['stop_reason']}"
+        )
+    if not pack["recent_operator_bulk_runs"]:
+        lines.append("- none")
+
+    lines.extend(["", "## Recent Task Interventions"])
+    for row in pack["recent_operator_task_interventions"]:
+        lines.append(
+            f"- {row['intervention_id']}: task={row['task_id']} ok={row['ok']} dry_run={row['dry_run']} action={row['selected_action_id']} blockers={row['blocker_summary']}"
+        )
+    if not pack["recent_operator_task_interventions"]:
+        lines.append("- none")
+
+    lines.extend(["", "## Recent Safe Autofix Runs"])
+    for row in pack["recent_operator_safe_autofix_runs"]:
+        lines.append(
+            f"- {row['autofix_run_id']}: ok={row['ok']} rebuild={row['rebuild_happened']} selected={row['safe_action_selected']} executed={row['safe_action_executed']} dry_run={row['safe_action_dry_run']}"
+        )
+    if not pack["recent_operator_safe_autofix_runs"]:
+        lines.append("- none")
+
+    lines.extend(["", "## Triage Summary"])
+    triage_summary = pack.get("triage_summary", {})
+    health = triage_summary.get("control_plane_health_summary", {})
+    lines.append(
+        f"- pending_reviews={health.get('pending_review_count')} pending_approvals={health.get('pending_approval_count')} candidate_memory={health.get('candidate_memory_count')} queue_failures={health.get('queue_failure_count')} bulk_failures={health.get('bulk_failure_count')}"
+    )
+    repeated = triage_summary.get("repeated_problem_detectors", {})
+    lines.append(
+        f"- repeated_stale={len(repeated.get('repeated_stale_actions', []))} repeated_idempotency={len(repeated.get('repeated_idempotency_skips', []))} repeated_pinned_failures={len(repeated.get('repeated_pinned_pack_validation_failures', []))} repeated_expired={len(repeated.get('repeated_expired_pack_refusals', []))}"
+    )
+
+    lines.extend(["", "## Command Center"])
+    cc = pack.get("command_center_summary", {})
+    lines.append(f"- health={cc.get('health_label')}")
+    for row in cc.get("top_next_commands", []):
+        lines.append(f"- next {row.get('command_id')}: {row.get('category')} task={row.get('task_id')} action={row.get('action_id')}")
+
+    lines.extend(["", "## Decision Manifest"])
+    manifest = pack.get("decision_manifest_summary", {})
+    lines.append(
+        f"- pack={manifest.get('current_pack_identity', {}).get('action_pack_id')} status={manifest.get('current_pack_identity', {}).get('status')}"
+    )
+    for row in manifest.get("do_not_run_items", []):
+        lines.append(f"- do_not_run task={row.get('task_id')} action={row.get('action_id')} reason={row.get('reason')}")
+
+    lines.extend(["", "## Decision Inbox"])
+    inbox = pack.get("decision_inbox_summary", {})
+    lines.append(f"- reply_ready={inbox.get('reply_ready')} safe_items={inbox.get('reply_safe_item_count')} pack={inbox.get('pack_id')} status={inbox.get('pack_status')}")
+    for row in inbox.get("top_items", []):
+        lines.append(f"- {row.get('default_reply_code')} task={row.get('task_id')} category={row.get('category')} reason={row.get('brief_reason')}")
+
+    lines.extend(["", "## Action Pack"])
+    action_pack = pack.get("current_action_pack", {})
+    lines.append(
+        f"- current={action_pack.get('action_pack_id')} status={action_pack.get('status')} expires_at={action_pack.get('expires_at')} ttl={action_pack.get('recommended_ttl_seconds')}"
+    )
 
     lines.extend(["", "## Pending Review / Approval"])
     for row in pack["pending_review_items"]:
@@ -293,12 +451,82 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
     operator_action_executions = _load_jsons(root / "state" / "operator_action_executions")
     operator_queue_runs = _load_jsons(root / "state" / "operator_queue_runs")
+    operator_bulk_runs = _load_jsons(root / "state" / "operator_bulk_runs")
+    operator_task_interventions = _load_jsons(root / "state" / "operator_task_interventions")
+    operator_safe_autofix_runs = _load_jsons(root / "state" / "operator_safe_autofix_runs")
+    operator_reply_plans = _load_jsons(root / "state" / "operator_reply_plans")
+    operator_reply_applies = _load_jsons(root / "state" / "operator_reply_applies")
     recent_task_status = task_board["rows"][:limit]
     for row in recent_task_status:
         latest_success = latest_successful_action_for_task(root, row["task_id"])
         latest_failed = latest_failed_action_for_task(root, row["task_id"])
         row["last_successful_operator_action"] = latest_success
         row["last_failed_operator_action"] = latest_failed
+
+    from scripts.operator_checkpoint_action_pack import classify_action_pack
+    from scripts.operator_triage_support import (
+        build_decision_inbox_data,
+        build_decision_shortlist_data,
+        build_triage_data,
+    )
+    from scripts.operator_triage_support import build_command_center_data, build_decision_manifest_data
+
+    current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
+    current_action_pack = {
+        "path": str(current_action_pack_path),
+        "status": "malformed",
+        "reason": "Current action pack not found.",
+        "action_pack_id": None,
+        "action_pack_fingerprint": None,
+        "generated_at": None,
+        "expires_at": None,
+        "recommended_ttl_seconds": None,
+        "fresh": False,
+    }
+    if current_action_pack_path.exists():
+        try:
+            current_action_pack = {"path": str(current_action_pack_path), **classify_action_pack(json.loads(current_action_pack_path.read_text(encoding="utf-8")))}
+        except Exception as exc:
+            current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "reason": str(exc), "fresh": False}
+
+    action_failures = [row for row in operator_action_executions if not row.get("success", False)]
+    expired_pack_refusals = sum(
+        1
+        for row in action_failures
+        if row.get("failure_kind") == "expired_pack"
+    )
+    pinned_pack_validation_failures = sum(
+        1
+        for row in action_failures
+        if row.get("failure_kind") == "pinned_pack_validation_failed"
+    )
+    triage_summary = build_triage_data(root, limit=limit, allow_pack_rebuild=False)
+    command_center = build_command_center_data(root, limit=limit, allow_pack_rebuild=False)
+    decision_manifest = build_decision_manifest_data(root, limit=limit, allow_pack_rebuild=False)
+    decision_inbox = build_decision_inbox_data(root, limit=limit, allow_pack_rebuild=False)
+    decision_shortlist = build_decision_shortlist_data(root, limit=min(limit, 5), allow_inbox_rebuild=False)
+    repeated = triage_summary.get("repeated_problem_detectors", {})
+    latest_compare_packs = None
+    latest_compare_triage = None
+    latest_compare_inbox = None
+    compare_packs_path = root / "state" / "logs" / "operator_compare_packs_latest.json"
+    compare_triage_path = root / "state" / "logs" / "operator_compare_triage_latest.json"
+    compare_inbox_path = root / "state" / "logs" / "operator_compare_inbox_latest.json"
+    if compare_packs_path.exists():
+        try:
+            latest_compare_packs = json.loads(compare_packs_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_packs = None
+    if compare_triage_path.exists():
+        try:
+            latest_compare_triage = json.loads(compare_triage_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_triage = None
+    if compare_inbox_path.exists():
+        try:
+            latest_compare_inbox = json.loads(compare_inbox_path.read_text(encoding="utf-8"))
+        except Exception:
+            latest_compare_inbox = None
 
     pack = {
         "generated_at": snapshot["status"].get("generated_at"),
@@ -311,15 +539,57 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "latest_eval_summary": _eval_summary(eval_results, limit=limit),
         "recent_operator_action_executions": _operator_action_execution_summary(operator_action_executions, limit=limit),
         "recent_operator_queue_runs": _operator_queue_run_summary(operator_queue_runs, limit=limit),
+        "recent_operator_bulk_runs": _operator_bulk_run_summary(operator_bulk_runs, limit=limit),
+        "recent_operator_task_interventions": _task_intervention_summary(operator_task_interventions, limit=limit),
+        "recent_operator_safe_autofix_runs": _safe_autofix_summary(operator_safe_autofix_runs, limit=limit),
+        "current_action_pack": current_action_pack,
+        "triage_summary": triage_summary,
+        "command_center_summary": {
+            "health_label": command_center.get("now", {}).get("control_plane_health_label"),
+            "top_next_commands": command_center.get("next_actions", [])[:5],
+            "recent_deltas": command_center.get("recent_deltas", {}),
+        },
+        "decision_manifest_summary": {
+            "current_pack_identity": decision_manifest.get("current_pack_identity", {}),
+            "ranked_next_commands": decision_manifest.get("ranked_next_commands", [])[:5],
+            "do_not_run_items": decision_manifest.get("do_not_run_items", [])[:5],
+        },
+        "decision_inbox_summary": {
+            "reply_ready": decision_inbox.get("reply_ready"),
+            "pack_id": decision_inbox.get("pack_id"),
+            "pack_status": decision_inbox.get("pack_status"),
+            "reply_safe_item_count": sum(1 for row in decision_inbox.get("items", []) if any(code[0] in {"A", "R", "P"} for code in row.get("allowed_reply_codes", []))),
+            "top_items": decision_inbox.get("items", [])[:5],
+        },
+        "decision_shortlist_summary": decision_shortlist,
         "pending_review_items": review_inbox["pending_reviews"],
         "pending_approval_items": review_inbox["pending_approvals"],
         "ralph_memory_summary": _ralph_memory_summary(consolidation_runs, memory_candidates, limit=limit),
         "recommended_next_actions": _recommended_actions(snapshot, review_inbox, memory_candidates),
         "status_counts": snapshot.get("status", {}).get("counts", {}),
         "state_export_counts": state_export.get("counts", {}),
+        "operator_control_plane_counts": {
+            "expired_pack_refusals": expired_pack_refusals,
+            "pinned_pack_validation_failures": pinned_pack_validation_failures,
+            "repeated_stale_actions": len(repeated.get("repeated_stale_actions", [])),
+            "repeated_idempotency_skips": len(repeated.get("repeated_idempotency_skips", [])),
+        },
         "control_state": snapshot.get("control_state", {}),
         "operator_focus": snapshot.get("operator_focus", ""),
         "review_inbox_reply": review_inbox.get("reply", ""),
+        "latest_operator_queue_run": _operator_queue_run_summary(operator_queue_runs, limit=1)[0] if operator_queue_runs else None,
+        "latest_operator_bulk_run": _operator_bulk_run_summary(operator_bulk_runs, limit=1)[0] if operator_bulk_runs else None,
+        "latest_operator_task_intervention": _task_intervention_summary(operator_task_interventions, limit=1)[0]
+        if operator_task_interventions
+        else None,
+        "latest_operator_safe_autofix_run": _safe_autofix_summary(operator_safe_autofix_runs, limit=1)[0]
+        if operator_safe_autofix_runs
+        else None,
+        "latest_reply_plan": _reply_plan_summary(operator_reply_plans, limit=1)[0] if operator_reply_plans else None,
+        "latest_reply_apply": _reply_apply_summary(operator_reply_applies, limit=1)[0] if operator_reply_applies else None,
+        "latest_compare_packs": latest_compare_packs,
+        "latest_compare_triage": latest_compare_triage,
+        "latest_compare_inbox": latest_compare_inbox,
     }
 
     markdown = _build_markdown(pack)

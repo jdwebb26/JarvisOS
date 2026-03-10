@@ -63,6 +63,13 @@ def build_state_export(root: Path) -> dict:
     digest_artifact_links = _load_jsons(root / "state" / "digest_artifact_links")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
     memory_retrievals = _load_jsons(root / "state" / "memory_retrievals")
+    operator_action_executions = _load_jsons(root / "state" / "operator_action_executions")
+    operator_queue_runs = _load_jsons(root / "state" / "operator_queue_runs")
+    operator_bulk_runs = _load_jsons(root / "state" / "operator_bulk_runs")
+    operator_task_interventions = _load_jsons(root / "state" / "operator_task_interventions")
+    operator_safe_autofix_runs = _load_jsons(root / "state" / "operator_safe_autofix_runs")
+    operator_reply_plans = _load_jsons(root / "state" / "operator_reply_plans")
+    operator_reply_applies = _load_jsons(root / "state" / "operator_reply_applies")
 
     summary = {
         "counts": {
@@ -88,6 +95,13 @@ def build_state_export(root: Path) -> dict:
             "digest_artifact_links": len(digest_artifact_links),
             "memory_candidates": len(memory_candidates),
             "memory_retrievals": len(memory_retrievals),
+            "operator_action_executions": len(operator_action_executions),
+            "operator_queue_runs": len(operator_queue_runs),
+            "operator_bulk_runs": len(operator_bulk_runs),
+            "operator_task_interventions": len(operator_task_interventions),
+            "operator_safe_autofix_runs": len(operator_safe_autofix_runs),
+            "operator_reply_plans": len(operator_reply_plans),
+            "operator_reply_applies": len(operator_reply_applies),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -110,6 +124,12 @@ def build_state_export(root: Path) -> dict:
         "memory_candidate_decision_counts": {},
         "memory_candidate_contradiction_counts": {},
         "memory_retrieval_count": 0,
+        "operator_action_failure_kind_counts": {},
+        "operator_queue_skip_kind_counts": {},
+        "operator_bulk_skip_kind_counts": {},
+        "action_pack_validation_status_counts": {},
+        "repeated_problem_counts": {},
+        "command_center_summary": {},
     }
 
     for task in tasks:
@@ -187,6 +207,79 @@ def build_state_export(root: Path) -> dict:
         summary["memory_candidate_contradiction_counts"][contradiction_status] = summary["memory_candidate_contradiction_counts"].get(contradiction_status, 0) + 1
 
     summary["memory_retrieval_count"] = len(memory_retrievals)
+
+    for execution in operator_action_executions:
+        kind = execution.get("failure_kind")
+        if kind:
+            summary["operator_action_failure_kind_counts"][kind] = summary["operator_action_failure_kind_counts"].get(kind, 0) + 1
+        validation_status = execution.get("source_action_pack_validation_status")
+        if validation_status:
+            summary["action_pack_validation_status_counts"][validation_status] = (
+                summary["action_pack_validation_status_counts"].get(validation_status, 0) + 1
+            )
+
+    for queue_run in operator_queue_runs:
+        validation_status = queue_run.get("source_action_pack_validation_status")
+        if validation_status:
+            summary["action_pack_validation_status_counts"][validation_status] = (
+                summary["action_pack_validation_status_counts"].get(validation_status, 0) + 1
+            )
+        for skipped in queue_run.get("skipped_actions", []):
+            kind = skipped.get("skip_kind", "unknown")
+            summary["operator_queue_skip_kind_counts"][kind] = summary["operator_queue_skip_kind_counts"].get(kind, 0) + 1
+
+    for bulk_run in operator_bulk_runs:
+        validation_status = bulk_run.get("pack_validation_status")
+        if validation_status:
+            summary["action_pack_validation_status_counts"][validation_status] = (
+                summary["action_pack_validation_status_counts"].get(validation_status, 0) + 1
+            )
+        for skipped in bulk_run.get("skipped_actions", []):
+            kind = skipped.get("skip_kind", "unknown")
+            summary["operator_bulk_skip_kind_counts"][kind] = summary["operator_bulk_skip_kind_counts"].get(kind, 0) + 1
+
+    from scripts.operator_triage_support import build_triage_data
+
+    repeated = build_triage_data(root, limit=10, allow_pack_rebuild=False).get("repeated_problem_detectors", {})
+    summary["repeated_problem_counts"] = {
+        "repeated_stale_actions": len(repeated.get("repeated_stale_actions", [])),
+        "repeated_idempotency_skips": len(repeated.get("repeated_idempotency_skips", [])),
+        "repeated_pinned_pack_validation_failures": len(repeated.get("repeated_pinned_pack_validation_failures", [])),
+        "repeated_expired_pack_refusals": len(repeated.get("repeated_expired_pack_refusals", [])),
+        "queue_repeated_stop_categories": len(repeated.get("queue_repeated_stop_categories", [])),
+        "bulk_repeated_failure_categories": len(repeated.get("bulk_repeated_failure_categories", [])),
+        "actions_missing_from_newest_pack": len(repeated.get("actions_missing_from_newest_pack", [])),
+    }
+    command_center_path = root / "state" / "logs" / "operator_command_center.json"
+    decision_manifest_path = root / "state" / "logs" / "operator_decision_manifest.json"
+    current_command_center = {}
+    if command_center_path.exists():
+        try:
+            current_command_center = json.loads(command_center_path.read_text(encoding="utf-8"))
+        except Exception:
+            current_command_center = {}
+    current_manifest = {}
+    if decision_manifest_path.exists():
+        try:
+            current_manifest = json.loads(decision_manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            current_manifest = {}
+    summary["command_center_summary"] = {
+        "health_label": ((current_command_center.get("now") or {}).get("control_plane_health_label")),
+        "top_next_command_count": len(current_command_center.get("next_actions", [])),
+        "decision_manifest_ranked_count": len(current_manifest.get("ranked_next_commands", [])),
+    }
+    summary["reply_summary"] = {
+        "latest_reply_plan_count": len(operator_reply_plans),
+        "latest_reply_apply_count": len(operator_reply_applies),
+        "invalid_reply_count": sum(1 for row in operator_reply_plans if row.get("unknown_tokens")),
+        "blocked_reply_count": sum(
+            1
+            for row in operator_reply_applies
+            for step in row.get("per_step_results", [])
+            if step.get("status") in {"invalid_reply", "plan_blocked"}
+        ),
+    }
 
     out_path = root / "state" / "logs" / "state_export.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
