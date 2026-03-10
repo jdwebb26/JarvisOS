@@ -245,6 +245,58 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
             cycle["transport_cycle"]["transport_cycle_id"],
         ]
     )
+    gateway_inbound_dir = tmp_path / "state" / "operator_gateway_inbound_messages"
+    gateway_inbound_dir.mkdir(parents=True, exist_ok=True)
+    (gateway_inbound_dir / "handoff_bridge_msg.json").write_text(
+        json.dumps(
+            {
+                "source_kind": "gateway",
+                "source_lane": "operator",
+                "source_channel": "phone",
+                "source_message_id": "handoff_bridge_msg",
+                "source_user": "operator",
+                "raw_text": "A1",
+                "apply": True,
+                "dry_run": True,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bridge_cycle = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_bridge_cycle.py"),
+            "--root",
+            str(tmp_path),
+            "--import-from-folder",
+            "--apply",
+            "--dry-run",
+            "--continue-on-failure",
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_compare_bridge_cycles.py"),
+            "--root",
+            str(tmp_path),
+            "--cycle-id",
+            bridge_cycle["bridge_cycle"]["bridge_cycle_id"],
+        ]
+    )
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_replay_bridge_cycle.py"),
+            "--root",
+            str(tmp_path),
+            "--cycle-id",
+            bridge_cycle["bridge_cycle"]["bridge_cycle_id"],
+            "--plan-only",
+        ]
+    )
 
     payload = _run_json(
         [
@@ -283,6 +335,10 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
     assert pack["latest_reply_transport_cycle"] is not None
     assert "replay_allowed" in pack["reply_transport_replay_summary"]
     assert pack["latest_compare_reply_transport_cycles"] is not None
+    assert pack["latest_bridge_cycle"] is not None
+    assert pack["latest_bridge_replay"] is not None
+    assert "replay_allowed" in pack["bridge_replay_summary"]
+    assert pack["latest_compare_bridge_cycles"] is not None
     assert pack["latest_reply_plan"] is not None
     assert pack["latest_reply_apply"] is not None
     assert pack["latest_reply_ingress"] is not None

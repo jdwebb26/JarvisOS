@@ -520,9 +520,12 @@ Bridge-layer durable artifacts:
 - `state/operator_imported_reply_messages/*.json`
 - `state/operator_gateway_inbound_messages/*.json`
 - `state/operator_bridge_cycles/*.json`
+- `state/operator_bridge_replay_plans/*.json`
+- `state/operator_bridge_replays/*.json`
 - `state/logs/operator_outbound_packet_latest.json`
 - `state/logs/operator_outbound_packet_latest.md`
 - `state/logs/operator_import_reply_message_latest.json`
+- `state/logs/operator_compare_bridge_cycles_latest.json`
 
 Behavior rules:
 
@@ -530,6 +533,17 @@ Behavior rules:
 - reply import only classifies and converts inbound payloads into `state/operator_reply_messages/*.json`
 - only the existing reply transport cycle performs plan/preview/apply work
 - bridge cycle is explicit, bounded, file-backed, and daemon-free
+- bridge replay reuses the existing bridge/reply wrappers and defaults to safe dry-run behavior for apply-mode cycles
+
+To audit, compare, and replay bridge cycles:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_bridge_cycles.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --limit 10
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_explain_bridge_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id opbridge_123
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_compare_bridge_cycles.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id opbridge_123 --other-cycle-id opbridge_122
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_replay_bridge_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id opbridge_123 --plan-only
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_replay_bridge_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id opbridge_123
+```
 
 To compare inbox snapshots:
 

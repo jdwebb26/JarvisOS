@@ -131,6 +131,18 @@ def operator_bridge_cycles_dir(root: Path) -> Path:
     return path
 
 
+def operator_bridge_replay_plans_dir(root: Path) -> Path:
+    path = root / "state" / "operator_bridge_replay_plans"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_bridge_replays_dir(root: Path) -> Path:
+    path = root / "state" / "operator_bridge_replays"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 REPLY_TOKEN_PATTERN = re.compile(r"^[A-Z]\d+$")
 EXECUTABLE_REPLY_PREFIXES = {"A", "R", "P", "F"}
 REPORT_ONLY_REPLY_PREFIXES = {"X", "B"}
@@ -220,6 +232,18 @@ def save_bridge_cycle_record(root: Path, record: dict[str, Any]) -> dict[str, An
     return record
 
 
+def save_bridge_replay_plan_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_bridge_replay_plans_dir(root) / f"{record['bridge_replay_plan_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_bridge_replay_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_bridge_replays_dir(root) / f"{record['bridge_replay_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
 def list_task_interventions(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_task_interventions_dir(root)), "completed_at", "started_at")
 
@@ -270,6 +294,14 @@ def list_imported_reply_messages(root: Path) -> list[dict[str, Any]]:
 
 def list_bridge_cycles(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_bridge_cycles_dir(root)), "completed_at", "started_at")
+
+
+def list_bridge_replay_plans(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_bridge_replay_plans_dir(root)), "created_at", "started_at")
+
+
+def list_bridge_replays(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_bridge_replays_dir(root)), "completed_at", "started_at")
 
 
 def count_pending_reply_messages(root: Path) -> int:
@@ -2436,6 +2468,11 @@ def import_gateway_reply_message(
         "normalized_text": classification.get("normalized_text"),
         "reply_tokens": classification.get("reply_tokens", []),
         "classification": classification.get("classification"),
+        "apply": bool(payload.get("apply", False)),
+        "preview": bool(payload.get("preview", False)),
+        "dry_run": bool(payload.get("dry_run", False)),
+        "continue_on_failure": bool(payload.get("continue_on_failure", False)),
+        "gateway_message_path": str(payload.get("gateway_message_path", "")) or None,
         "imported": False,
         "import_reason": classification.get("reason", ""),
         "reply_message_path": None,
@@ -2469,8 +2506,12 @@ def compact_imported_reply_message_summary(row: dict[str, Any]) -> dict[str, Any
         "source_channel": row.get("source_channel"),
         "source_user": row.get("source_user"),
         "classification": row.get("classification"),
+        "apply": row.get("apply", False),
+        "preview": row.get("preview", False),
+        "dry_run": row.get("dry_run", False),
         "imported": row.get("imported", False),
         "reply_message_path": row.get("reply_message_path"),
+        "gateway_message_path": row.get("gateway_message_path"),
         "completed_at": row.get("completed_at"),
     }
 
@@ -2934,6 +2975,359 @@ def execute_reply_transport_replay(
     replay["completed_at"] = now_iso()
     save_reply_transport_replay_record(root, replay)
     return {"ok": replay["ok"], "replay": replay, "replay_plan": replay_plan, "transport_cycle": transport_payload}, exit_code
+
+
+def compact_bridge_cycle(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "bridge_cycle_id": row.get("bridge_cycle_id"),
+        "ok": row.get("ok", False),
+        "mode": row.get("mode"),
+        "dry_run": row.get("dry_run", False),
+        "bridge_ready": row.get("bridge_ready", False),
+        "outbound_packet_id": row.get("outbound_packet_id"),
+        "outbound_packet_pack_id": row.get("outbound_packet_pack_id"),
+        "imported_count": row.get("imported_count", 0),
+        "imported_source_message_ids": row.get("imported_source_message_ids", [])[:5],
+        "reply_transport_cycle_id": row.get("reply_transport_cycle_id"),
+        "reply_ack_result_kind": row.get("reply_ack_result_kind"),
+        "stop_reason": row.get("stop_reason", ""),
+        "completed_at": row.get("completed_at"),
+    }
+
+
+def list_bridge_cycles_view(
+    root: Path,
+    *,
+    limit: int = 20,
+    failed_only: bool = False,
+    mode: str | None = None,
+) -> dict[str, Any]:
+    rows = list_bridge_cycles(root)
+    if failed_only:
+        rows = [row for row in rows if not row.get("ok", False)]
+    if mode:
+        rows = [row for row in rows if row.get("mode") == mode]
+    rows = rows[:limit]
+    return {
+        "generated_at": now_iso(),
+        "count": len(rows),
+        "rows": [compact_bridge_cycle(row) for row in rows],
+    }
+
+
+def load_bridge_cycle(root: Path, cycle_id: str) -> dict[str, Any] | None:
+    path = operator_bridge_cycles_dir(root) / f"{cycle_id}.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+    for row in list_bridge_cycles(root):
+        if row.get("bridge_cycle_id") == cycle_id:
+            return row
+    return None
+
+
+def _load_imported_rows_for_bridge_cycle(root: Path, cycle: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    imported_rows = cycle.get("imported_rows", [])
+    if isinstance(imported_rows, list) and imported_rows:
+        return [row for row in imported_rows if isinstance(row, dict)]
+    import_ids = set(cycle.get("imported_reply_message_ids", []))
+    source_ids = set(cycle.get("imported_source_message_ids", []))
+    for row in list_imported_reply_messages(root):
+        if row.get("import_id") in import_ids or row.get("source_message_id") in source_ids:
+            rows.append(row)
+    return rows
+
+
+def _load_gateway_messages_for_bridge_cycle(cycle: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if isinstance(cycle.get("imported_gateway_rows"), list):
+        rows.extend(row for row in cycle.get("imported_gateway_rows", []) if isinstance(row, dict))
+    for path_text in cycle.get("imported_gateway_message_paths", []):
+        payload = _load_json_file(path_text)
+        if payload is not None:
+            payload["_gateway_message_path"] = str(path_text)
+            rows.append(payload)
+    return rows
+
+
+def inspect_bridge_cycle(root: Path, *, cycle_id: str | None = None) -> dict[str, Any]:
+    rows = list_bridge_cycles(root)
+    cycle = load_bridge_cycle(root, cycle_id) if cycle_id else (rows[0] if rows else None)
+    if cycle is None:
+        return {"ok": False, "error": f"Bridge cycle not found: {cycle_id}" if cycle_id else "No bridge cycles found."}
+    outbound_packet = _load_json_file(cycle.get("outbound_packet_path"))
+    reply_ack = _load_json_file(cycle.get("reply_ack_path"))
+    handoff = _load_json_file(cycle.get("handoff_path"))
+    imported_rows = _load_imported_rows_for_bridge_cycle(root, cycle)
+    gateway_rows = _load_gateway_messages_for_bridge_cycle(cycle)
+    replay_safety = classify_bridge_replay_safety(root, cycle=cycle, live_apply_requested=False)
+    return {
+        "ok": True,
+        "cycle": compact_bridge_cycle(cycle),
+        "paths": {
+            "outbound_packet_path": cycle.get("outbound_packet_path"),
+            "reply_ack_path": cycle.get("reply_ack_path"),
+            "handoff_path": cycle.get("handoff_path"),
+            "reply_transport_cycle_id": cycle.get("reply_transport_cycle_id"),
+        },
+        "counts": {
+            "imported_count": cycle.get("imported_count", 0),
+            "gateway_message_count": len(gateway_rows),
+            "reply_transport_attempted_count": cycle.get("reply_transport_attempted_count", 0),
+            "reply_transport_blocked_count": cycle.get("reply_transport_blocked_count", 0),
+        },
+        "stop_reason": cycle.get("stop_reason", ""),
+        "result_summary": {
+            "reply_ack_result_kind": cycle.get("reply_ack_result_kind"),
+            "latest_import_classification": (imported_rows[0] if imported_rows else {}).get("classification"),
+            "outbound_packet_pack_id": cycle.get("outbound_packet_pack_id"),
+        },
+        "provenance": {
+            "outbound_packet": {"path": cycle.get("outbound_packet_path"), "pack_id": (outbound_packet or {}).get("pack_id")},
+            "reply_ack": {"path": cycle.get("reply_ack_path"), "latest_result_kind": ((reply_ack or {}).get("latest_reply_received") or {}).get("result_kind")},
+            "handoff": {"path": cycle.get("handoff_path"), "generated_at": (handoff or {}).get("generated_at")},
+            "gateway_message_paths": cycle.get("imported_gateway_message_paths", []),
+        },
+        "replay_safety": replay_safety,
+        "imported_messages": [compact_imported_reply_message_summary(row) for row in imported_rows[:10]],
+        "gateway_messages": [
+            {
+                "source_message_id": row.get("source_message_id"),
+                "raw_text": row.get("raw_text"),
+                "classification": row.get("classification"),
+                "path": row.get("gateway_message_path") or row.get("_gateway_message_path"),
+            }
+            for row in gateway_rows[:10]
+        ],
+    }
+
+
+def compare_bridge_cycle_records(current: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+    current_ids = set(current.get("imported_source_message_ids", []))
+    previous_ids = set((previous or {}).get("imported_source_message_ids", []))
+    current_import_ids = set(current.get("imported_reply_message_ids", []))
+    previous_import_ids = set((previous or {}).get("imported_reply_message_ids", []))
+    return {
+        "current_bridge_cycle_id": current.get("bridge_cycle_id"),
+        "other_bridge_cycle_id": (previous or {}).get("bridge_cycle_id"),
+        "mode_changed": None if previous is None else current.get("mode") != previous.get("mode"),
+        "ok_changed": None if previous is None else current.get("ok") != previous.get("ok"),
+        "imported_count_delta": current.get("imported_count", 0) - ((previous or {}).get("imported_count", 0)),
+        "reply_transport_attempted_delta": current.get("reply_transport_attempted_count", 0) - ((previous or {}).get("reply_transport_attempted_count", 0)),
+        "reply_transport_blocked_delta": current.get("reply_transport_blocked_count", 0) - ((previous or {}).get("reply_transport_blocked_count", 0)),
+        "message_ids_added": sorted(current_ids - previous_ids),
+        "message_ids_removed": sorted(previous_ids - current_ids),
+        "import_ids_added": sorted(current_import_ids - previous_import_ids),
+        "import_ids_removed": sorted(previous_import_ids - current_import_ids),
+        "pack_id_before": (previous or {}).get("outbound_packet_pack_id"),
+        "pack_id_after": current.get("outbound_packet_pack_id"),
+        "reply_ack_result_before": (previous or {}).get("reply_ack_result_kind"),
+        "reply_ack_result_after": current.get("reply_ack_result_kind"),
+        "stop_reason_before": (previous or {}).get("stop_reason"),
+        "stop_reason_after": current.get("stop_reason"),
+    }
+
+
+def compare_bridge_cycles(
+    root: Path,
+    *,
+    current_cycle_id: str | None = None,
+    other_cycle_id: str | None = None,
+) -> dict[str, Any]:
+    rows = list_bridge_cycles(root)
+    if not rows:
+        return {"ok": False, "error": "No bridge cycles found."}
+    current = load_bridge_cycle(root, current_cycle_id) if current_cycle_id else rows[0]
+    if current is None:
+        return {"ok": False, "error": f"Bridge cycle not found: {current_cycle_id}"}
+    if other_cycle_id:
+        other = load_bridge_cycle(root, other_cycle_id)
+        if other is None:
+            return {"ok": False, "error": f"Bridge cycle not found: {other_cycle_id}"}
+    else:
+        other = rows[1] if len(rows) > 1 and rows[0].get("bridge_cycle_id") == current.get("bridge_cycle_id") else (rows[0] if len(rows) > 1 else None)
+        if other is not None and other.get("bridge_cycle_id") == current.get("bridge_cycle_id"):
+            other = rows[1] if len(rows) > 1 else None
+    payload = compare_bridge_cycle_records(current, other)
+    latest_path = triage_logs_dir(root) / "operator_compare_bridge_cycles_latest.json"
+    latest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
+def classify_bridge_replay_safety(
+    root: Path,
+    *,
+    cycle: dict[str, Any],
+    live_apply_requested: bool,
+) -> dict[str, Any]:
+    readiness = gateway_operator_bridge_readiness(root, allow_inbox_rebuild=False, limit=5)
+    imported_rows = _load_imported_rows_for_bridge_cycle(root, cycle)
+    importable_rows = [row for row in imported_rows if row.get("classification") == "importable_compact_reply" and row.get("imported", False)]
+    if not imported_rows or not importable_rows:
+        return {
+            "replay_allowed": False,
+            "replay_mode": "blocked",
+            "reason": "No importable gateway reply messages were captured for this bridge cycle.",
+            "would": "blocked",
+            "bridge_ready": readiness["bridge_ready"],
+        }
+    if not readiness["bridge_ready"]:
+        return {
+            "replay_allowed": False,
+            "replay_mode": "blocked",
+            "reason": readiness["reason"],
+            "would": "blocked",
+            "bridge_ready": readiness["bridge_ready"],
+        }
+    mode = str(cycle.get("mode") or "plan")
+    if mode == "apply":
+        replay_mode = "apply_live" if live_apply_requested else "apply_dry_run"
+    elif mode == "preview":
+        replay_mode = "preview_only"
+    else:
+        replay_mode = "plan_only"
+    return {
+        "replay_allowed": True,
+        "replay_mode": replay_mode,
+        "reason": "Replay is allowed through the existing bridge cycle wrappers.",
+        "would": replay_mode,
+        "bridge_ready": readiness["bridge_ready"],
+        "importable_count": len(importable_rows),
+    }
+
+
+def build_bridge_replay_plan(
+    root: Path,
+    *,
+    cycle_id: str,
+    live_apply_requested: bool = False,
+) -> dict[str, Any]:
+    from runtime.core.models import new_id
+
+    cycle = load_bridge_cycle(root, cycle_id)
+    if cycle is None:
+        return {"ok": False, "error": f"Bridge cycle not found: {cycle_id}"}
+    imported_rows = _load_imported_rows_for_bridge_cycle(root, cycle)
+    safety = classify_bridge_replay_safety(root, cycle=cycle, live_apply_requested=live_apply_requested)
+    replay_plan = {
+        "bridge_replay_plan_id": new_id("opbridgereplayplan"),
+        "created_at": now_iso(),
+        "source_bridge_cycle_id": cycle.get("bridge_cycle_id"),
+        "source_outbound_packet_id": cycle.get("outbound_packet_id"),
+        "source_outbound_packet_path": cycle.get("outbound_packet_path"),
+        "source_reply_transport_cycle_id": cycle.get("reply_transport_cycle_id"),
+        "source_reply_ack_path": cycle.get("reply_ack_path"),
+        "source_handoff_path": cycle.get("handoff_path"),
+        "replay_safety": safety,
+        "ok": bool(safety.get("replay_allowed")),
+        "steps": [],
+    }
+    mode = safety.get("replay_mode")
+    for index, row in enumerate(imported_rows, start=1):
+        if row.get("classification") != "importable_compact_reply" or not row.get("imported", False):
+            continue
+        source_message_id = str(row.get("source_message_id") or f"bridge_msg_{index}")
+        replay_source_message_id = f"{source_message_id}__bridge_replay_{replay_plan['bridge_replay_plan_id']}_{index:02d}"
+        replay_plan["steps"].append(
+            {
+                "index": index,
+                "source_message_id": source_message_id,
+                "replay_source_message_id": replay_source_message_id,
+                "raw_text": row.get("raw_text", ""),
+                "source_kind": row.get("source_kind", "gateway"),
+                "source_lane": row.get("source_lane", "operator"),
+                "source_channel": row.get("source_channel", "gateway"),
+                "source_user": row.get("source_user", "operator"),
+                "planned_operation_kind": mode,
+                "apply": mode in {"apply_dry_run", "apply_live"},
+                "preview": mode == "preview_only",
+                "dry_run": mode != "apply_live",
+                "continue_on_failure": bool(row.get("continue_on_failure", False)),
+                "gateway_message_path": row.get("gateway_message_path"),
+                "executable": bool(safety.get("replay_allowed")),
+                "reason": safety.get("reason"),
+            }
+        )
+    save_bridge_replay_plan_record(root, replay_plan)
+    return replay_plan
+
+
+def execute_bridge_replay(
+    root: Path,
+    *,
+    cycle_id: str,
+    plan_only: bool,
+    live_apply: bool,
+    continue_on_failure: bool,
+) -> tuple[dict[str, Any], int]:
+    from runtime.core.models import new_id
+    from scripts.operator_bridge_cycle import run_operator_bridge_cycle
+
+    replay_plan = build_bridge_replay_plan(root, cycle_id=cycle_id, live_apply_requested=live_apply)
+    replay = {
+        "bridge_replay_id": new_id("opbridgereplay"),
+        "started_at": now_iso(),
+        "completed_at": None,
+        "source_bridge_cycle_id": cycle_id,
+        "bridge_replay_plan_id": replay_plan.get("bridge_replay_plan_id"),
+        "live_apply_requested": live_apply,
+        "plan_only": plan_only,
+        "ok": False,
+        "replay_mode": (replay_plan.get("replay_safety") or {}).get("replay_mode"),
+        "reason": "",
+        "staged_gateway_message_paths": [],
+        "bridge_cycle_id": None,
+    }
+    if not replay_plan.get("ok", False) or plan_only:
+        replay["ok"] = bool(replay_plan.get("ok", False))
+        replay["reason"] = "Plan only." if plan_only and replay_plan.get("ok", False) else replay_plan.get("error") or (replay_plan.get("replay_safety") or {}).get("reason", "")
+        replay["completed_at"] = now_iso()
+        save_bridge_replay_record(root, replay)
+        return {"ok": replay["ok"], "bridge_replay": replay, "bridge_replay_plan": replay_plan}, 0 if replay["ok"] else 1
+
+    mode = (replay_plan.get("replay_safety") or {}).get("replay_mode")
+    staged_paths: list[Path] = []
+    folder = operator_gateway_inbound_messages_dir(root)
+    for step in replay_plan.get("steps", []):
+        path = folder / f"{step['replay_source_message_id']}.json"
+        payload = {
+            "source_kind": "bridge_replay",
+            "source_lane": "bridge_replay",
+            "source_channel": "bridge_replay",
+            "source_message_id": step.get("replay_source_message_id"),
+            "source_user": step.get("source_user", "operator_replay"),
+            "raw_text": step.get("raw_text", ""),
+            "apply": bool(step.get("apply")),
+            "preview": bool(step.get("preview")),
+            "dry_run": bool(step.get("dry_run")),
+            "continue_on_failure": bool(step.get("continue_on_failure")) or continue_on_failure,
+            "replay_of_bridge_cycle_id": cycle_id,
+            "original_source_message_id": step.get("source_message_id"),
+        }
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        staged_paths.append(path)
+        replay["staged_gateway_message_paths"].append(str(path))
+
+    bridge_payload, exit_code = run_operator_bridge_cycle(
+        root,
+        limit=len(staged_paths),
+        import_from_folder=True,
+        import_paths=staged_paths,
+        apply=mode in {"apply_dry_run", "apply_live"},
+        preview=mode == "preview_only",
+        dry_run=mode != "apply_live",
+        continue_on_failure=continue_on_failure,
+        refresh_handoff=True,
+    )
+    replay["ok"] = bool(bridge_payload.get("ok"))
+    replay["bridge_cycle_id"] = ((bridge_payload.get("bridge_cycle") or {}).get("bridge_cycle_id"))
+    replay["reason"] = (bridge_payload.get("bridge_cycle") or {}).get("stop_reason", "")
+    replay["completed_at"] = now_iso()
+    save_bridge_replay_record(root, replay)
+    return {"ok": replay["ok"], "bridge_replay": replay, "bridge_replay_plan": replay_plan, "bridge_cycle": bridge_payload}, exit_code
 
 
 def compare_inbox_snapshots(current: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
