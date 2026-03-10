@@ -41,6 +41,7 @@ def list_operator_action_executions(
     *,
     task_id: str | None = None,
     category: str | None = None,
+    action_id: str | None = None,
     success: bool | None = None,
     dry_run: bool | None = None,
 ) -> list[dict[str, Any]]:
@@ -54,6 +55,8 @@ def list_operator_action_executions(
         if task_id and selected_action.get("task_id") != task_id:
             continue
         if category and selected_action.get("category") != category:
+            continue
+        if action_id and row.get("action_id") != action_id:
             continue
         if success is not None and bool(row.get("success", False)) != success:
             continue
@@ -81,3 +84,12 @@ def latest_failed_action_for_task(root: Path, task_id: str) -> Optional[dict[str
 def latest_action_by_category(root: Path, category: str) -> Optional[dict[str, Any]]:
     rows = list_operator_action_executions(root, category=category)
     return rows[0] if rows else None
+
+
+def latest_successful_action_for_action_id(root: Path, action_id: str) -> Optional[dict[str, Any]]:
+    rows = list_operator_action_executions(root, action_id=action_id, success=True, dry_run=False)
+    return rows[0] if rows else None
+
+
+def has_successful_non_dry_run_action(root: Path, action_id: str) -> bool:
+    return latest_successful_action_for_action_id(root, action_id) is not None

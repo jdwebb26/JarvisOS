@@ -116,9 +116,14 @@ def _operator_queue_run_summary(rows: list[dict[str, Any]], *, limit: int) -> li
             "succeeded_count": row.get("succeeded_count", 0),
             "failed_count": row.get("failed_count", 0),
             "skipped_count": row.get("skipped_count", 0),
+            "policy_skipped_count": sum(1 for item in row.get("skipped_actions", []) if item.get("skip_kind") == "policy"),
+            "idempotency_skipped_count": sum(
+                1 for item in row.get("skipped_actions", []) if item.get("skip_kind") == "idempotency"
+            ),
             "stopped_on_action_id": row.get("stopped_on_action_id"),
             "filters": row.get("filters", {}),
             "policy_summary": row.get("policy_summary", {}),
+            "recent_skip_reasons": [item.get("skip_reason", "") for item in row.get("skipped_actions", [])[:3]],
             "completed_at": row.get("completed_at"),
         }
         for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
@@ -237,11 +242,13 @@ def _build_markdown(pack: dict[str, Any]) -> str:
     lines.extend(["", "## Recent Queue Runs"])
     for row in pack["recent_operator_queue_runs"]:
         lines.append(
-            f"- {row['queue_run_id']}: ok={row['ok']} attempted={row['attempted_count']} failed={row['failed_count']} skipped={row['skipped_count']} stopped_on={row['stopped_on_action_id']}"
+            f"- {row['queue_run_id']}: ok={row['ok']} attempted={row['attempted_count']} failed={row['failed_count']} skipped={row['skipped_count']} policy_skips={row['policy_skipped_count']} idempotency_skips={row['idempotency_skipped_count']} stopped_on={row['stopped_on_action_id']}"
         )
         lines.append(
             f"  policy allow={row['policy_summary'].get('effective_allow_categories', [])} deny={row['policy_summary'].get('deny_categories', [])}"
         )
+        if row.get("recent_skip_reasons"):
+            lines.append(f"  skips={row['recent_skip_reasons']}")
     if not pack["recent_operator_queue_runs"]:
         lines.append("- none")
 

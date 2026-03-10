@@ -256,3 +256,113 @@ def test_recent_action_queries(tmp_path: Path):
     assert latest_success["success"] is True
     assert latest_memory is not None
     assert (latest_memory.get("selected_action") or {}).get("category") == "memory_candidate"
+
+
+def test_resume_respects_duplicate_protection_without_force(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_resume_duplicate_guard")
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "resume_duplicate_guard_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Resume duplicate guard candidate",
+            "summary": "resume duplicate guard summary",
+            "content": "candidate body",
+        },
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["artifact_followup_commands"][0]["action_ids"]["inspect_artifact_json"]
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+
+    resumed = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_resume_action.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "artifact_followup",
+            "--replay-success",
+        ],
+        expect_ok=False,
+    )
+
+    assert resumed["ok"] is False
+    assert resumed["failure"]["kind"] == "already_executed"
+
+
+def test_resume_allows_force_replay_of_successful_action(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_resume_force_guard")
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "resume_force_guard_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Resume force guard candidate",
+            "summary": "resume force guard summary",
+            "content": "candidate body",
+        },
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["artifact_followup_commands"][0]["action_ids"]["inspect_artifact_json"]
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+
+    resumed = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_resume_action.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "artifact_followup",
+            "--replay-success",
+            "--force",
+        ]
+    )
+
+    assert resumed["ok"] is True
+    assert resumed["selected_action"]["action_id"] == action_id

@@ -14,7 +14,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import new_id, now_iso
-from scripts.operator_action_ledger import save_execution_record
+from scripts.operator_action_ledger import (
+    latest_successful_action_for_action_id,
+    save_execution_record,
+)
 from scripts.operator_checkpoint_action_pack import build_operator_checkpoint_action_pack
 
 
@@ -123,6 +126,7 @@ def execute_selected_action(
     action: dict[str, Any],
     action_pack_path: Path,
     dry_run: bool = False,
+    force: bool = False,
 ) -> tuple[dict[str, Any], int]:
     record = _base_record(
         action_id=action_id,
@@ -130,6 +134,36 @@ def execute_selected_action(
         action_pack_path=action_pack_path,
         dry_run=dry_run,
     )
+
+    previous_success = None if dry_run else latest_successful_action_for_action_id(root, action_id)
+    if previous_success is not None and not force:
+        stderr_snapshot = (
+            "Action already has a successful non-dry-run execution record. "
+            f"Use --force to re-execute action_id `{action_id}`."
+        )
+        _complete_record(
+            record,
+            success=False,
+            return_code=1,
+            ack_summary="",
+            stdout_snapshot="",
+            stderr_snapshot=stderr_snapshot,
+        )
+        save_execution_record(root, record)
+        payload = {
+            "ok": False,
+            "action_id": action_id,
+            "action_pack_path": str(action_pack_path),
+            "selected_action": action,
+            "command_run": action["command"],
+            "failure": {
+                "error": stderr_snapshot,
+                "kind": "already_executed",
+                "prior_execution_id": previous_success.get("execution_id"),
+            },
+            "execution_record": record,
+        }
+        return payload, 1
 
     if dry_run:
         _complete_record(
@@ -207,6 +241,7 @@ def main() -> int:
     parser.add_argument("--action-id", required=True, help="Stable action id from the checkpoint action pack")
     parser.add_argument("--limit", type=int, default=10, help="Action-pack rebuild limit if the pack is missing")
     parser.add_argument("--dry-run", action="store_true", help="Resolve and log the action without executing the command")
+    parser.add_argument("--force", action="store_true", help="Re-execute an action even if it already succeeded previously")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
@@ -244,6 +279,7 @@ def main() -> int:
         action=action,
         action_pack_path=pack_path,
         dry_run=args.dry_run,
+        force=args.force,
     )
     print(json.dumps(payload, indent=2))
     return exit_code

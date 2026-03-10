@@ -14,11 +14,12 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.models import new_id, now_iso
 from scripts.operator_action_executor import execute_selected_action
+from scripts.operator_action_ledger import latest_successful_action_for_action_id
 from scripts.operator_checkpoint_action_pack import build_operator_checkpoint_action_pack
 
 
 DEFAULT_ALLOWED_CATEGORIES = {"pending_review"}
-LOW_RISK_ARTIFACT_VERBS = {"inspect"}
+LOW_RISK_ARTIFACT_VERBS = {"inspect", "inspect_artifact_json"}
 
 
 def operator_queue_runs_dir(root: Path) -> Path:
@@ -80,6 +81,7 @@ def _policy_summary(
     deny_categories: set[str],
     allow_approval: bool,
     allow_ship: bool,
+    force: bool,
 ) -> dict[str, Any]:
     return {
         "default_allowed_categories": sorted(DEFAULT_ALLOWED_CATEGORIES),
@@ -87,6 +89,7 @@ def _policy_summary(
         "deny_categories": sorted(deny_categories),
         "allow_approval": allow_approval,
         "allow_ship": allow_ship,
+        "force": force,
     }
 
 
@@ -134,6 +137,7 @@ def run_queue(
     deny_categories: set[str] | None = None,
     allow_approval: bool = False,
     allow_ship: bool = False,
+    force: bool = False,
     limit: int = 10,
 ) -> tuple[dict[str, Any], int]:
     pack, pack_path = _load_or_build_action_pack(root, limit=limit)
@@ -155,12 +159,14 @@ def run_queue(
             "deny_categories": sorted(denied_categories),
             "allow_approval": allow_approval,
             "allow_ship": allow_ship,
+            "force": force,
         },
         "policy_summary": _policy_summary(
             allow_categories=allowed_categories,
             deny_categories=denied_categories,
             allow_approval=allow_approval,
             allow_ship=allow_ship,
+            force=force,
         ),
         "ok": True,
         "attempted_count": 0,
@@ -213,10 +219,32 @@ def run_queue(
                     "category": action.get("category"),
                     "task_id": action.get("task_id"),
                     "allowed": False,
+                    "skip_kind": "policy",
+                    "skip_reason": policy_reason,
                     "policy_reason": policy_reason,
                 }
             )
             continue
+
+        if not dry_run and not force:
+            previous_success = latest_successful_action_for_action_id(root, action_id)
+            if previous_success is not None:
+                skip_reason = (
+                    "Action already has a successful non-dry-run execution record and queue replay is blocked by default."
+                )
+                queue_run["skipped_count"] += 1
+                queue_run["skipped_actions"].append(
+                    {
+                        "action_id": action_id,
+                        "category": action.get("category"),
+                        "task_id": action.get("task_id"),
+                        "allowed": False,
+                        "skip_kind": "idempotency",
+                        "skip_reason": skip_reason,
+                        "prior_execution_id": previous_success.get("execution_id"),
+                    }
+                )
+                continue
 
         result, exit_code = execute_selected_action(
             root,
@@ -224,6 +252,7 @@ def run_queue(
             action=action,
             action_pack_path=pack_path,
             dry_run=dry_run,
+            force=force,
         )
         queue_run["attempted_count"] += 1
         if exit_code == 0 and result.get("ok"):
@@ -258,6 +287,7 @@ def main() -> int:
     parser.add_argument("--deny-category", action="append", default=[], help="Explicitly deny an action category")
     parser.add_argument("--allow-approval", action="store_true", help="Allow approval actions")
     parser.add_argument("--allow-ship", action="store_true", help="Allow ship/publish artifact follow-up actions")
+    parser.add_argument("--force", action="store_true", help="Re-execute actions even if they already succeeded previously")
     parser.add_argument("--limit", type=int, default=10, help="Action-pack rebuild limit if needed")
     args = parser.parse_args()
 
@@ -272,6 +302,7 @@ def main() -> int:
         deny_categories=set(args.deny_category),
         allow_approval=args.allow_approval,
         allow_ship=args.allow_ship,
+        force=args.force,
         limit=args.limit,
     )
     print(json.dumps(payload, indent=2))

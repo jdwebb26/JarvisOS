@@ -12,6 +12,7 @@ from runtime.evals.trace_store import replay_trace_to_eval
 from runtime.integrations.hermes_adapter import execute_hermes_task, load_hermes_result
 from runtime.memory.governance import list_memory_candidates_for_task, load_memory_candidate
 from runtime.ralph.consolidator import execute_consolidation
+from scripts.operator_action_ledger import latest_successful_action_for_action_id
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -296,3 +297,167 @@ def test_operator_action_executor_logs_failed_execution(tmp_path: Path):
     assert record["failure"] is True
     assert record["return_code"] != 0
     assert "cannot be promoted without approved review" in record["stderr_snapshot"]
+
+
+def test_operator_action_executor_refuses_already_successful_action_without_force(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_duplicate")
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "duplicate_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Duplicate executor candidate",
+            "summary": "candidate for duplicate executor",
+            "content": "candidate body",
+        },
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["artifact_followup_commands"][0]["action_ids"]["inspect_artifact_json"]
+
+    first = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+    second = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ],
+        expect_ok=False,
+    )
+
+    assert first["ok"] is True
+    assert second["ok"] is False
+    assert second["failure"]["kind"] == "already_executed"
+    assert second["failure"]["prior_execution_id"] == first["execution_record"]["execution_id"]
+    assert "Use --force" in second["execution_record"]["stderr_snapshot"]
+
+
+def test_operator_action_executor_allows_force_rerun_after_success(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_force")
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "force_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Force executor candidate",
+            "summary": "candidate for force executor",
+            "content": "candidate body",
+        },
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["artifact_followup_commands"][0]["action_ids"]["inspect_artifact_json"]
+
+    first = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+    forced = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+            "--force",
+        ]
+    )
+
+    latest = latest_successful_action_for_action_id(tmp_path, action_id)
+    assert first["ok"] is True
+    assert forced["ok"] is True
+    assert forced["execution_record"]["execution_id"] != first["execution_record"]["execution_id"]
+    assert latest is not None
+    assert latest["execution_id"] == forced["execution_record"]["execution_id"]
+
+
+def test_operator_action_executor_allows_dry_run_after_success(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_dry_after_success")
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "dry_after_success_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Dry-after-success candidate",
+            "summary": "candidate for dry-after-success executor",
+            "content": "candidate body",
+        },
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["artifact_followup_commands"][0]["action_ids"]["inspect_artifact_json"]
+
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+    dry_run = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+            "--dry-run",
+        ]
+    )
+
+    assert dry_run["ok"] is True
+    assert dry_run["dry_run"] is True
+    assert dry_run["execution_record"]["success"] is True

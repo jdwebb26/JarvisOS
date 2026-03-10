@@ -74,6 +74,7 @@ def main() -> int:
         help="Replay the latest successful action instead of preferring failed/dry-run records.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Resolve the recorded action but do not execute it")
+    parser.add_argument("--force", action="store_true", help="Re-execute even if the action already has a successful record")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
@@ -112,6 +113,7 @@ def main() -> int:
         action=selected_action,
         action_pack_path=Path(record["source_action_pack_path"]),
         dry_run=args.dry_run,
+        force=args.force,
     )
     payload["resumed_from_execution_id"] = record["execution_id"]
     payload["selectors"] = {

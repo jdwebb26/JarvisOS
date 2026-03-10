@@ -291,7 +291,133 @@ def test_queue_runner_ledger_tracks_skipped_and_executed_actions(tmp_path: Path)
     assert all("allowed" in row for row in queue_run["executed_actions"])
     assert queue_run["skipped_actions"]
     assert all(row["allowed"] is False for row in queue_run["skipped_actions"])
+    assert all(row["skip_kind"] == "policy" for row in queue_run["skipped_actions"])
     assert handoff["pack"]["recent_operator_queue_runs"]
     assert handoff["pack"]["recent_operator_queue_runs"][0]["policy_summary"]
     assert review is not None
     assert review.status == "approved"
+
+
+def test_queue_runner_skips_already_successful_action_ids_by_default(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_queue_idempotency_default")
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "queue_idempotency_default_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Queue idempotency default candidate",
+            "summary": "queue idempotency default summary",
+            "content": "candidate body",
+        },
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["artifact_followup_commands"][0]["action_ids"]["inspect_artifact_json"]
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_queue_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "artifact_followup",
+        ]
+    )
+    queue_run = _latest_queue_run(tmp_path)
+    handoff = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_handoff_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["attempted_count"] == 0
+    assert result["succeeded_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped_actions"][0]["skip_kind"] == "idempotency"
+    assert result["skipped_actions"][0]["action_id"] == action_id
+    assert queue_run["skipped_actions"][0]["skip_kind"] == "idempotency"
+    assert handoff["pack"]["recent_operator_queue_runs"][0]["idempotency_skipped_count"] >= 1
+
+
+def test_queue_runner_force_allows_rerun_of_successful_action_ids(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_queue_idempotency_force")
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "queue_idempotency_force_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Queue idempotency force candidate",
+            "summary": "queue idempotency force summary",
+            "content": "candidate body",
+        },
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["artifact_followup_commands"][0]["action_ids"]["inspect_artifact_json"]
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_queue_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "artifact_followup",
+            "--force",
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["attempted_count"] == 1
+    assert result["succeeded_count"] == 1
+    assert result["skipped_count"] == 0
+    assert result["executed_actions"][0]["action_id"] == action_id
