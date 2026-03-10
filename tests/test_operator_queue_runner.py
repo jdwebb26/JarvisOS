@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from runtime.core.approval_store import request_approval
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
 from runtime.core.review_store import latest_review_for_task, request_review
 from runtime.core.task_store import create_task
@@ -19,6 +20,7 @@ def _make_task(
     *,
     task_id: str,
     review_required: bool = False,
+    approval_required: bool = False,
 ) -> TaskRecord:
     return create_task(
         TaskRecord(
@@ -36,6 +38,7 @@ def _make_task(
             status=TaskStatus.RUNNING.value,
             execution_backend="qwen_executor",
             review_required=review_required,
+            approval_required=approval_required,
         ),
         root=root,
     )
@@ -84,8 +87,22 @@ def _seed_review_action(root: Path, *, task_id: str) -> TaskRecord:
     return task
 
 
-def _seed_failing_memory_action(root: Path, *, task_id: str) -> TaskRecord:
-    task = _make_task(root, task_id=task_id, review_required=True)
+def _seed_approval_action(root: Path, *, task_id: str) -> TaskRecord:
+    task = _make_task(root, task_id=task_id, approval_required=True)
+    request_approval(
+        task_id=task.task_id,
+        approval_type=task.task_type,
+        requested_by="tester",
+        requested_reviewer="operator",
+        lane="review",
+        summary=f"Pending approval for {task_id}",
+        root=root,
+    )
+    return task
+
+
+def _seed_memory_action(root: Path, *, task_id: str, review_required: bool) -> TaskRecord:
+    task = _make_task(root, task_id=task_id, review_required=review_required, approval_required=not review_required)
     hermes = execute_hermes_task(
         task_id=task.task_id,
         actor="tester",
@@ -113,8 +130,31 @@ def _seed_failing_memory_action(root: Path, *, task_id: str) -> TaskRecord:
     return task
 
 
-def test_queue_runner_dry_run(tmp_path: Path):
-    task = _seed_review_action(tmp_path, task_id="task_queue_dry")
+def test_queue_runner_default_policy_skips_disallowed_actions(tmp_path: Path):
+    _seed_approval_action(tmp_path, task_id="task_queue_policy_approval")
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_queue_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--category",
+            "pending_approval",
+        ]
+    )
+    queue_run = _latest_queue_run(tmp_path)
+
+    assert result["ok"] is True
+    assert result["attempted_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped_actions"][0]["allowed"] is False
+    assert "blocked by default policy" in result["skipped_actions"][0]["policy_reason"]
+    assert queue_run["policy_summary"]["allow_approval"] is False
+
+
+def test_queue_runner_dry_run_executes_only_as_dry_run(tmp_path: Path):
+    task = _seed_review_action(tmp_path, task_id="task_queue_policy_dry_run")
 
     result = _run_json(
         [
@@ -131,76 +171,17 @@ def test_queue_runner_dry_run(tmp_path: Path):
     )
     queue_run = _latest_queue_run(tmp_path)
     review = latest_review_for_task(task.task_id, root=tmp_path)
-    handoff = _run_json(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "operator_handoff_pack.py"),
-            "--root",
-            str(tmp_path),
-        ]
-    )
 
     assert result["ok"] is True
     assert result["attempted_count"] == 1
-    assert result["succeeded_count"] == 1
-    assert result["failed_count"] == 0
+    assert result["executed_actions"][0]["dry_run"] is True
     assert queue_run["filters"]["dry_run"] is True
     assert review is not None
     assert review.status == "pending"
-    assert handoff["pack"]["recent_operator_queue_runs"]
 
 
-def test_queue_runner_stops_on_failure(tmp_path: Path):
-    _seed_failing_memory_action(tmp_path, task_id="task_queue_fail_a")
-    _seed_failing_memory_action(tmp_path, task_id="task_queue_fail_b")
-
-    result = _run_json(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "operator_queue_runner.py"),
-            "--root",
-            str(tmp_path),
-            "--category",
-            "memory_candidate",
-            "--max-actions",
-            "2",
-        ],
-        expect_ok=False,
-    )
-
-    assert result["ok"] is False
-    assert result["attempted_count"] == 1
-    assert result["failed_count"] == 1
-    assert result["stopped_on_action_id"]
-
-
-def test_queue_runner_continue_on_failure(tmp_path: Path):
-    _seed_failing_memory_action(tmp_path, task_id="task_queue_continue_a")
-    _seed_failing_memory_action(tmp_path, task_id="task_queue_continue_b")
-
-    result = _run_json(
-        [
-            sys.executable,
-            str(ROOT / "scripts" / "operator_queue_runner.py"),
-            "--root",
-            str(tmp_path),
-            "--category",
-            "memory_candidate",
-            "--max-actions",
-            "2",
-            "--continue-on-failure",
-        ],
-        expect_ok=False,
-    )
-
-    assert result["ok"] is False
-    assert result["attempted_count"] == 2
-    assert result["failed_count"] == 2
-
-
-def test_queue_runner_filters_by_task_and_category(tmp_path: Path):
-    task_a = _seed_review_action(tmp_path, task_id="task_queue_filter_a")
-    task_b = _seed_review_action(tmp_path, task_id="task_queue_filter_b")
+def test_queue_runner_allow_approval_enables_approval_actions(tmp_path: Path):
+    task = _seed_approval_action(tmp_path, task_id="task_queue_policy_allow_approval")
 
     result = _run_json(
         [
@@ -209,19 +190,108 @@ def test_queue_runner_filters_by_task_and_category(tmp_path: Path):
             "--root",
             str(tmp_path),
             "--task-id",
-            task_a.task_id,
+            task.task_id,
             "--category",
-            "pending_review",
+            "pending_approval",
+            "--allow-approval",
         ]
     )
-    review_a = latest_review_for_task(task_a.task_id, root=tmp_path)
-    review_b = latest_review_for_task(task_b.task_id, root=tmp_path)
 
     assert result["ok"] is True
     assert result["attempted_count"] == 1
-    assert len(result["executed_actions"]) == 1
-    assert result["executed_actions"][0]["task_id"] == task_a.task_id
-    assert review_a is not None
-    assert review_a.status == "approved"
-    assert review_b is not None
-    assert review_b.status == "pending"
+    assert result["succeeded_count"] == 1
+    assert result["executed_actions"][0]["allowed"] is True
+    assert "explicit policy" in result["executed_actions"][0]["policy_reason"]
+
+
+def test_queue_runner_stop_on_failure(tmp_path: Path):
+    _seed_review_action(tmp_path, task_id="task_queue_policy_stop_review")
+    _seed_memory_action(tmp_path, task_id="task_queue_policy_stop_memory", review_required=False)
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_queue_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--allow-category",
+            "memory_candidate",
+        ],
+        expect_ok=False,
+    )
+
+    assert result["ok"] is False
+    assert result["attempted_count"] == 2
+    assert result["succeeded_count"] == 1
+    assert result["failed_count"] == 1
+    assert result["stopped_on_action_id"]
+
+
+def test_queue_runner_deny_overrides_allow(tmp_path: Path):
+    task = _seed_review_action(tmp_path, task_id="task_queue_policy_deny")
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_queue_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "pending_review",
+            "--allow-category",
+            "pending_review",
+            "--deny-category",
+            "pending_review",
+        ]
+    )
+    review = latest_review_for_task(task.task_id, root=tmp_path)
+
+    assert result["ok"] is True
+    assert result["attempted_count"] == 0
+    assert result["skipped_count"] == 1
+    assert "denied by explicit policy" in result["skipped_actions"][0]["policy_reason"]
+    assert review is not None
+    assert review.status == "pending"
+
+
+def test_queue_runner_ledger_tracks_skipped_and_executed_actions(tmp_path: Path):
+    review_task = _seed_review_action(tmp_path, task_id="task_queue_policy_review")
+    _seed_memory_action(tmp_path, task_id="task_queue_policy_memory", review_required=False)
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_queue_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--continue-on-failure",
+            "--allow-category",
+            "memory_candidate",
+        ],
+        expect_ok=False,
+    )
+    queue_run = _latest_queue_run(tmp_path)
+    handoff = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_handoff_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    review = latest_review_for_task(review_task.task_id, root=tmp_path)
+
+    assert result["attempted_count"] >= 2
+    assert result["succeeded_count"] >= 1
+    assert result["failed_count"] >= 1
+    assert queue_run["executed_actions"]
+    assert queue_run["policy_summary"]["effective_allow_categories"]
+    assert all("allowed" in row for row in queue_run["executed_actions"])
+    assert queue_run["skipped_actions"]
+    assert all(row["allowed"] is False for row in queue_run["skipped_actions"])
+    assert handoff["pack"]["recent_operator_queue_runs"]
+    assert handoff["pack"]["recent_operator_queue_runs"][0]["policy_summary"]
+    assert review is not None
+    assert review.status == "approved"

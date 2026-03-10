@@ -210,6 +210,9 @@ python3 scripts/operator_queue_runner.py --task-id TASK_ID
 python3 scripts/operator_queue_runner.py --category memory_candidate
 python3 scripts/operator_queue_runner.py --max-actions 3 --dry-run
 python3 scripts/operator_queue_runner.py --continue-on-failure
+python3 scripts/operator_queue_runner.py --allow-category memory_candidate
+python3 scripts/operator_queue_runner.py --allow-approval
+python3 scripts/operator_queue_runner.py --deny-category pending_review
 ```
 
 Queue-run records are written to:
