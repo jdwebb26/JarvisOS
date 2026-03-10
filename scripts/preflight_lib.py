@@ -76,6 +76,7 @@ REQUIRED_FILES = [
     "scripts/doctor.py",
     "scripts/generate_config.py",
     "scripts/overnight_operator_run.py",
+    "scripts/operator_handoff_pack.py",
     "scripts/smoke_test.py",
     "scripts/validate.py",
     "runtime/core/intake.py",

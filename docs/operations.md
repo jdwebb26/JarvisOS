@@ -121,6 +121,28 @@ python3 runtime/gateway/memory_decision.py \
   --confidence-score 0.85
 ```
 
+## Morning Handoff Pack
+
+When you wake up and want the compact operator checkpoint first, run:
+
+```bash
+python3 scripts/operator_handoff_pack.py
+```
+
+This writes:
+
+- `state/logs/operator_handoff_pack.json`
+- `state/logs/operator_handoff_pack.md`
+
+The handoff pack summarizes:
+
+- recent task status
+- recent candidate/promoted artifacts
+- latest traces and replay evals
+- pending review and approval items
+- latest Ralph digest and memory candidate activity
+- recommended next operator actions
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.
