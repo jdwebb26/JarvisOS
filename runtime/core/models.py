@@ -642,6 +642,7 @@ class ExperimentRunRecord:
     hypothesis: str = ""
     comparison_summary: str = ""
     candidate_artifact_id: Optional[str] = None
+    trace_id: Optional[str] = None
     stop_reason: str = ""
     raw_result: dict[str, Any] = field(default_factory=dict)
     execution_backend: str = "autoresearch_adapter"
@@ -660,6 +661,7 @@ class ExperimentRunRecord:
         data.setdefault("hypothesis", "")
         data.setdefault("comparison_summary", "")
         data.setdefault("candidate_artifact_id", None)
+        data.setdefault("trace_id", None)
         data.setdefault("stop_reason", "")
         data.setdefault("raw_result", {})
         data.setdefault("execution_backend", "autoresearch_adapter")
@@ -727,6 +729,214 @@ class ResearchRecommendationRecord:
         data.setdefault("recommended_artifact_id", None)
         data.setdefault("linked_artifact_ids", [])
         data.setdefault("execution_backend", "autoresearch_adapter")
+        return cls(**data)
+
+
+@dataclass
+class RunTraceRecord:
+    trace_id: str
+    task_id: str
+    trace_kind: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    execution_backend: str
+    backend_run_id: Optional[str] = None
+    status: str = "completed"
+    request_summary: str = ""
+    response_summary: str = ""
+    decision_summary: str = ""
+    request_payload: dict[str, Any] = field(default_factory=dict)
+    response_payload: dict[str, Any] = field(default_factory=dict)
+    replay_payload: dict[str, Any] = field(default_factory=dict)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    candidate_artifact_id: Optional[str] = None
+    error: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RunTraceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("backend_run_id", None)
+        data.setdefault("status", "completed")
+        data.setdefault("request_summary", "")
+        data.setdefault("response_summary", "")
+        data.setdefault("decision_summary", "")
+        data.setdefault("request_payload", {})
+        data.setdefault("response_payload", {})
+        data.setdefault("replay_payload", {})
+        data.setdefault("source_refs", {})
+        data.setdefault("candidate_artifact_id", None)
+        data.setdefault("error", "")
+        return cls(**data)
+
+
+@dataclass
+class EvalCaseRecord:
+    eval_case_id: str
+    trace_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    evaluator_kind: str
+    objective: str
+    criteria: dict[str, Any] = field(default_factory=dict)
+    status: str = "pending"
+    latest_eval_result_id: Optional[str] = None
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "EvalCaseRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("criteria", {})
+        data.setdefault("status", "pending")
+        data.setdefault("latest_eval_result_id", None)
+        return cls(**data)
+
+
+@dataclass
+class EvalResultRecord:
+    eval_result_id: str
+    eval_case_id: str
+    trace_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    evaluator_kind: str
+    status: str = "completed"
+    score: float = 0.0
+    passed: bool = False
+    summary: str = ""
+    details: str = ""
+    compared_values: dict[str, Any] = field(default_factory=dict)
+    report_artifact_id: Optional[str] = None
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "EvalResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("status", "completed")
+        data.setdefault("score", 0.0)
+        data.setdefault("passed", False)
+        data.setdefault("summary", "")
+        data.setdefault("details", "")
+        data.setdefault("compared_values", {})
+        data.setdefault("report_artifact_id", None)
+        return cls(**data)
+
+
+@dataclass
+class ConsolidationRunRecord:
+    consolidation_run_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    status: str = "pending"
+    summary: str = ""
+    source_artifact_ids: list[str] = field(default_factory=list)
+    source_trace_ids: list[str] = field(default_factory=list)
+    source_eval_result_ids: list[str] = field(default_factory=list)
+    digest_artifact_id: Optional[str] = None
+    memory_candidate_ids: list[str] = field(default_factory=list)
+    execution_backend: str = "ralph_adapter"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ConsolidationRunRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("status", "pending")
+        data.setdefault("summary", "")
+        data.setdefault("source_artifact_ids", [])
+        data.setdefault("source_trace_ids", [])
+        data.setdefault("source_eval_result_ids", [])
+        data.setdefault("digest_artifact_id", None)
+        data.setdefault("memory_candidate_ids", [])
+        data.setdefault("execution_backend", "ralph_adapter")
+        return cls(**data)
+
+
+@dataclass
+class DigestArtifactLinkRecord:
+    digest_link_id: str
+    consolidation_run_id: str
+    task_id: str
+    artifact_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    link_role: str = "operator_digest"
+    execution_backend: str = "ralph_adapter"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "DigestArtifactLinkRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("link_role", "operator_digest")
+        data.setdefault("execution_backend", "ralph_adapter")
+        return cls(**data)
+
+
+@dataclass
+class MemoryCandidateRecord:
+    memory_candidate_id: str
+    consolidation_run_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    candidate_kind: str
+    memory_type: str
+    title: str
+    summary: str
+    content: str
+    source_artifact_ids: list[str] = field(default_factory=list)
+    source_trace_ids: list[str] = field(default_factory=list)
+    source_eval_result_ids: list[str] = field(default_factory=list)
+    lifecycle_state: str = RecordLifecycleState.CANDIDATE.value
+    execution_backend: str = "ralph_adapter"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryCandidateRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("source_artifact_ids", [])
+        data.setdefault("source_trace_ids", [])
+        data.setdefault("source_eval_result_ids", [])
+        data.setdefault("lifecycle_state", RecordLifecycleState.CANDIDATE.value)
+        data.setdefault("execution_backend", "ralph_adapter")
         return cls(**data)
 
 

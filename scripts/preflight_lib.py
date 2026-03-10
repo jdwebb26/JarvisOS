@@ -28,6 +28,8 @@ REQUIRED_DIRS = [
     "runtime/controls",
     "runtime/integrations",
     "runtime/researchlab",
+    "runtime/evals",
+    "runtime/ralph",
     "scripts",
     "state",
     "state/approvals",
@@ -46,6 +48,12 @@ REQUIRED_DIRS = [
     "state/experiment_runs",
     "state/metric_results",
     "state/research_recommendations",
+    "state/run_traces",
+    "state/eval_cases",
+    "state/eval_results",
+    "state/consolidation_runs",
+    "state/digest_artifact_links",
+    "state/memory_candidates",
     "state/tasks",
     "workspace",
     "workspace/inbox",
@@ -74,6 +82,8 @@ REQUIRED_FILES = [
     "runtime/integrations/hermes_adapter.py",
     "runtime/integrations/autoresearch_adapter.py",
     "runtime/researchlab/runner.py",
+    "runtime/evals/trace_store.py",
+    "runtime/ralph/consolidator.py",
     "runtime/core/review_store.py",
     "runtime/core/publish_complete.py",
     "runtime/core/run_runtime_regression_pack.py",
@@ -91,6 +101,8 @@ KEY_MODULES = [
     "runtime.integrations.hermes_adapter",
     "runtime.integrations.autoresearch_adapter",
     "runtime.researchlab.runner",
+    "runtime.evals.trace_store",
+    "runtime.ralph.consolidator",
     "runtime.core.publish_complete",
     "runtime.core.run_runtime_regression_pack",
     "runtime.gateway.complete_from_artifact",
@@ -358,9 +370,12 @@ def build_doctor_report(root: Path) -> dict:
     approvals_count = len(list((root / "state" / "approvals").glob("*.json")))
     controls_count = len(list((root / "state" / "controls").glob("*.json")))
     research_campaigns_count = len(list((root / "state" / "research_campaigns").glob("*.json")))
+    run_traces_count = len(list((root / "state" / "run_traces").glob("*.json")))
+    eval_results_count = len(list((root / "state" / "eval_results").glob("*.json")))
+    consolidation_runs_count = len(list((root / "state" / "consolidation_runs").glob("*.json")))
     reviews_count = len(list((root / "state" / "reviews").glob("*.json")))
 
-    _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count}")
+    _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count} run_traces={run_traces_count} eval_results={eval_results_count} consolidation_runs={consolidation_runs_count}")
 
     state_export = root / "state" / "logs" / "state_export.json"
     if state_export.exists():
@@ -407,6 +422,9 @@ def build_doctor_report(root: Path) -> dict:
             "approvals": approvals_count,
             "controls": controls_count,
             "research_campaigns": research_campaigns_count,
+            "run_traces": run_traces_count,
+            "eval_results": eval_results_count,
+            "consolidation_runs": consolidation_runs_count,
             "reviews": reviews_count,
             "outputs": outputs_count,
         },

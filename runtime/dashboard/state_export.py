@@ -56,6 +56,12 @@ def build_state_export(root: Path) -> dict:
     experiment_runs = _load_jsons(root / "state" / "experiment_runs")
     metric_results = _load_jsons(root / "state" / "metric_results")
     research_recommendations = _load_jsons(root / "state" / "research_recommendations")
+    run_traces = _load_jsons(root / "state" / "run_traces")
+    eval_cases = _load_jsons(root / "state" / "eval_cases")
+    eval_results = _load_jsons(root / "state" / "eval_results")
+    consolidation_runs = _load_jsons(root / "state" / "consolidation_runs")
+    digest_artifact_links = _load_jsons(root / "state" / "digest_artifact_links")
+    memory_candidates = _load_jsons(root / "state" / "memory_candidates")
 
     summary = {
         "counts": {
@@ -74,6 +80,12 @@ def build_state_export(root: Path) -> dict:
             "experiment_runs": len(experiment_runs),
             "metric_results": len(metric_results),
             "research_recommendations": len(research_recommendations),
+            "run_traces": len(run_traces),
+            "eval_cases": len(eval_cases),
+            "eval_results": len(eval_results),
+            "consolidation_runs": len(consolidation_runs),
+            "digest_artifact_links": len(digest_artifact_links),
+            "memory_candidates": len(memory_candidates),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -88,6 +100,11 @@ def build_state_export(root: Path) -> dict:
         "research_campaign_status_counts": {},
         "experiment_run_status_counts": {},
         "research_recommendation_action_counts": {},
+        "run_trace_kind_counts": {},
+        "eval_case_status_counts": {},
+        "eval_result_pass_counts": {},
+        "consolidation_run_status_counts": {},
+        "memory_candidate_type_counts": {},
     }
 
     for task in tasks:
@@ -139,6 +156,26 @@ def build_state_export(root: Path) -> dict:
     for recommendation in research_recommendations:
         action = recommendation.get("action", "unknown")
         summary["research_recommendation_action_counts"][action] = summary["research_recommendation_action_counts"].get(action, 0) + 1
+
+    for trace in run_traces:
+        trace_kind = trace.get("trace_kind", "unknown")
+        summary["run_trace_kind_counts"][trace_kind] = summary["run_trace_kind_counts"].get(trace_kind, 0) + 1
+
+    for eval_case in eval_cases:
+        status = eval_case.get("status", "unknown")
+        summary["eval_case_status_counts"][status] = summary["eval_case_status_counts"].get(status, 0) + 1
+
+    for eval_result in eval_results:
+        passed = "passed" if eval_result.get("passed") else "failed"
+        summary["eval_result_pass_counts"][passed] = summary["eval_result_pass_counts"].get(passed, 0) + 1
+
+    for consolidation_run in consolidation_runs:
+        status = consolidation_run.get("status", "unknown")
+        summary["consolidation_run_status_counts"][status] = summary["consolidation_run_status_counts"].get(status, 0) + 1
+
+    for memory_candidate in memory_candidates:
+        memory_type = memory_candidate.get("memory_type", "unknown")
+        summary["memory_candidate_type_counts"][memory_type] = summary["memory_candidate_type_counts"].get(memory_type, 0) + 1
 
     out_path = root / "state" / "logs" / "state_export.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
