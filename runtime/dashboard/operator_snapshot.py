@@ -156,6 +156,9 @@ def build_operator_snapshot(root: Path) -> dict:
         "latest_bridge_replay": (status.get("operator_control_plane", {}) or {}).get("latest_bridge_replay"),
         "reply_transport_replay_summary": (status.get("operator_control_plane", {}) or {}).get("reply_transport_replay_summary", {}),
         "bridge_replay_summary": (status.get("operator_control_plane", {}) or {}).get("bridge_replay_summary", {}),
+        "doctor_summary": (status.get("operator_control_plane", {}) or {}).get("doctor_summary", {}),
+        "latest_doctor_report": (status.get("operator_control_plane", {}) or {}).get("latest_doctor_report"),
+        "latest_remediation_plan": (status.get("operator_control_plane", {}) or {}).get("latest_remediation_plan"),
         "latest_compare_reply_transport_cycles": (status.get("operator_control_plane", {}) or {}).get("latest_compare_reply_transport_cycles"),
         "latest_compare_bridge_cycles": (status.get("operator_control_plane", {}) or {}).get("latest_compare_bridge_cycles"),
         "pending_reviews": pending_reviews,
@@ -196,6 +199,8 @@ def build_operator_snapshot(root: Path) -> dict:
             "operator_bridge_cycles": status.get("counts", {}).get("operator_bridge_cycles", 0),
             "operator_bridge_replay_plans": status.get("counts", {}).get("operator_bridge_replay_plans", 0),
             "operator_bridge_replays": status.get("counts", {}).get("operator_bridge_replays", 0),
+            "operator_doctor_reports": status.get("counts", {}).get("operator_doctor_reports", 0),
+            "operator_remediation_plans": status.get("counts", {}).get("operator_remediation_plans", 0),
         },
     }
 

@@ -143,6 +143,18 @@ def operator_bridge_replays_dir(root: Path) -> Path:
     return path
 
 
+def operator_doctor_reports_dir(root: Path) -> Path:
+    path = root / "state" / "operator_doctor_reports"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def operator_remediation_plans_dir(root: Path) -> Path:
+    path = root / "state" / "operator_remediation_plans"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 REPLY_TOKEN_PATTERN = re.compile(r"^[A-Z]\d+$")
 EXECUTABLE_REPLY_PREFIXES = {"A", "R", "P", "F"}
 REPORT_ONLY_REPLY_PREFIXES = {"X", "B"}
@@ -244,6 +256,20 @@ def save_bridge_replay_record(root: Path, record: dict[str, Any]) -> dict[str, A
     return record
 
 
+def save_doctor_report_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_doctor_reports_dir(root) / f"{record['doctor_report_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    latest_path = triage_logs_dir(root) / "operator_doctor_latest.json"
+    latest_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def save_remediation_plan_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
+    path = operator_remediation_plans_dir(root) / f"{record['remediation_plan_id']}.json"
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
 def list_task_interventions(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_task_interventions_dir(root)), "completed_at", "started_at")
 
@@ -302,6 +328,14 @@ def list_bridge_replay_plans(root: Path) -> list[dict[str, Any]]:
 
 def list_bridge_replays(root: Path) -> list[dict[str, Any]]:
     return sort_recent(load_jsons(operator_bridge_replays_dir(root)), "completed_at", "started_at")
+
+
+def list_doctor_reports(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_doctor_reports_dir(root)), "completed_at", "started_at")
+
+
+def list_remediation_plans(root: Path) -> list[dict[str, Any]]:
+    return sort_recent(load_jsons(operator_remediation_plans_dir(root)), "completed_at", "started_at")
 
 
 def count_pending_reply_messages(root: Path) -> int:
@@ -3328,6 +3362,403 @@ def execute_bridge_replay(
     replay["completed_at"] = now_iso()
     save_bridge_replay_record(root, replay)
     return {"ok": replay["ok"], "bridge_replay": replay, "bridge_replay_plan": replay_plan, "bridge_cycle": bridge_payload}, exit_code
+
+
+DOCTOR_SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3}
+
+
+def _operator_command(root: Path, script_name: str, *args: str) -> str:
+    parts = [
+        "python3",
+        str((root / "scripts" / script_name).resolve()),
+        "--root",
+        str(root.resolve()),
+    ]
+    parts.extend(arg for arg in args if arg)
+    return " ".join(parts)
+
+
+def count_pending_gateway_import_messages(root: Path) -> int:
+    count = 0
+    for row in load_jsons(operator_gateway_inbound_messages_dir(root)):
+        if not row.get("imported_at"):
+            count += 1
+    return count
+
+
+def _pending_gateway_import_paths(root: Path, *, limit: int = 5) -> list[str]:
+    paths: list[str] = []
+    for path in sorted(operator_gateway_inbound_messages_dir(root).glob("*.json")):
+        payload = _load_json_file(path)
+        if payload is None or payload.get("imported_at"):
+            continue
+        paths.append(str(path))
+        if len(paths) >= limit:
+            break
+    return paths
+
+
+def _doctor_issue(
+    *,
+    code: str,
+    severity: str,
+    reason: str,
+    command: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "issue_code": code,
+        "severity": severity,
+        "reason": reason,
+        "suggested_command": command,
+        "details": details or {},
+    }
+
+
+def classify_operator_doctor_state(root: Path, *, limit: int = 5) -> dict[str, Any]:
+    from scripts.operator_checkpoint_action_pack import classify_action_pack
+
+    current_pack = load_current_action_pack_summary(root)
+    inbox, inbox_path, inbox_error = load_current_decision_inbox(root)
+    inbox_status, _, inbox_reason = classify_decision_inbox_freshness(root, inbox)
+    reply_ingress = {
+        "reply_ingest_ready": bool(inbox and inbox.get("reply_ready")) and current_pack.get("status") == "valid",
+        "pending_inbound_reply_count": count_pending_reply_messages(root),
+        "duplicate_count": sum(1 for row in list_reply_ingress_records(root) if row.get("result_kind") == "duplicate_message"),
+        "blocked_count": sum(
+            1
+            for row in list_reply_ingress_records(root)
+            if row.get("result_kind") in {"missing_inbox", "stale_inbox", "pack_refresh_required", "blocked", "duplicate_message"}
+        ),
+    }
+    reply_transport = reply_transport_readiness(root, allow_inbox_rebuild=False, limit=limit)
+    gateway_bridge = gateway_operator_bridge_readiness(root, allow_inbox_rebuild=False, limit=limit)
+    pending_gateway_count = count_pending_gateway_import_messages(root)
+    latest_transport_cycle = list_reply_transport_cycles(root)[0] if list_reply_transport_cycles(root) else None
+    latest_bridge_cycle = list_bridge_cycles(root)[0] if list_bridge_cycles(root) else None
+    latest_transport_replay_safety = (
+        classify_reply_transport_replay_safety(root, cycle=latest_transport_cycle, live_apply_requested=False)
+        if latest_transport_cycle
+        else {"replay_allowed": None, "reason": "No reply transport cycle recorded yet."}
+    )
+    latest_bridge_replay_safety = (
+        classify_bridge_replay_safety(root, cycle=latest_bridge_cycle, live_apply_requested=False)
+        if latest_bridge_cycle
+        else {"replay_allowed": None, "reason": "No bridge cycle recorded yet."}
+    )
+
+    issues: list[dict[str, Any]] = []
+    pack_status = current_pack.get("status")
+    if pack_status == "missing":
+        issues.append(
+            _doctor_issue(
+                code="pack_missing",
+                severity="high",
+                reason=current_pack.get("reason") or "Current action pack is missing.",
+                command=_operator_command(root, "operator_checkpoint_action_pack.py"),
+            )
+        )
+    elif pack_status in {"malformed", "fingerprint_invalid"}:
+        issues.append(
+            _doctor_issue(
+                code="pack_invalid",
+                severity="high",
+                reason=current_pack.get("reason") or f"Current action pack status is `{pack_status}`.",
+                command=_operator_command(root, "operator_checkpoint_action_pack.py"),
+                details={"pack_status": pack_status},
+            )
+        )
+    elif pack_status == "expired":
+        issues.append(
+            _doctor_issue(
+                code="pack_expired",
+                severity="high",
+                reason=current_pack.get("reason") or "Current action pack has expired.",
+                command=_operator_command(root, "operator_checkpoint_action_pack.py"),
+                details={"expires_at": current_pack.get("expires_at")},
+            )
+        )
+
+    if inbox_error == "missing_inbox":
+        issues.append(
+            _doctor_issue(
+                code="inbox_missing",
+                severity="medium",
+                reason="Decision inbox is missing.",
+                command=_operator_command(root, "operator_decision_inbox.py"),
+                details={"decision_inbox_path": str(inbox_path)},
+            )
+        )
+    elif inbox_status == "stale_inbox":
+        issues.append(
+            _doctor_issue(
+                code="inbox_stale",
+                severity="medium",
+                reason=inbox_reason,
+                command=_operator_command(root, "operator_decision_inbox.py"),
+                details={"decision_inbox_path": str(inbox_path)},
+            )
+        )
+    elif inbox is not None and not inbox.get("reply_ready"):
+        issues.append(
+            _doctor_issue(
+                code="inbox_not_reply_ready",
+                severity="medium",
+                reason="Decision inbox exists but is not reply-ready.",
+                command=_operator_command(root, "operator_decision_inbox.py"),
+                details={"decision_inbox_path": str(inbox_path)},
+            )
+        )
+
+    if reply_ingress["pending_inbound_reply_count"] > 0:
+        issues.append(
+            _doctor_issue(
+                code="pending_inbound_replies",
+                severity="medium",
+                reason=f"{reply_ingress['pending_inbound_reply_count']} inbound reply message(s) are waiting in the file-backed queue.",
+                command=_operator_command(root, "operator_reply_transport_cycle.py", "--apply", "--dry-run", "--continue-on-failure"),
+                details={"pending_inbound_reply_count": reply_ingress["pending_inbound_reply_count"]},
+            )
+        )
+
+    if pending_gateway_count > 0:
+        issues.append(
+            _doctor_issue(
+                code="pending_gateway_imports",
+                severity="medium",
+                reason=f"{pending_gateway_count} gateway-style reply message(s) are waiting to be imported.",
+                command=_operator_command(root, "operator_bridge_cycle.py", "--import-from-folder", "--apply", "--dry-run", "--continue-on-failure"),
+                details={"pending_gateway_import_count": pending_gateway_count, "paths": _pending_gateway_import_paths(root, limit=limit)},
+            )
+        )
+
+    if latest_transport_cycle and not latest_transport_cycle.get("ok", False):
+        issues.append(
+            _doctor_issue(
+                code="latest_transport_failed",
+                severity="high",
+                reason=latest_transport_cycle.get("stop_reason") or "Latest reply transport cycle did not complete cleanly.",
+                command=_operator_command(
+                    root,
+                    "operator_explain_reply_transport_cycle.py",
+                    "--cycle-id",
+                    str(latest_transport_cycle.get("transport_cycle_id") or ""),
+                ),
+                details={"transport_cycle_id": latest_transport_cycle.get("transport_cycle_id")},
+            )
+        )
+
+    if latest_bridge_cycle and not latest_bridge_cycle.get("ok", False):
+        issues.append(
+            _doctor_issue(
+                code="latest_bridge_failed",
+                severity="high",
+                reason=latest_bridge_cycle.get("stop_reason") or "Latest bridge cycle did not complete cleanly.",
+                command=_operator_command(
+                    root,
+                    "operator_explain_bridge_cycle.py",
+                    "--cycle-id",
+                    str(latest_bridge_cycle.get("bridge_cycle_id") or ""),
+                ),
+                details={"bridge_cycle_id": latest_bridge_cycle.get("bridge_cycle_id")},
+            )
+        )
+
+    if latest_transport_replay_safety.get("replay_allowed") is False:
+        issues.append(
+            _doctor_issue(
+                code="replay_blocked",
+                severity="medium",
+                reason=latest_transport_replay_safety.get("reason") or "Latest reply transport replay is blocked.",
+                command=_operator_command(
+                    root,
+                    "operator_replay_transport_cycle.py",
+                    "--cycle-id",
+                    str((latest_transport_cycle or {}).get("transport_cycle_id") or ""),
+                    "--plan-only",
+                )
+                if latest_transport_cycle
+                else None,
+                details={"transport_cycle_id": (latest_transport_cycle or {}).get("transport_cycle_id")},
+            )
+        )
+
+    if latest_bridge_replay_safety.get("replay_allowed") is False:
+        issues.append(
+            _doctor_issue(
+                code="bridge_replay_blocked",
+                severity="medium",
+                reason=latest_bridge_replay_safety.get("reason") or "Latest bridge replay is blocked.",
+                command=_operator_command(
+                    root,
+                    "operator_replay_bridge_cycle.py",
+                    "--cycle-id",
+                    str((latest_bridge_cycle or {}).get("bridge_cycle_id") or ""),
+                    "--plan-only",
+                )
+                if latest_bridge_cycle
+                else None,
+                details={"bridge_cycle_id": (latest_bridge_cycle or {}).get("bridge_cycle_id")},
+            )
+        )
+
+    if not issues:
+        issues.append(
+            _doctor_issue(
+                code="healthy",
+                severity="low",
+                reason="Operator reply/control-plane paths are healthy.",
+                command=_operator_command(root, "operator_handoff_pack.py"),
+            )
+        )
+
+    issues = sorted(issues, key=lambda row: (-DOCTOR_SEVERITY_ORDER.get(str(row.get("severity")), 0), str(row.get("issue_code"))))
+    highest = issues[0]["severity"] if issues else "low"
+    health_status = "healthy"
+    if highest == "high":
+        health_status = "blocked"
+    elif highest == "medium":
+        health_status = "degraded"
+    next_commands = [row["suggested_command"] for row in issues if row.get("suggested_command")][:5]
+    return {
+        "generated_at": now_iso(),
+        "health_status": health_status,
+        "highest_severity": highest,
+        "active_issue_count": len([row for row in issues if row.get("issue_code") != "healthy"]),
+        "issues": issues,
+        "readiness": {
+            "current_action_pack": current_pack,
+            "decision_inbox": {
+                "path": str(inbox_path),
+                "status": inbox_status,
+                "reply_ready": False if inbox is None else bool(inbox.get("reply_ready")),
+                "generated_at": None if inbox is None else inbox.get("generated_at"),
+                "reason": inbox_reason,
+            },
+            "reply_ingress": reply_ingress,
+            "reply_transport": reply_transport,
+            "latest_reply_transport_replay_safety": latest_transport_replay_safety,
+            "gateway_bridge": {
+                **gateway_bridge,
+                "pending_gateway_import_count": pending_gateway_count,
+            },
+            "latest_bridge_replay_safety": latest_bridge_replay_safety,
+        },
+        "next_recommended_commands": next_commands,
+        "latest_refs": {
+            "latest_reply_transport_cycle_id": None if latest_transport_cycle is None else latest_transport_cycle.get("transport_cycle_id"),
+            "latest_bridge_cycle_id": None if latest_bridge_cycle is None else latest_bridge_cycle.get("bridge_cycle_id"),
+        },
+    }
+
+
+def build_operator_doctor_markdown(report: dict[str, Any]) -> str:
+    lines = [
+        "# Operator Doctor",
+        "",
+        f"Generated at: {report.get('generated_at')}",
+        f"Health: {report.get('health_status')} highest_severity={report.get('highest_severity')} active_issues={report.get('active_issue_count')}",
+        "",
+        "## Issues",
+    ]
+    for row in report.get("issues", []):
+        lines.append(f"- {row.get('issue_code')} severity={row.get('severity')} reason={row.get('reason')}")
+        if row.get("suggested_command"):
+            lines.append(f"  next: {row.get('suggested_command')}")
+    lines.extend(["", "## Next Commands"])
+    for row in report.get("next_recommended_commands", []):
+        lines.append(f"- {row}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def create_operator_doctor_report(root: Path, *, limit: int = 5) -> dict[str, Any]:
+    from runtime.core.models import new_id
+
+    report = {
+        "doctor_report_id": new_id("opdoctor"),
+        "started_at": now_iso(),
+        **classify_operator_doctor_state(root, limit=limit),
+        "completed_at": now_iso(),
+    }
+    save_doctor_report_record(root, report)
+    markdown_path = triage_logs_dir(root) / "operator_doctor_latest.md"
+    markdown_path.write_text(build_operator_doctor_markdown(report), encoding="utf-8")
+    return report
+
+
+def list_doctor_reports_view(root: Path, *, limit: int = 20) -> dict[str, Any]:
+    rows = list_doctor_reports(root)[:limit]
+    return {
+        "generated_at": now_iso(),
+        "count": len(rows),
+        "rows": [
+            {
+                "doctor_report_id": row.get("doctor_report_id"),
+                "health_status": row.get("health_status"),
+                "highest_severity": row.get("highest_severity"),
+                "active_issue_count": row.get("active_issue_count", 0),
+                "top_issue_code": ((row.get("issues") or [{}])[0]).get("issue_code"),
+                "completed_at": row.get("completed_at"),
+            }
+            for row in rows
+        ],
+    }
+
+
+def build_operator_remediation_plan(root: Path, *, limit: int = 5) -> dict[str, Any]:
+    from runtime.core.models import new_id
+
+    doctor = classify_operator_doctor_state(root, limit=limit)
+    steps = []
+    for index, issue in enumerate(doctor.get("issues", [])[:limit], start=1):
+        if not issue.get("suggested_command"):
+            continue
+        steps.append(
+            {
+                "index": index,
+                "issue_code": issue.get("issue_code"),
+                "severity": issue.get("severity"),
+                "reason": issue.get("reason"),
+                "suggested_command": issue.get("suggested_command"),
+            }
+        )
+    plan = {
+        "remediation_plan_id": new_id("opremed"),
+        "created_at": now_iso(),
+        "health_status": doctor.get("health_status"),
+        "highest_severity": doctor.get("highest_severity"),
+        "active_issue_count": doctor.get("active_issue_count"),
+        "source_doctor_snapshot": {
+            "generated_at": doctor.get("generated_at"),
+            "latest_reply_transport_cycle_id": (doctor.get("latest_refs") or {}).get("latest_reply_transport_cycle_id"),
+            "latest_bridge_cycle_id": (doctor.get("latest_refs") or {}).get("latest_bridge_cycle_id"),
+        },
+        "steps": steps,
+        "next_recommended_commands": doctor.get("next_recommended_commands", [])[:limit],
+        "completed_at": now_iso(),
+    }
+    save_remediation_plan_record(root, plan)
+    return plan
+
+
+def explain_operator_doctor_issue(root: Path, *, issue_code: str, limit: int = 5) -> dict[str, Any]:
+    doctor = classify_operator_doctor_state(root, limit=limit)
+    for issue in doctor.get("issues", []):
+        if issue.get("issue_code") == issue_code:
+            return {
+                "ok": True,
+                "issue": issue,
+                "health_status": doctor.get("health_status"),
+                "highest_severity": doctor.get("highest_severity"),
+                "readiness": doctor.get("readiness", {}),
+                "next_recommended_commands": doctor.get("next_recommended_commands", [])[:limit],
+            }
+    return {
+        "ok": False,
+        "error": f"Doctor issue not found: {issue_code}",
+        "health_status": doctor.get("health_status"),
+        "available_issue_codes": [row.get("issue_code") for row in doctor.get("issues", [])],
+    }
 
 
 def compare_inbox_snapshots(current: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:

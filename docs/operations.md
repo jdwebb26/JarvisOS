@@ -545,6 +545,38 @@ python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_replay_bridg
 python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_replay_bridge_cycle.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --cycle-id opbridge_123
 ```
 
+To doctor the operator reply/control plane and build a remediation plan:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_doctor.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_list_doctor_reports.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_explain_doctor_issue.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --issue-code pack_expired
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_plan_remediation.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Doctor/remediation durable artifacts:
+
+- `state/operator_doctor_reports/*.json`
+- `state/operator_remediation_plans/*.json`
+- `state/logs/operator_doctor_latest.json`
+- `state/logs/operator_doctor_latest.md`
+
+Doctor issue codes stay bounded and deterministic:
+
+- `pack_missing`
+- `pack_invalid`
+- `pack_expired`
+- `inbox_missing`
+- `inbox_stale`
+- `inbox_not_reply_ready`
+- `pending_inbound_replies`
+- `pending_gateway_imports`
+- `latest_transport_failed`
+- `latest_bridge_failed`
+- `replay_blocked`
+- `bridge_replay_blocked`
+- `healthy`
+
 To compare inbox snapshots:
 
 ```bash

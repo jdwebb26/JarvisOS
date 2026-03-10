@@ -369,6 +369,34 @@ def _bridge_replay_summary(rows: list[dict[str, Any]], *, limit: int) -> list[di
     ]
 
 
+def _doctor_report_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "doctor_report_id": row.get("doctor_report_id"),
+            "health_status": row.get("health_status"),
+            "highest_severity": row.get("highest_severity"),
+            "active_issue_count": row.get("active_issue_count", 0),
+            "top_issue_code": ((row.get("issues") or [{}])[0]).get("issue_code"),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "started_at")[:limit]
+    ]
+
+
+def _remediation_plan_summary(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "remediation_plan_id": row.get("remediation_plan_id"),
+            "health_status": row.get("health_status"),
+            "highest_severity": row.get("highest_severity"),
+            "active_issue_count": row.get("active_issue_count", 0),
+            "step_count": len(row.get("steps", [])),
+            "completed_at": row.get("completed_at"),
+        }
+        for row in _sort_recent(rows, "completed_at", "created_at")[:limit]
+    ]
+
+
 def _ralph_memory_summary(
     consolidation_runs: list[dict[str, Any]],
     memory_candidates: list[dict[str, Any]],
@@ -573,6 +601,11 @@ def _build_markdown(pack: dict[str, Any]) -> str:
         f"latest_bridge_replay={((pack.get('latest_bridge_replay') or {}).get('bridge_replay_id'))} "
         f"latest_bridge_compare={((pack.get('latest_compare_bridge_cycles') or {}).get('current_bridge_cycle_id'))}"
     )
+    doctor = pack.get("doctor_summary", {})
+    lines.append(
+        f"- doctor_health={doctor.get('health_status')} highest_severity={doctor.get('highest_severity')} "
+        f"active_issues={doctor.get('active_issue_count')} latest_plan={((pack.get('latest_remediation_plan') or {}).get('remediation_plan_id'))}"
+    )
 
     lines.extend(["", "## Action Pack"])
     action_pack = pack.get("current_action_pack", {})
@@ -633,6 +666,8 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     operator_imported_reply_messages = _load_jsons(root / "state" / "operator_imported_reply_messages")
     operator_bridge_cycles = _load_jsons(root / "state" / "operator_bridge_cycles")
     operator_bridge_replays = _load_jsons(root / "state" / "operator_bridge_replays")
+    operator_doctor_reports = _load_jsons(root / "state" / "operator_doctor_reports")
+    operator_remediation_plans = _load_jsons(root / "state" / "operator_remediation_plans")
     recent_task_status = task_board["rows"][:limit]
     for row in recent_task_status:
         latest_success = latest_successful_action_for_task(root, row["task_id"])
@@ -851,6 +886,16 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "latest_bridge_replay": _bridge_replay_summary(operator_bridge_replays, limit=1)[0] if operator_bridge_replays else None,
         "recent_bridge_replays": _bridge_replay_summary(operator_bridge_replays, limit=limit),
         "bridge_replay_summary": latest_bridge_replay_safety or {},
+        "latest_doctor_report": _doctor_report_summary(operator_doctor_reports, limit=1)[0] if operator_doctor_reports else None,
+        "recent_doctor_reports": _doctor_report_summary(operator_doctor_reports, limit=limit),
+        "latest_remediation_plan": _remediation_plan_summary(operator_remediation_plans, limit=1)[0] if operator_remediation_plans else None,
+        "recent_remediation_plans": _remediation_plan_summary(operator_remediation_plans, limit=limit),
+        "doctor_summary": {
+            "health_status": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("health_status", "unknown"),
+            "highest_severity": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("highest_severity", "unknown"),
+            "active_issue_count": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("active_issue_count", 0),
+            "next_recommended_commands": ((operator_doctor_reports[-1] if operator_doctor_reports else {}).get("next_recommended_commands", []))[:5],
+        },
         "outbound_prompt_summary": {
             "generated_at": (outbound_prompt or {}).get("generated_at"),
             "pack_id": (outbound_prompt or {}).get("pack_id"),

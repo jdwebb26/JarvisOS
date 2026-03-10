@@ -181,6 +181,8 @@ def build_status(root: Path) -> dict[str, Any]:
     operator_bridge_cycles = _load_jsons(root / "state" / "operator_bridge_cycles")
     operator_bridge_replay_plans = _load_jsons(root / "state" / "operator_bridge_replay_plans")
     operator_bridge_replays = _load_jsons(root / "state" / "operator_bridge_replays")
+    operator_doctor_reports = _load_jsons(root / "state" / "operator_doctor_reports")
+    operator_remediation_plans = _load_jsons(root / "state" / "operator_remediation_plans")
     from scripts.operator_checkpoint_action_pack import classify_action_pack
     from scripts.operator_triage_support import (
         build_decision_inbox_data,
@@ -331,6 +333,8 @@ def build_status(root: Path) -> dict[str, Any]:
         "operator_bridge_cycles": len(operator_bridge_cycles),
         "operator_bridge_replay_plans": len(operator_bridge_replay_plans),
         "operator_bridge_replays": len(operator_bridge_replays),
+        "operator_doctor_reports": len(operator_doctor_reports),
+        "operator_remediation_plans": len(operator_remediation_plans),
     }
     triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
     decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
@@ -474,6 +478,8 @@ def build_status(root: Path) -> dict[str, Any]:
             "recent_bridge_cycle_count": len(operator_bridge_cycles),
             "recent_bridge_replay_plan_count": len(operator_bridge_replay_plans),
             "recent_bridge_replay_count": len(operator_bridge_replays),
+            "recent_doctor_report_count": len(operator_doctor_reports),
+            "recent_remediation_plan_count": len(operator_remediation_plans),
             "latest_queue_run": operator_queue_runs[-1] if operator_queue_runs else None,
             "latest_bulk_run": operator_bulk_runs[-1] if operator_bulk_runs else None,
             "latest_task_intervention": operator_task_interventions[-1] if operator_task_interventions else None,
@@ -488,8 +494,16 @@ def build_status(root: Path) -> dict[str, Any]:
             "latest_imported_reply_message": operator_imported_reply_messages[-1] if operator_imported_reply_messages else None,
             "latest_bridge_cycle": operator_bridge_cycles[-1] if operator_bridge_cycles else None,
             "latest_bridge_replay": operator_bridge_replays[-1] if operator_bridge_replays else None,
+            "latest_doctor_report": operator_doctor_reports[-1] if operator_doctor_reports else None,
+            "latest_remediation_plan": operator_remediation_plans[-1] if operator_remediation_plans else None,
             "reply_transport_replay_summary": latest_cycle_replay_safety or {},
             "bridge_replay_summary": latest_bridge_replay_safety or {},
+            "doctor_summary": {
+                "health_status": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("health_status", "unknown"),
+                "highest_severity": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("highest_severity", "unknown"),
+                "active_issue_count": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("active_issue_count", 0),
+                "next_recommended_commands": ((operator_doctor_reports[-1] if operator_doctor_reports else {}).get("next_recommended_commands", []))[:5],
+            },
             "reply_ingress_summary": {
                 "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
                 "reply_transport_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",

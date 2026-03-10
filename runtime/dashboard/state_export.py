@@ -82,6 +82,8 @@ def build_state_export(root: Path) -> dict:
     operator_bridge_cycles = _load_jsons(root / "state" / "operator_bridge_cycles")
     operator_bridge_replay_plans = _load_jsons(root / "state" / "operator_bridge_replay_plans")
     operator_bridge_replays = _load_jsons(root / "state" / "operator_bridge_replays")
+    operator_doctor_reports = _load_jsons(root / "state" / "operator_doctor_reports")
+    operator_remediation_plans = _load_jsons(root / "state" / "operator_remediation_plans")
 
     summary = {
         "counts": {
@@ -126,6 +128,8 @@ def build_state_export(root: Path) -> dict:
             "operator_bridge_cycles": len(operator_bridge_cycles),
             "operator_bridge_replay_plans": len(operator_bridge_replay_plans),
             "operator_bridge_replays": len(operator_bridge_replays),
+            "operator_doctor_reports": len(operator_doctor_reports),
+            "operator_remediation_plans": len(operator_remediation_plans),
         },
         "task_status_counts": {},
         "task_lifecycle_counts": {},
@@ -323,6 +327,8 @@ def build_state_export(root: Path) -> dict:
         "latest_bridge_cycle_count": len(operator_bridge_cycles),
         "latest_bridge_replay_plan_count": len(operator_bridge_replay_plans),
         "latest_bridge_replay_count": len(operator_bridge_replays),
+        "latest_doctor_report_count": len(operator_doctor_reports),
+        "latest_remediation_plan_count": len(operator_remediation_plans),
         "latest_ingress_source": {
             "source_kind": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_kind"),
             "source_channel": (operator_reply_ingress[-1] if operator_reply_ingress else {}).get("source_channel"),
@@ -368,6 +374,8 @@ def build_state_export(root: Path) -> dict:
         "latest_import_classification": (operator_imported_reply_messages[-1] if operator_imported_reply_messages else {}).get("classification"),
         "latest_bridge_result": (operator_bridge_cycles[-1] if operator_bridge_cycles else {}).get("ok"),
         "latest_bridge_replay_ok": (operator_bridge_replays[-1] if operator_bridge_replays else {}).get("ok"),
+        "doctor_health_status": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("health_status"),
+        "doctor_active_issue_count": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("active_issue_count"),
     }
     compare_reply_transport_path = root / "state" / "logs" / "operator_compare_reply_transport_cycles_latest.json"
     compare_bridge_cycles_path = root / "state" / "logs" / "operator_compare_bridge_cycles_latest.json"
@@ -397,6 +405,14 @@ def build_state_export(root: Path) -> dict:
         "imported_count_delta": compare_bridge_cycles.get("imported_count_delta"),
         "reply_transport_blocked_delta": compare_bridge_cycles.get("reply_transport_blocked_delta"),
         "latest_bridge_replay_id": (operator_bridge_replays[-1] if operator_bridge_replays else {}).get("bridge_replay_id"),
+    }
+    summary["doctor_summary"] = {
+        "latest_doctor_report_id": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("doctor_report_id"),
+        "health_status": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("health_status"),
+        "highest_severity": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("highest_severity"),
+        "active_issue_count": (operator_doctor_reports[-1] if operator_doctor_reports else {}).get("active_issue_count"),
+        "latest_remediation_plan_id": (operator_remediation_plans[-1] if operator_remediation_plans else {}).get("remediation_plan_id"),
+        "next_recommended_commands": ((operator_doctor_reports[-1] if operator_doctor_reports else {}).get("next_recommended_commands", []))[:5],
     }
 
     out_path = root / "state" / "logs" / "state_export.json"
