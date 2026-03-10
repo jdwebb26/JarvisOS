@@ -132,6 +132,10 @@ def test_operator_handoff_pack_surfaces_recent_state(tmp_path: Path):
     assert pack["latest_trace_summary"]
     assert pack["latest_eval_summary"]
     assert pack["recent_operator_action_executions"]
+    assert any(
+        row.get("last_successful_operator_action") or row.get("last_failed_operator_action")
+        for row in pack["recent_task_status"]
+    )
     assert any(item["task_id"] == task_review.task_id for item in pack["pending_review_items"])
     assert any(item["task_id"] == task_approval.task_id for item in pack["pending_approval_items"])
     assert pack["ralph_memory_summary"]["latest_memory_candidates"]

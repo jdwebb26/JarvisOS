@@ -15,6 +15,10 @@ from runtime.dashboard.operator_snapshot import build_operator_snapshot
 from runtime.dashboard.state_export import build_state_export
 from runtime.dashboard.task_board import build_task_board
 from runtime.gateway.review_inbox import build_review_inbox
+from scripts.operator_action_ledger import (
+    latest_failed_action_for_task,
+    latest_successful_action_for_task,
+)
 
 
 def _load_jsons(folder: Path) -> list[dict[str, Any]]:
@@ -181,6 +185,14 @@ def _build_markdown(pack: dict[str, Any]) -> str:
         lines.append(
             f"- {row['task_id']}: status={row['status']} backend={row.get('execution_backend')} control={row.get('control_status')} summary={row['summary']}"
         )
+        if row.get("last_successful_operator_action"):
+            lines.append(
+                f"  last_success={row['last_successful_operator_action']['action_id']} ack={row['last_successful_operator_action']['ack_summary']}"
+            )
+        if row.get("last_failed_operator_action"):
+            lines.append(
+                f"  last_failed={row['last_failed_operator_action']['action_id']} stderr={row['last_failed_operator_action']['stderr_snapshot']}"
+            )
 
     lines.extend(["", "## Artifacts"])
     lines.append(f"- candidate_artifacts={len(pack['artifacts']['candidate'])}")
@@ -243,10 +255,16 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     consolidation_runs = _load_jsons(root / "state" / "consolidation_runs")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
     operator_action_executions = _load_jsons(root / "state" / "operator_action_executions")
+    recent_task_status = task_board["rows"][:limit]
+    for row in recent_task_status:
+        latest_success = latest_successful_action_for_task(root, row["task_id"])
+        latest_failed = latest_failed_action_for_task(root, row["task_id"])
+        row["last_successful_operator_action"] = latest_success
+        row["last_failed_operator_action"] = latest_failed
 
     pack = {
         "generated_at": snapshot["status"].get("generated_at"),
-        "recent_task_status": task_board["rows"][:limit],
+        "recent_task_status": recent_task_status,
         "artifacts": {
             "candidate": _artifact_summary(artifacts, lifecycle_state="candidate", limit=limit),
             "promoted": _artifact_summary(artifacts, lifecycle_state="promoted", limit=limit),

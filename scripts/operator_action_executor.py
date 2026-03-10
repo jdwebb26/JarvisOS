@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import new_id, now_iso
+from scripts.operator_action_ledger import save_execution_record
 from scripts.operator_checkpoint_action_pack import build_operator_checkpoint_action_pack
 
 
@@ -26,18 +27,6 @@ def _load_or_build_action_pack(root: Path, *, limit: int) -> tuple[dict[str, Any
             pass
     result = build_operator_checkpoint_action_pack(root, limit=limit)
     return result["pack"], Path(result["json_path"])
-
-
-def operator_action_executions_dir(root: Path) -> Path:
-    path = root / "state" / "operator_action_executions"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def save_execution_record(root: Path, record: dict[str, Any]) -> dict[str, Any]:
-    path = operator_action_executions_dir(root) / f"{record['execution_id']}.json"
-    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    return record
 
 
 def _base_record(*, action_id: str, action: dict[str, Any] | None, action_pack_path: Path, dry_run: bool) -> dict[str, Any]:
@@ -127,6 +116,91 @@ def _execute_action(action: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def execute_selected_action(
+    root: Path,
+    *,
+    action_id: str,
+    action: dict[str, Any],
+    action_pack_path: Path,
+    dry_run: bool = False,
+) -> tuple[dict[str, Any], int]:
+    record = _base_record(
+        action_id=action_id,
+        action=action,
+        action_pack_path=action_pack_path,
+        dry_run=dry_run,
+    )
+
+    if dry_run:
+        _complete_record(
+            record,
+            success=True,
+            return_code=0,
+            ack_summary="Dry run only. Command was resolved but not executed.",
+            stdout_snapshot="",
+            stderr_snapshot="",
+        )
+        save_execution_record(root, record)
+        payload = {
+            "ok": True,
+            "dry_run": True,
+            "action_id": action_id,
+            "action_pack_path": str(action_pack_path),
+            "selected_action": action,
+            "command_run": action["command"],
+            "ack_summary": record["ack_summary"],
+            "execution_record": record,
+        }
+        return payload, 0
+
+    try:
+        execution = _execute_action(action)
+    except Exception as exc:
+        detail = str(exc)
+        try:
+            detail_payload = json.loads(detail)
+        except Exception:
+            detail_payload = {"error": detail}
+        _complete_record(
+            record,
+            success=False,
+            return_code=int(detail_payload.get("returncode", 1)),
+            ack_summary="",
+            stdout_snapshot=str(detail_payload.get("stdout", "")),
+            stderr_snapshot=str(detail_payload.get("stderr", "")),
+        )
+        save_execution_record(root, record)
+        payload = {
+            "ok": False,
+            "action_id": action_id,
+            "action_pack_path": str(action_pack_path),
+            "selected_action": action,
+            "command_run": action["command"],
+            "failure": detail_payload,
+            "execution_record": record,
+        }
+        return payload, 1
+
+    _complete_record(
+        record,
+        success=True,
+        return_code=execution["return_code"],
+        ack_summary=execution["ack_summary"],
+        stdout_snapshot=execution["stdout_text"],
+        stderr_snapshot=execution["stderr_text"],
+    )
+    save_execution_record(root, record)
+    payload = {
+        "ok": True,
+        "action_id": action_id,
+        "action_pack_path": str(action_pack_path),
+        **execution,
+        "dry_run": False,
+        "execution_record": record,
+    }
+    return payload, 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Execute one operator checkpoint action by stable action id.")
     parser.add_argument("--root", default=str(ROOT), help="Project root path")
@@ -164,84 +238,15 @@ def main() -> int:
         print(json.dumps(payload, indent=2))
         return 1
 
-    record = _base_record(
+    payload, exit_code = execute_selected_action(
+        root,
         action_id=args.action_id,
         action=action,
         action_pack_path=pack_path,
         dry_run=args.dry_run,
     )
-
-    if args.dry_run:
-        _complete_record(
-            record,
-            success=True,
-            return_code=0,
-            ack_summary="Dry run only. Command was resolved but not executed.",
-            stdout_snapshot="",
-            stderr_snapshot="",
-        )
-        save_execution_record(root, record)
-        payload = {
-            "ok": True,
-            "dry_run": True,
-            "action_id": args.action_id,
-            "action_pack_path": str(pack_path),
-            "selected_action": action,
-            "command_run": action["command"],
-            "ack_summary": record["ack_summary"],
-            "execution_record": record,
-        }
-        print(json.dumps(payload, indent=2))
-        return 0
-
-    try:
-        execution = _execute_action(action)
-    except Exception as exc:
-        detail = str(exc)
-        try:
-            detail_payload = json.loads(detail)
-        except Exception:
-            detail_payload = {"error": detail}
-        _complete_record(
-            record,
-            success=False,
-            return_code=int(detail_payload.get("returncode", 1)),
-            ack_summary="",
-            stdout_snapshot=str(detail_payload.get("stdout", "")),
-            stderr_snapshot=str(detail_payload.get("stderr", "")),
-        )
-        save_execution_record(root, record)
-        payload = {
-            "ok": False,
-            "action_id": args.action_id,
-            "action_pack_path": str(pack_path),
-            "selected_action": action,
-            "command_run": action["command"],
-            "failure": detail_payload,
-            "execution_record": record,
-        }
-        print(json.dumps(payload, indent=2))
-        return 1
-
-    _complete_record(
-        record,
-        success=True,
-        return_code=execution["return_code"],
-        ack_summary=execution["ack_summary"],
-        stdout_snapshot=execution["stdout_text"],
-        stderr_snapshot=execution["stderr_text"],
-    )
-    save_execution_record(root, record)
-    payload = {
-        "ok": True,
-        "action_id": args.action_id,
-        "action_pack_path": str(pack_path),
-        **execution,
-        "dry_run": False,
-        "execution_record": record,
-    }
     print(json.dumps(payload, indent=2))
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

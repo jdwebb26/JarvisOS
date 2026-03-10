@@ -184,6 +184,19 @@ Execution records are written to:
 
 - `state/operator_action_executions/*.json`
 
+To resume the latest failed or dry-run action for a task or category:
+
+```bash
+python3 scripts/operator_resume_action.py --task-id TASK_ID
+python3 scripts/operator_resume_action.py --category pending_review
+```
+
+To explicitly replay the latest successful action:
+
+```bash
+python3 scripts/operator_resume_action.py --task-id TASK_ID --replay-success
+```
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.
