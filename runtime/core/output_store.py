@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 from runtime.core.models import ArtifactRecord, OutputRecord, OutputStatus, RecordLifecycleState, now_iso
 from runtime.core.task_events import make_event
 from runtime.core.task_runtime import append_task_event
+from runtime.controls.control_store import assert_control_allows
 
 
 def new_output_id() -> str:
@@ -132,6 +133,12 @@ def publish_artifact(
     allow_duplicate: bool = False,
 ) -> dict:
     root_path = Path(root or ROOT).resolve()
+    assert_control_allows(
+        action="publish_output",
+        root=root_path,
+        task_id=task_id,
+        subsystem=lane,
+    )
 
     task = load_task(task_id, root=root_path)
     artifact = load_artifact(artifact_id, root=root_path)

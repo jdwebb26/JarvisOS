@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.intake import create_task_from_message
+from runtime.core.artifact_store import write_text_artifact
 from runtime.core.review_store import latest_review_for_task, record_review_verdict
 from runtime.core.approval_store import latest_approval_for_task, record_approval_decision
 from runtime.core.task_store import load_task, save_task
@@ -54,6 +55,24 @@ def main() -> int:
         if after_create is None:
             raise RuntimeError("Task missing after create.")
 
+        candidate_artifact = write_text_artifact(
+            task_id=task_id,
+            artifact_type="report",
+            title="Ready-to-ship smoke candidate",
+            summary="Candidate artifact for approval resume smoke",
+            content="Candidate artifact required for artifact-backed ready_to_ship.",
+            actor="ready_to_ship_smoke",
+            lane="artifacts",
+            root=temp_root,
+            producer_kind="backend",
+            execution_backend=after_create.execution_backend,
+        )
+        task_after_candidate = load_task(task_id, root=temp_root)
+        if task_after_candidate is None:
+            raise RuntimeError("Task missing after candidate artifact creation.")
+        task_after_candidate.final_outcome = "candidate_ready_for_live_apply"
+        save_task(task_after_candidate, root=temp_root)
+
         review = latest_review_for_task(task_id, root=temp_root)
         if review is None:
             raise RuntimeError("No review found after create.")
@@ -75,9 +94,6 @@ def main() -> int:
         if approval is None:
             raise RuntimeError("No approval found after approved review.")
 
-        after_review.final_outcome = "candidate_ready_for_live_apply"
-        save_task(after_review, root=temp_root)
-
         record_approval_decision(
             approval_id=approval.approval_id,
             decision="approved",
@@ -90,6 +106,8 @@ def main() -> int:
         final_task = load_task(task_id, root=temp_root)
         if final_task is None:
             raise RuntimeError("Task missing after approval decision.")
+        if final_task.status != "ready_to_ship":
+            raise RuntimeError(f"Expected task to become ready_to_ship after approval resume, got {final_task.status!r}.")
 
         payload = {
             "ok": True,
@@ -103,6 +121,7 @@ def main() -> int:
             "approval_id": approval.approval_id,
             "approval_status_after_decision": "approved",
             "final_outcome_before_approval_decision": "candidate_ready_for_live_apply",
+            "candidate_artifact_id": candidate_artifact["artifact_id"],
             "final_task_status": final_task.status,
         }
 

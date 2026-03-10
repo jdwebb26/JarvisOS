@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import OutputStatus, RecordLifecycleState, TaskRecord, TaskStatus
+from runtime.controls.control_store import get_effective_control_state, list_control_records
 
 
 def _load_jsons(folder: Path) -> list[dict[str, Any]]:
@@ -62,6 +63,11 @@ def _latest_reason(task: TaskRecord, events_by_task: dict[str, list[dict[str, An
 
 
 def _task_summary(task: TaskRecord, events_by_task: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    control_state = get_effective_control_state(
+        root=ROOT,
+        task_id=task.task_id,
+        subsystem=task.execution_backend if task.execution_backend != "unassigned" else task.source_lane,
+    )
     return {
         "task_id": task.task_id,
         "summary": task.normalized_request,
@@ -78,6 +84,10 @@ def _task_summary(task: TaskRecord, events_by_task: dict[str, list[dict[str, Any
         "revoked_artifact_ids": list(task.revoked_artifact_ids),
         "impacted_output_ids": list(task.impacted_output_ids),
         "reason": _latest_reason(task, events_by_task),
+        "control_status": control_state["effective_status"],
+        "control_run_state": control_state["effective_run_state"],
+        "control_safety_mode": control_state["effective_safety_mode"],
+        "control_reasons": control_state["active_reasons"],
         "updated_at": task.updated_at,
     }
 
@@ -116,12 +126,74 @@ def _output_summary(output: dict[str, Any]) -> dict[str, Any]:
 def build_status(root: Path) -> dict[str, Any]:
     tasks = sorted(_load_tasks(root), key=_sort_key, reverse=True)
     events_by_task = _load_events_by_task(root)
-    task_rows = [_task_summary(task, events_by_task) for task in tasks]
+    task_rows = []
+    for task in tasks:
+        control_state = get_effective_control_state(
+            root=root,
+            task_id=task.task_id,
+            subsystem=task.execution_backend if task.execution_backend != "unassigned" else task.source_lane,
+        )
+        row = {
+            "task_id": task.task_id,
+            "summary": task.normalized_request,
+            "status": task.status,
+            "lifecycle_state": task.lifecycle_state,
+            "priority": task.priority,
+            "task_type": task.task_type,
+            "execution_backend": task.execution_backend,
+            "review_required": task.review_required,
+            "approval_required": task.approval_required,
+            "promoted_artifact_id": task.promoted_artifact_id,
+            "candidate_artifact_ids": list(task.candidate_artifact_ids),
+            "demoted_artifact_ids": list(task.demoted_artifact_ids),
+            "revoked_artifact_ids": list(task.revoked_artifact_ids),
+            "impacted_output_ids": list(task.impacted_output_ids),
+            "reason": _latest_reason(task, events_by_task),
+            "control_status": control_state["effective_status"],
+            "control_run_state": control_state["effective_run_state"],
+            "control_safety_mode": control_state["effective_safety_mode"],
+            "control_reasons": control_state["active_reasons"],
+            "updated_at": task.updated_at,
+        }
+        task_rows.append(row)
 
     artifacts = _load_jsons(root / "state" / "artifacts")
     outputs = _load_jsons(root / "workspace" / "out")
     reviews = _load_jsons(root / "state" / "reviews")
     approvals = _load_jsons(root / "state" / "approvals")
+    control_records = [record.to_dict() for record in list_control_records(root=root)]
+    paused_controls = [row for row in control_records if row.get("run_state") == "paused"]
+    stopped_controls = [row for row in control_records if row.get("run_state") == "stopped"]
+    degraded_controls = [row for row in control_records if row.get("safety_mode") == "degraded"]
+    revoked_controls = [row for row in control_records if row.get("safety_mode") == "revoked"]
+    global_control = get_effective_control_state(root=root)
+    effective_run_state = "active"
+    effective_safety_mode = "normal"
+    if stopped_controls:
+        effective_run_state = "stopped"
+    elif paused_controls:
+        effective_run_state = "paused"
+    if revoked_controls:
+        effective_safety_mode = "revoked"
+    elif degraded_controls:
+        effective_safety_mode = "degraded"
+    effective_status = "active"
+    if effective_run_state == "stopped":
+        effective_status = "stopped"
+    elif effective_run_state == "paused":
+        effective_status = "paused"
+    elif effective_safety_mode == "revoked":
+        effective_status = "revoked"
+    elif effective_safety_mode == "degraded":
+        effective_status = "degraded"
+    effective_control = {
+        "effective_status": effective_status,
+        "effective_run_state": effective_run_state,
+        "effective_safety_mode": effective_safety_mode,
+        "records": global_control.get("records", []),
+        "active_reasons": global_control.get("active_reasons", []),
+        "has_active_controls": bool(control_records),
+    }
 
     queued_now = [row for row in task_rows if row["status"] == TaskStatus.QUEUED.value]
     running_now = [row for row in task_rows if row["status"] == TaskStatus.RUNNING.value]
@@ -187,9 +259,16 @@ def build_status(root: Path) -> dict[str, Any]:
         "revoked_outputs": len(revoked_outputs),
         "pending_reviews": len(pending_reviews),
         "pending_approvals": len(pending_approvals),
+        "controls": len(control_records),
+        "paused_controls": len(paused_controls),
+        "stopped_controls": len(stopped_controls),
+        "degraded_controls": len(degraded_controls),
+        "revoked_controls": len(revoked_controls),
     }
 
-    if blocked:
+    if control_records:
+        next_move = "Inspect active control-state before resuming apply, promotion, or publish work."
+    elif blocked:
         next_move = "Clear blocked tasks and inspect the linked lifecycle reasons first."
     elif waiting_review:
         next_move = "Review tasks waiting on reviewer verdicts."
@@ -220,6 +299,14 @@ def build_status(root: Path) -> dict[str, Any]:
         "revoked_artifacts": revoked_artifacts,
         "impacted_outputs": impacted_outputs,
         "revoked_outputs": revoked_outputs,
+        "control_state": {
+            "effective": effective_control,
+            "records": control_records,
+            "paused": paused_controls,
+            "stopped": stopped_controls,
+            "degraded": degraded_controls,
+            "revoked": revoked_controls,
+        },
         "counts": counts,
         "next_recommended_move": next_move,
     }

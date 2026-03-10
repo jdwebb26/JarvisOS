@@ -25,6 +25,9 @@ REQUIRED_DIRS = [
     "runtime/executor",
     "runtime/flowstate",
     "runtime/gateway",
+    "runtime/controls",
+    "runtime/integrations",
+    "runtime/researchlab",
     "scripts",
     "state",
     "state/approvals",
@@ -35,6 +38,14 @@ REQUIRED_DIRS = [
     "state/logs",
     "state/memory",
     "state/reviews",
+    "state/controls",
+    "state/control_actions",
+    "state/hermes_requests",
+    "state/hermes_results",
+    "state/research_campaigns",
+    "state/experiment_runs",
+    "state/metric_results",
+    "state/research_recommendations",
     "state/tasks",
     "workspace",
     "workspace/inbox",
@@ -59,6 +70,10 @@ REQUIRED_FILES = [
     "runtime/core/intake.py",
     "runtime/core/decision_router.py",
     "runtime/core/approval_store.py",
+    "runtime/controls/control_store.py",
+    "runtime/integrations/hermes_adapter.py",
+    "runtime/integrations/autoresearch_adapter.py",
+    "runtime/researchlab/runner.py",
     "runtime/core/review_store.py",
     "runtime/core/publish_complete.py",
     "runtime/core/run_runtime_regression_pack.py",
@@ -72,6 +87,10 @@ KEY_MODULES = [
     "runtime.core.decision_router",
     "runtime.core.review_store",
     "runtime.core.approval_store",
+    "runtime.controls.control_store",
+    "runtime.integrations.hermes_adapter",
+    "runtime.integrations.autoresearch_adapter",
+    "runtime.researchlab.runner",
     "runtime.core.publish_complete",
     "runtime.core.run_runtime_regression_pack",
     "runtime.gateway.complete_from_artifact",
@@ -337,9 +356,11 @@ def build_doctor_report(root: Path) -> dict:
     tasks_count = len(list((root / "state" / "tasks").glob("*.json")))
     outputs_count = len(list((root / "workspace" / "out").glob("*.json")))
     approvals_count = len(list((root / "state" / "approvals").glob("*.json")))
+    controls_count = len(list((root / "state" / "controls").glob("*.json")))
+    research_campaigns_count = len(list((root / "state" / "research_campaigns").glob("*.json")))
     reviews_count = len(list((root / "state" / "reviews").glob("*.json")))
 
-    _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count}")
+    _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count}")
 
     state_export = root / "state" / "logs" / "state_export.json"
     if state_export.exists():
@@ -384,6 +405,8 @@ def build_doctor_report(root: Path) -> dict:
             "fail": fail_count,
             "tasks": tasks_count,
             "approvals": approvals_count,
+            "controls": controls_count,
+            "research_campaigns": research_campaigns_count,
             "reviews": reviews_count,
             "outputs": outputs_count,
         },

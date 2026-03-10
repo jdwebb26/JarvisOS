@@ -1,0 +1,171 @@
+from pathlib import Path
+
+import pytest
+
+from runtime.controls.control_store import apply_control_action
+from runtime.core.approval_store import load_approval_checkpoint, load_approval, request_approval
+from runtime.core.artifact_store import load_artifact
+from runtime.core.models import ControlScopeType, RecordLifecycleState, TaskRecord, TaskStatus, now_iso
+from runtime.core.review_store import load_review, request_review
+from runtime.core.task_store import create_task, load_task
+from runtime.integrations.hermes_adapter import (
+    HERMES_BACKEND_ID,
+    execute_hermes_task,
+    load_hermes_result,
+)
+
+
+def _make_task(
+    root: Path,
+    *,
+    task_id: str,
+    status: str,
+    review_required: bool = False,
+    approval_required: bool = False,
+) -> TaskRecord:
+    return create_task(
+        TaskRecord(
+            task_id=task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            source_lane="tests",
+            source_channel="tests",
+            source_message_id=f"{task_id}_msg",
+            source_user="tester",
+            trigger_type="explicit_task_colon",
+            raw_request=f"task: {task_id}",
+            normalized_request=task_id,
+            status=status,
+            execution_backend="qwen_executor",
+            review_required=review_required,
+            approval_required=approval_required,
+        ),
+        root=root,
+    )
+
+
+def _success_transport(_request):
+    return {
+        "run_id": "hermes_run_123",
+        "family": "qwen3.5",
+        "model_name": "Qwen3.5-35B-A3B",
+        "title": "Hermes candidate",
+        "summary": "Thin adapter candidate artifact",
+        "content": "bounded backend output",
+    }
+
+
+def test_hermes_success_updates_pending_review_and_writes_candidate(tmp_path: Path):
+    task = _make_task(
+        tmp_path,
+        task_id="task_hermes_review",
+        status=TaskStatus.WAITING_REVIEW.value,
+        review_required=True,
+    )
+    review = request_review(
+        task_id=task.task_id,
+        reviewer_role="anton",
+        requested_by="tester",
+        lane="review",
+        summary="review pending",
+        root=tmp_path,
+    )
+    assert review.linked_artifact_ids == []
+
+    result = execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=_success_transport,
+    )
+
+    stored_task = load_task(task.task_id, root=tmp_path)
+    stored_review = load_review(review.review_id, root=tmp_path)
+    stored_artifact = load_artifact(result["candidate_artifact_id"], root=tmp_path)
+    stored_result = load_hermes_result(result["result"]["result_id"], root=tmp_path)
+
+    assert stored_task is not None
+    assert stored_task.execution_backend == HERMES_BACKEND_ID
+    assert stored_task.status == TaskStatus.WAITING_REVIEW.value
+    assert stored_task.backend_metadata["hermes"]["candidate_artifact_id"] == result["candidate_artifact_id"]
+    assert stored_review is not None
+    assert stored_review.linked_artifact_ids == [result["candidate_artifact_id"]]
+    assert stored_artifact.lifecycle_state == RecordLifecycleState.CANDIDATE.value
+    assert stored_artifact.execution_backend == HERMES_BACKEND_ID
+    assert stored_result["status"] == "completed"
+
+
+def test_hermes_success_updates_pending_approval_checkpoint(tmp_path: Path):
+    task = _make_task(
+        tmp_path,
+        task_id="task_hermes_approval",
+        status=TaskStatus.WAITING_APPROVAL.value,
+        approval_required=True,
+    )
+    approval = request_approval(
+        task_id=task.task_id,
+        approval_type="deploy",
+        requested_by="tester",
+        requested_reviewer="anton",
+        lane="review",
+        summary="approval pending",
+        root=tmp_path,
+    )
+    assert approval.linked_artifact_ids == []
+
+    result = execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=_success_transport,
+    )
+
+    stored_approval = load_approval(approval.approval_id, root=tmp_path)
+    checkpoint = load_approval_checkpoint(approval.resumable_checkpoint_id, root=tmp_path)
+
+    assert stored_approval is not None
+    assert stored_approval.linked_artifact_ids == [result["candidate_artifact_id"]]
+    assert checkpoint is not None
+    assert checkpoint.linked_artifact_ids == [result["candidate_artifact_id"]]
+
+
+def test_hermes_malformed_response_blocks_task(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_hermes_malformed", status=TaskStatus.RUNNING.value)
+
+    result = execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {"summary": "missing title and content"},
+    )
+
+    stored_task = load_task(task.task_id, root=tmp_path)
+    assert stored_task is not None
+    assert stored_task.status == TaskStatus.BLOCKED.value
+    assert result["candidate_artifact_id"] is None
+    assert result["result"]["status"] == "malformed"
+
+
+def test_hermes_respects_control_state(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_hermes_control", status=TaskStatus.RUNNING.value)
+    apply_control_action(
+        action="pause",
+        actor="operator",
+        lane="controls",
+        scope_type=ControlScopeType.GLOBAL.value,
+        scope_id="global",
+        reason="operator pause",
+        root=tmp_path,
+    )
+
+    with pytest.raises(ValueError, match="Control state forbids task progress"):
+        execute_hermes_task(
+            task_id=task.task_id,
+            actor="tester",
+            lane="hermes",
+            root=tmp_path,
+            transport=_success_transport,
+        )

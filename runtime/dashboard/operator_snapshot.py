@@ -107,7 +107,9 @@ def build_operator_snapshot(root: Path) -> dict:
     ]
 
     if status.get("blocked"):
-        operator_focus = "Clear blocked tasks and inspect the linked reasons first."
+        operator_focus = "Inspect active control-state and blocked tasks before resuming any execution-bearing work."
+    elif status.get("control_state", {}).get("effective", {}).get("has_active_controls"):
+        operator_focus = "Inspect active control-state before promoting, resuming, or publishing work."
     elif pending_reviews:
         operator_focus = "Clear pending reviews first."
     elif pending_approvals:
@@ -127,6 +129,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "pending_approvals": pending_approvals,
         "candidate_apply_ready": candidate_apply_ready,
         "flowstate_waiting_promotion": flowstate_waiting,
+        "control_state": status.get("control_state", {}),
         "operator_focus": operator_focus,
         "counts": {
             "pending_reviews": len(pending_reviews),
@@ -139,6 +142,11 @@ def build_operator_snapshot(root: Path) -> dict:
             "impacted_outputs": len(status.get("impacted_outputs", [])),
             "revoked_outputs": len(status.get("revoked_outputs", [])),
             "revoked_artifacts": len(status.get("revoked_artifacts", [])),
+            "controls": status.get("counts", {}).get("controls", 0),
+            "paused_controls": status.get("counts", {}).get("paused_controls", 0),
+            "stopped_controls": status.get("counts", {}).get("stopped_controls", 0),
+            "degraded_controls": status.get("counts", {}).get("degraded_controls", 0),
+            "revoked_controls": status.get("counts", {}).get("revoked_controls", 0),
         },
     }
 

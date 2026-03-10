@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from runtime.controls.control_store import get_effective_control_state
 from runtime.core.task_store import list_tasks
 from runtime.dashboard.status_names import normalize_status_name
 
@@ -20,6 +21,11 @@ def build_task_board(root: Path) -> dict:
 
     rows = []
     for t in tasks:
+        control_state = get_effective_control_state(
+            root=root,
+            task_id=t.task_id,
+            subsystem=t.execution_backend if t.execution_backend != "unassigned" else t.source_lane,
+        )
         rows.append(
             {
                 "task_id": t.task_id,
@@ -42,6 +48,10 @@ def build_task_board(root: Path) -> dict:
                 "last_error": t.last_error,
                 "related_review_ids": t.related_review_ids,
                 "related_approval_ids": t.related_approval_ids,
+                "control_status": control_state["effective_status"],
+                "control_run_state": control_state["effective_run_state"],
+                "control_safety_mode": control_state["effective_safety_mode"],
+                "control_reasons": control_state["active_reasons"],
                 "updated_at": t.updated_at,
             }
         )

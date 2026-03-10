@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,14 +48,24 @@ def parse_explicit_task(text: str) -> ParsedIntent:
 
 def infer_task_type(normalized_request: str) -> str:
     text = normalized_request.lower()
+    tokens = set(re.findall(r"[a-z0-9_]+", text))
 
-    if any(word in text for word in ["python", "code", "bug", "patch", "refactor", "script", "function", "test"]):
+    def has_any(*terms: str) -> bool:
+        for term in terms:
+            if " " in term:
+                if term in text:
+                    return True
+            elif term in tokens:
+                return True
+        return False
+
+    if has_any("python", "code", "bug", "patch", "refactor", "script", "function", "test"):
         return "code"
-    if any(word in text for word in ["nq", "quant", "trading", "prop account", "strategy", "backtest"]):
+    if has_any("nq", "quant", "trading", "prop account", "strategy", "backtest"):
         return "quant"
-    if any(word in text for word in ["deploy", "release", "ship", "systemd", "service"]):
+    if has_any("deploy", "release", "ship", "systemd", "service"):
         return "deploy"
-    if any(word in text for word in ["doc", "report", "writeup", "summary", "spec"]):
+    if has_any("doc", "report", "writeup", "summary", "spec"):
         return "docs"
     return "general"
 

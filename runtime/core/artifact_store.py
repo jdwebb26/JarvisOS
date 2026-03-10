@@ -24,6 +24,7 @@ from runtime.core.task_store import (
     set_task_lifecycle_state,
     transition_task,
 )
+from runtime.controls.control_store import assert_control_allows
 
 
 def now_iso() -> str:
@@ -227,6 +228,13 @@ def promote_artifact(
 ) -> ArtifactRecord:
     root_path = Path(root or ROOT).resolve()
     artifact = load_artifact(artifact_id, root=root_path)
+    subsystem = artifact.execution_backend or lane
+    assert_control_allows(
+        action="promote_artifact",
+        root=root_path,
+        task_id=artifact.task_id,
+        subsystem=subsystem,
+    )
     previous_state = artifact.lifecycle_state
 
     artifact.lifecycle_state = RecordLifecycleState.PROMOTED.value

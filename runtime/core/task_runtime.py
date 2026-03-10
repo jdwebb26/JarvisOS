@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import TaskEventRecord, TaskRecord, TaskStatus, new_id, now_iso
+from runtime.controls.control_store import assert_control_allows
 
 
 def _tasks_dir(root: Path) -> Path:
@@ -68,6 +69,29 @@ def set_task_status(
 ) -> dict:
     task = load_task(root, task_id)
     previous_status = task.status
+    subsystem = task.execution_backend if task.execution_backend != "unassigned" else lane
+
+    if new_status in {TaskStatus.QUEUED.value, TaskStatus.RUNNING.value}:
+        assert_control_allows(
+            action="task_progress",
+            root=root,
+            task_id=task_id,
+            subsystem=subsystem,
+        )
+    elif new_status == TaskStatus.READY_TO_SHIP.value:
+        assert_control_allows(
+            action="ready_to_ship",
+            root=root,
+            task_id=task_id,
+            subsystem=subsystem,
+        )
+    elif new_status == TaskStatus.SHIPPED.value:
+        assert_control_allows(
+            action="ship",
+            root=root,
+            task_id=task_id,
+            subsystem=subsystem,
+        )
 
     if previous_status == new_status:
         return {

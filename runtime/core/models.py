@@ -129,6 +129,32 @@ class OutputStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class ControlScopeType(StrEnum):
+    GLOBAL = "global"
+    SUBSYSTEM = "subsystem"
+    TASK = "task"
+
+
+class ControlRunState(StrEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+
+
+class ControlSafetyMode(StrEnum):
+    NORMAL = "normal"
+    DEGRADED = "degraded"
+    REVOKED = "revoked"
+
+
+class ControlAction(StrEnum):
+    PAUSE = "pause"
+    RESUME = "resume"
+    STOP = "stop"
+    REVOKE = "revoke"
+    DEGRADE = "degrade"
+
+
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -475,6 +501,232 @@ class OutputRecord:
         data.setdefault("superseded_by_artifact_id", None)
         data.setdefault("revoked_at", None)
         data.setdefault("revocation_reason", "")
+        return cls(**data)
+
+
+@dataclass
+class ControlRecord:
+    control_id: str
+    scope_type: str
+    scope_id: str
+    created_at: str
+    updated_at: str
+    run_state: str = ControlRunState.ACTIVE.value
+    safety_mode: str = ControlSafetyMode.NORMAL.value
+    last_action: str = ControlAction.RESUME.value
+    last_actor: str = "system"
+    lane: str = "controls"
+    reason: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ControlRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("run_state", ControlRunState.ACTIVE.value)
+        data.setdefault("safety_mode", ControlSafetyMode.NORMAL.value)
+        data.setdefault("last_action", ControlAction.RESUME.value)
+        data.setdefault("last_actor", "system")
+        data.setdefault("lane", "controls")
+        data.setdefault("reason", "")
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class ControlActionRecord:
+    action_id: str
+    control_id: str
+    scope_type: str
+    scope_id: str
+    action: str
+    actor: str
+    lane: str
+    created_at: str
+    reason: str = ""
+    previous_run_state: str = ControlRunState.ACTIVE.value
+    previous_safety_mode: str = ControlSafetyMode.NORMAL.value
+    new_run_state: str = ControlRunState.ACTIVE.value
+    new_safety_mode: str = ControlSafetyMode.NORMAL.value
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ControlActionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("reason", "")
+        data.setdefault("previous_run_state", ControlRunState.ACTIVE.value)
+        data.setdefault("previous_safety_mode", ControlSafetyMode.NORMAL.value)
+        data.setdefault("new_run_state", ControlRunState.ACTIVE.value)
+        data.setdefault("new_safety_mode", ControlSafetyMode.NORMAL.value)
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class ResearchCampaignRecord:
+    campaign_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    requested_by: str
+    lane: str
+    objective: str
+    objective_metrics: list[str]
+    primary_metric: str
+    metric_directions: dict[str, str] = field(default_factory=dict)
+    baseline_ref: Optional[str] = None
+    benchmark_slice_ref: Optional[str] = None
+    max_passes: int = 1
+    max_budget_units: int = 1
+    budget_used: int = 0
+    stop_conditions: dict[str, Any] = field(default_factory=dict)
+    status: str = "pending"
+    completed_passes: int = 0
+    best_run_id: Optional[str] = None
+    best_score: Optional[float] = None
+    comparison_summary: str = ""
+    latest_recommendation_id: Optional[str] = None
+    linked_artifact_ids: list[str] = field(default_factory=list)
+    execution_backend: str = "autoresearch_adapter"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ResearchCampaignRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("objective_metrics", [])
+        data.setdefault("primary_metric", "")
+        data.setdefault("metric_directions", {})
+        data.setdefault("baseline_ref", None)
+        data.setdefault("benchmark_slice_ref", None)
+        data.setdefault("max_passes", 1)
+        data.setdefault("max_budget_units", 1)
+        data.setdefault("budget_used", 0)
+        data.setdefault("stop_conditions", {})
+        data.setdefault("status", "pending")
+        data.setdefault("completed_passes", 0)
+        data.setdefault("best_run_id", None)
+        data.setdefault("best_score", None)
+        data.setdefault("comparison_summary", "")
+        data.setdefault("latest_recommendation_id", None)
+        data.setdefault("linked_artifact_ids", [])
+        data.setdefault("execution_backend", "autoresearch_adapter")
+        return cls(**data)
+
+
+@dataclass
+class ExperimentRunRecord:
+    run_id: str
+    campaign_id: str
+    task_id: str
+    pass_index: int
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    status: str = "pending"
+    budget_used: int = 0
+    summary: str = ""
+    hypothesis: str = ""
+    comparison_summary: str = ""
+    candidate_artifact_id: Optional[str] = None
+    stop_reason: str = ""
+    raw_result: dict[str, Any] = field(default_factory=dict)
+    execution_backend: str = "autoresearch_adapter"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ExperimentRunRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("status", "pending")
+        data.setdefault("budget_used", 0)
+        data.setdefault("summary", "")
+        data.setdefault("hypothesis", "")
+        data.setdefault("comparison_summary", "")
+        data.setdefault("candidate_artifact_id", None)
+        data.setdefault("stop_reason", "")
+        data.setdefault("raw_result", {})
+        data.setdefault("execution_backend", "autoresearch_adapter")
+        return cls(**data)
+
+
+@dataclass
+class MetricResultRecord:
+    metric_result_id: str
+    campaign_id: str
+    run_id: str
+    task_id: str
+    metric_name: str
+    metric_value: float
+    direction: str
+    created_at: str
+    updated_at: str
+    baseline_value: Optional[float] = None
+    delta_value: Optional[float] = None
+    summary: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MetricResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("baseline_value", None)
+        data.setdefault("delta_value", None)
+        data.setdefault("summary", "")
+        return cls(**data)
+
+
+@dataclass
+class ResearchRecommendationRecord:
+    recommendation_id: str
+    campaign_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    action: str
+    summary: str
+    rationale: str = ""
+    status: str = "candidate"
+    best_run_id: Optional[str] = None
+    recommended_artifact_id: Optional[str] = None
+    linked_artifact_ids: list[str] = field(default_factory=list)
+    execution_backend: str = "autoresearch_adapter"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ResearchRecommendationRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("rationale", "")
+        data.setdefault("status", "candidate")
+        data.setdefault("best_run_id", None)
+        data.setdefault("recommended_artifact_id", None)
+        data.setdefault("linked_artifact_ids", [])
+        data.setdefault("execution_backend", "autoresearch_adapter")
         return cls(**data)
 
 

@@ -31,11 +31,10 @@ def main() -> int:
     text = read_text(LIVE_FILE)
 
     checks = {
-        "helper_signature": "def build_ops_report_snapshot(limit: int = 8):" in text,
-        "counts_query_unfiltered": '"SELECT status, COUNT(*) AS c FROM tasks GROUP BY status"' in text,
-        "recent_query_unfiltered": '"SELECT id, title, status, updated_at, created_at FROM tasks ORDER BY COALESCE(updated_at, created_at) DESC LIMIT ?"' in text,
-        "callsite_no_task_id": "snapshot = build_ops_report_snapshot()" in text,
-        "summary_heading": "## Summary" in text,
+        "helper_signature": "def build_ops_report_snapshot(task_id: int, limit: int = 8):" in text,
+        "counts_query_filters_current_task": '"SELECT status, COUNT(*) AS c FROM tasks WHERE id != ? GROUP BY status"' in text,
+        "recent_query_filters_current_task": '"SELECT id, title, status, updated_at, created_at FROM tasks WHERE id != ? ORDER BY COALESCE(updated_at, created_at) DESC LIMIT ?"' in text,
+        "callsite_passes_task_id": "snapshot = build_ops_report_snapshot(task_id)" in text,
         "queue_counts_heading": "## Queue Counts" in text,
         "recent_heading": "## Recently Completed / Updated Tasks" in text,
         "artifact_paths_heading": "## Latest Artifact Paths" in text,

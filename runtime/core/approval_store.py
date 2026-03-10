@@ -25,6 +25,7 @@ from runtime.core.models import (
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_runtime import ready_to_ship_task, save_task
 from runtime.core.task_store import add_approval_link, load_task, transition_task
+from runtime.controls.control_store import assert_control_allows, control_blocks_action
 from runtime.dashboard.rebuild_helpers import rebuild_all_outputs
 
 
@@ -319,6 +320,13 @@ def resume_approval_from_checkpoint(
     task = load_task(approval.task_id, root=root)
     if task is None:
         raise ValueError(f"Task not found for approval resume: {approval.task_id}")
+    subsystem = task.execution_backend if task.execution_backend != "unassigned" else lane
+    assert_control_allows(
+        action="approval_resume",
+        root=root,
+        task_id=approval.task_id,
+        subsystem=subsystem,
+    )
 
     artifact = select_task_artifact(
         task_id=approval.task_id,
@@ -333,6 +341,15 @@ def resume_approval_from_checkpoint(
     )
     if checkpoint.linked_artifact_ids and artifact is None:
         raise ValueError(f"Approval resume checkpoint {checkpoint.checkpoint_id} cannot bind a linked artifact.")
+
+    if artifact is not None and artifact.lifecycle_state == RecordLifecycleState.CANDIDATE.value:
+        artifact = promote_artifact(
+            artifact_id=artifact.artifact_id,
+            actor=actor,
+            lane=lane,
+            root=root,
+            provenance_ref=f"approval:{approval_id}",
+        )
 
     task.checkpoint_summary = checkpoint.checkpoint_summary or task.checkpoint_summary
     if not task.final_outcome and checkpoint.final_outcome_snapshot:
@@ -445,35 +462,67 @@ def record_approval_decision(
         },
     )
 
+    control_hold_reason = ""
     if decision == ApprovalStatus.APPROVED.value:
-        if artifact and artifact.lifecycle_state == RecordLifecycleState.CANDIDATE.value:
-            promote_artifact(
-                artifact_id=artifact.artifact_id,
-                actor=actor,
-                lane=lane,
-                root=root,
-                provenance_ref=f"approval:{approval_id}",
-            )
-        try:
-            resume_approval_from_checkpoint(
-                approval_id=approval_id,
-                actor=actor,
-                lane=lane,
-                root=root,
-                reason=reason or f"Approval granted: {approval_id}",
-            )
-        except Exception as exc:
+        subsystem = task.execution_backend if task.execution_backend != "unassigned" else lane
+        blocked, message, _ = control_blocks_action(
+            action="approval_resume",
+            root=root,
+            task_id=record.task_id,
+            subsystem=subsystem,
+        )
+        if blocked:
+            control_hold_reason = message
             transition_task(
                 task_id=record.task_id,
                 to_status=TaskStatus.BLOCKED.value,
                 actor=actor,
                 lane=lane,
-                summary=f"Approval granted but resume failed: {approval_id}",
+                summary=f"Approval granted but held by control state: {approval_id}",
                 root=root,
-                details=str(exc),
+                details=message,
                 approval_id=approval_id,
             )
-            raise
+            append_event(
+                make_event(
+                    task_id=record.task_id,
+                    event_type="approval_resume_blocked_by_control_state",
+                    actor=actor,
+                    lane=lane,
+                    summary=f"Approval resume blocked by control state: {approval_id}",
+                    from_status=task.status,
+                    to_status=TaskStatus.BLOCKED.value,
+                    checkpoint_summary=task.checkpoint_summary,
+                    artifact_id=artifact.artifact_id if artifact else None,
+                    artifact_type=artifact.artifact_type if artifact else None,
+                    artifact_title=artifact.title if artifact else None,
+                    execution_backend=task.execution_backend,
+                    backend_run_id=task.backend_run_id,
+                    details=message,
+                ),
+                root=root,
+            )
+        else:
+            try:
+                resume_approval_from_checkpoint(
+                    approval_id=approval_id,
+                    actor=actor,
+                    lane=lane,
+                    root=root,
+                    reason=reason or f"Approval granted: {approval_id}",
+                )
+            except Exception as exc:
+                transition_task(
+                    task_id=record.task_id,
+                    to_status=TaskStatus.BLOCKED.value,
+                    actor=actor,
+                    lane=lane,
+                    summary=f"Approval granted but resume failed: {approval_id}",
+                    root=root,
+                    details=str(exc),
+                    approval_id=approval_id,
+                )
+                raise
     else:
         checkpoint = (
             load_approval_checkpoint(record.resumable_checkpoint_id, root=root)
@@ -519,7 +568,7 @@ def record_approval_decision(
             summary=f"Approval decision recorded: {decision}",
             from_status=None,
             to_status=None,
-            details=reason,
+            details=control_hold_reason or reason,
             approval_id=approval_id,
         ),
         root=root,

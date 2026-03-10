@@ -43,6 +43,14 @@ def build_heartbeat_report(root: Path) -> dict:
         degraded_signals.append("revoked_artifacts_present")
     if status["counts"].get("blocked", 0):
         degraded_signals.append("blocked_tasks_present")
+    if status["counts"].get("paused_controls", 0):
+        degraded_signals.append("paused_controls_present")
+    if status["counts"].get("stopped_controls", 0):
+        degraded_signals.append("stopped_controls_present")
+    if status["counts"].get("degraded_controls", 0):
+        degraded_signals.append("degraded_controls_present")
+    if status["counts"].get("revoked_controls", 0):
+        degraded_signals.append("revoked_controls_present")
     for name, info in subsystems.items():
         if not info["exists"]:
             degraded_signals.append(f"missing_{name}_dir")
@@ -55,6 +63,7 @@ def build_heartbeat_report(root: Path) -> dict:
         "overall_health": "degraded" if degraded_signals else "ok",
         "degraded_signals": degraded_signals,
         "status_counts": status.get("counts", {}),
+        "control_state": status.get("control_state", {}),
         "subsystems": subsystems,
         "work_summary": {
             "running": status.get("running_now", []),

@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.models import RecordLifecycleState, TaskRecord, TaskStatus, now_iso
 from runtime.core.task_events import append_event, make_event
+from runtime.controls.control_store import assert_control_allows
 
 
 VALID_TRANSITIONS: dict[str, set[str]] = {
@@ -168,6 +169,32 @@ def transition_task(
     allowed = VALID_TRANSITIONS.get(from_status, set())
     if to_status != from_status and to_status not in allowed:
         raise ValueError(f"Invalid transition: {from_status} -> {to_status}")
+
+    subsystem = record.execution_backend if record.execution_backend != "unassigned" else lane
+    if to_status in {
+        TaskStatus.QUEUED.value,
+        TaskStatus.RUNNING.value,
+    }:
+        assert_control_allows(
+            action="task_progress",
+            root=root,
+            task_id=record.task_id,
+            subsystem=subsystem,
+        )
+    elif to_status == TaskStatus.READY_TO_SHIP.value:
+        assert_control_allows(
+            action="ready_to_ship",
+            root=root,
+            task_id=record.task_id,
+            subsystem=subsystem,
+        )
+    elif to_status == TaskStatus.SHIPPED.value:
+        assert_control_allows(
+            action="ship",
+            root=root,
+            task_id=record.task_id,
+            subsystem=subsystem,
+        )
 
     record.status = to_status
     if error:

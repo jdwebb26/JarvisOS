@@ -50,6 +50,23 @@ def main() -> int:
         task_id = intake_result["task_id"]
 
         task_after_intake = load_task(temp_root, task_id)
+        candidate_artifact = write_text_artifact(
+            task_id=task_id,
+            artifact_type="report",
+            title="E2E approval candidate",
+            summary="Candidate artifact for approval-backed ready_to_ship",
+            content="This candidate artifact is promoted during approval resume before shipping.",
+            actor="smoke",
+            lane="artifacts",
+            root=temp_root,
+            producer_kind="backend",
+            execution_backend=task_after_intake.execution_backend if task_after_intake else None,
+        )
+        task_after_candidate = load_task(temp_root, task_id)
+        if task_after_candidate is None:
+            raise AssertionError("Expected task to exist after candidate artifact creation.")
+        task_after_candidate.final_outcome = "candidate_ready_for_live_apply"
+        save_task(temp_root, task_after_candidate)
         review = latest_review_for_task(task_id, root=temp_root)
         if review is None:
             raise AssertionError("Expected intake routing to create a pending review.")
@@ -66,10 +83,6 @@ def main() -> int:
         approval = latest_approval_for_task(task_id, root=temp_root)
         if approval is None:
             raise AssertionError("Expected review approval to create a pending approval.")
-
-        task_before_approval = load_task(temp_root, task_id)
-        task_before_approval.final_outcome = "candidate_ready_for_live_apply"
-        save_task(temp_root, task_before_approval)
 
         approval_result = record_approval_decision(
             approval_id=approval.approval_id,
@@ -146,6 +159,7 @@ def main() -> int:
             "review_result": review_result.to_dict(),
             "approval_id": approval.approval_id,
             "approval_result": approval_result.to_dict(),
+            "candidate_artifact_id": candidate_artifact["artifact_id"],
             "status_after_approval": task_after_approval.status,
             "ship_result": ship_result,
             "gateway_ack": gateway_payload["ack"],
