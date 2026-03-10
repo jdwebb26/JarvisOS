@@ -36,6 +36,9 @@ def build_output_board(*, root: Path, limit: int = 50) -> dict:
                 "published_by": record.get("published_by"),
                 "lane": record.get("lane"),
                 "status": record.get("status"),
+                "superseded_by_artifact_id": record.get("superseded_by_artifact_id"),
+                "impacted_by_artifact_ids": record.get("impacted_by_artifact_ids", []),
+                "revocation_reason": record.get("revocation_reason", ""),
                 "markdown_path": record.get("markdown_path"),
             }
         )
@@ -49,6 +52,7 @@ def build_output_board(*, root: Path, limit: int = 50) -> dict:
     }
 
     out_path = root / "state" / "logs" / "output_board.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
 

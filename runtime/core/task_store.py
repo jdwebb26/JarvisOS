@@ -387,3 +387,41 @@ def mark_task_artifact_revoked(
         root=root,
     )
     return record
+
+
+def mark_task_output_impacts(
+    task_id: str,
+    output_ids: list[str],
+    actor: str,
+    lane: str,
+    root: Optional[Path] = None,
+    *,
+    reason: str = "",
+) -> TaskRecord:
+    record = load_task(task_id, root=root)
+    if record is None:
+        raise ValueError(f"Task not found: {task_id}")
+
+    for output_id in output_ids:
+        if output_id not in record.impacted_output_ids:
+            record.impacted_output_ids.append(output_id)
+    save_task(record, root=root)
+
+    append_event(
+        make_event(
+            task_id=record.task_id,
+            event_type="task_outputs_impacted",
+            actor=actor,
+            lane=lane,
+            summary=reason or f"Impacted outputs recorded for task: {record.task_id}",
+            from_status=record.status,
+            to_status=record.status,
+            from_lifecycle_state=record.lifecycle_state,
+            to_lifecycle_state=record.lifecycle_state,
+            execution_backend=record.execution_backend,
+            backend_run_id=record.backend_run_id,
+            details=",".join(output_ids),
+        ),
+        root=root,
+    )
+    return record

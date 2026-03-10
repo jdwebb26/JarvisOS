@@ -37,68 +37,8 @@ def _load_flowstate_index(root: Path) -> dict:
         return {"counts": {}, "items": []}
 
 
-def _task_row(task: dict) -> dict:
-    return {
-        "task_id": task.get("task_id"),
-        "summary": task.get("normalized_request", ""),
-        "status": task.get("status", "unknown"),
-        "priority": task.get("priority", "normal"),
-    }
-
-
-def _with_raw_task_fallback(status: dict, tasks: list[dict]) -> dict:
-    counts = status.get("counts", {})
-    if counts.get("total_tasks", 0) > 0 or not tasks:
-        return status
-
-    queued_now = [_task_row(task) for task in tasks if task.get("status") == "queued"]
-    running_now = [_task_row(task) for task in tasks if task.get("status") == "running"]
-    blocked = [_task_row(task) for task in tasks if task.get("status") == "blocked"]
-    waiting_review = [_task_row(task) for task in tasks if task.get("status") == "waiting_review"]
-    waiting_approval = [_task_row(task) for task in tasks if task.get("status") == "waiting_approval"]
-    finished_recently = [
-        _task_row(task)
-        for task in tasks
-        if task.get("status") in {"completed", "shipped", "failed", "cancelled", "archived"}
-    ][:10]
-
-    if waiting_review:
-        next_move = "Review tasks waiting on reviewer verdicts."
-    elif waiting_approval:
-        next_move = "Review approval-gated tasks first."
-    elif running_now:
-        next_move = "Let current in-progress work continue or inspect the top active task."
-    elif queued_now:
-        next_move = "Start the highest-priority queued task or inspect queued work."
-    else:
-        next_move = "No active work is currently queued or running."
-
-    return {
-        "queued_now": queued_now,
-        "running_now": running_now,
-        "blocked": blocked,
-        "waiting_review": waiting_review,
-        "waiting_approval": waiting_approval,
-        "finished_recently": finished_recently,
-        "counts": {
-            "total_tasks": len(tasks),
-            "queued": len(queued_now),
-            "running": len(running_now),
-            "blocked": len(blocked),
-            "waiting_review": len(waiting_review),
-            "waiting_approval": len(waiting_approval),
-            "finished_recently": len(finished_recently),
-        },
-        "next_recommended_move": next_move,
-    }
-
-
 def build_operator_snapshot(root: Path) -> dict:
-    tasks = _load_json_files(root / "state" / "tasks")
-    status = _with_raw_task_fallback(
-        normalize_status_summary(summarize_status(root=root)),
-        tasks,
-    )
+    status = normalize_status_summary(summarize_status(root=root))
     reviews = _load_json_files(root / "state" / "reviews")
     approvals = _load_json_files(root / "state" / "approvals")
     flowstate_index = _load_flowstate_index(root)
@@ -110,6 +50,7 @@ def build_operator_snapshot(root: Path) -> dict:
             "reviewer_role": r["reviewer_role"],
             "status": r["status"],
             "summary": r["summary"],
+            "linked_artifact_ids": r.get("linked_artifact_ids", []),
         }
         for r in reviews
         if r.get("status") == "pending"
@@ -122,6 +63,7 @@ def build_operator_snapshot(root: Path) -> dict:
             "requested_reviewer": a["requested_reviewer"],
             "status": a["status"],
             "summary": a["summary"],
+            "linked_artifact_ids": a.get("linked_artifact_ids", []),
         }
         for a in approvals
         if a.get("status") == "pending"
@@ -145,8 +87,9 @@ def build_operator_snapshot(root: Path) -> dict:
         {
             "task_id": task["task_id"],
             "status": task["status"],
-            "summary": task["normalized_request"],
-            "assigned_model": task.get("assigned_model"),
+            "summary": task["summary"],
+            "execution_backend": task.get("execution_backend"),
+            "promoted_artifact_id": task.get("promoted_artifact_id"),
             "handoff": (
                 "Approved and ready for live apply."
                 if task.get("status") == "ready_to_ship"
@@ -158,15 +101,20 @@ def build_operator_snapshot(root: Path) -> dict:
                 else "Confirm the linked artifact, then run publish-complete."
             ),
         }
-        for task in tasks
-        if task.get("final_outcome") == "candidate_ready_for_live_apply"
-        and task.get("status") in {"ready_to_ship", "shipped"}
+        for task in status.get("ready_to_ship", []) + status.get("shipped", [])
+        if task.get("promoted_artifact_id")
     ]
 
-    if pending_reviews:
+    if status.get("blocked"):
+        operator_focus = "Clear blocked tasks and inspect the linked reasons first."
+    elif pending_reviews:
         operator_focus = "Clear pending reviews first."
     elif pending_approvals:
         operator_focus = "Clear pending approvals next."
+    elif status.get("revoked_outputs") or status.get("revoked_artifacts"):
+        operator_focus = "Inspect revoked artifacts and outputs before continuing downstream work."
+    elif status.get("impacted_outputs") or status.get("impacted_artifacts"):
+        operator_focus = "Inspect impacted artifacts and outputs before shipping more work."
     elif candidate_apply_ready:
         operator_focus = "Apply or publish candidate-ready tasks."
     else:
@@ -184,10 +132,17 @@ def build_operator_snapshot(root: Path) -> dict:
             "pending_approvals": len(pending_approvals),
             "candidate_apply_ready": len(candidate_apply_ready),
             "flowstate_waiting_promotion": len(flowstate_waiting),
+            "blocked": len(status.get("blocked", [])),
+            "ready_to_ship": len(status.get("ready_to_ship", [])),
+            "shipped": len(status.get("shipped", [])),
+            "impacted_outputs": len(status.get("impacted_outputs", [])),
+            "revoked_outputs": len(status.get("revoked_outputs", [])),
+            "revoked_artifacts": len(status.get("revoked_artifacts", [])),
         },
     }
 
     out_path = root / "state" / "logs" / "operator_snapshot.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
     return snapshot
 

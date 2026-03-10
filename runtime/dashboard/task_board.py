@@ -26,11 +26,20 @@ def build_task_board(root: Path) -> dict:
                 "summary": t.normalized_request,
                 "task_type": t.task_type,
                 "status": normalize_status_name(t.status),
+                "lifecycle_state": t.lifecycle_state,
                 "priority": t.priority,
                 "risk_level": t.risk_level,
+                "execution_backend": t.execution_backend,
                 "assigned_model": t.assigned_model,
                 "review_required": t.review_required,
                 "approval_required": t.approval_required,
+                "promoted_artifact_id": t.promoted_artifact_id,
+                "candidate_artifact_ids": t.candidate_artifact_ids,
+                "demoted_artifact_ids": t.demoted_artifact_ids,
+                "revoked_artifact_ids": t.revoked_artifact_ids,
+                "impacted_output_ids": t.impacted_output_ids,
+                "checkpoint_summary": t.checkpoint_summary,
+                "last_error": t.last_error,
                 "related_review_ids": t.related_review_ids,
                 "related_approval_ids": t.related_approval_ids,
                 "updated_at": t.updated_at,
@@ -43,6 +52,7 @@ def build_task_board(root: Path) -> dict:
     }
 
     out_path = root / "state" / "logs" / "task_board.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(board, indent=2) + "\n", encoding="utf-8")
     return board
 

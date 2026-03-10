@@ -18,7 +18,12 @@ from runtime.core.models import ArtifactRecord, OutputStatus, RecordLifecycleSta
 from runtime.core.output_store import mark_outputs_impacted
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_runtime import load_task
-from runtime.core.task_store import mark_task_artifact_revoked, set_task_lifecycle_state, transition_task
+from runtime.core.task_store import (
+    mark_task_artifact_revoked,
+    mark_task_output_impacts,
+    set_task_lifecycle_state,
+    transition_task,
+)
 
 
 def now_iso() -> str:
@@ -307,6 +312,15 @@ def demote_artifact(
     )
     artifact.downstream_impacted_output_ids = impacted_output_ids
     save_artifact(artifact, root=root_path)
+    if impacted_output_ids:
+        mark_task_output_impacts(
+            task_id=artifact.task_id,
+            output_ids=impacted_output_ids,
+            actor=actor,
+            lane=lane,
+            root=root_path,
+            reason=f"Artifact {artifact.artifact_id} impacted downstream outputs.",
+        )
 
     set_task_lifecycle_state(
         task_id=artifact.task_id,

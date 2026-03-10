@@ -67,6 +67,10 @@ def rebuild_all(*, root: Path) -> dict:
         dashboard_dir / "state_export.py",
         {"counts": {}},
     )
+    heartbeat_report = run_or_default(
+        dashboard_dir / "heartbeat_report.py",
+        {"overall_health": "unknown", "status_counts": {}},
+    )
     flowstate_index = run_or_default(
         flowstate_dir / "index_builder.py",
         {"counts": {"total_sources": 0, "awaiting_promotion_approval": 0, "ingested_only": 0, "extracted": 0, "distilled": 0}},
@@ -90,6 +94,8 @@ def rebuild_all(*, root: Path) -> dict:
             "flowstate_waiting_promotion": len(review_inbox.get("flowstate_waiting_promotion", [])),
         },
         "state_export_counts": state_export.get("counts", {}),
+        "heartbeat_overall_health": heartbeat_report.get("overall_health", "unknown"),
+        "heartbeat_status_counts": heartbeat_report.get("status_counts", {}),
         "flowstate_index_counts": flowstate_index.get("counts", {}),
         "output_board_total": output_board.get("total", 0),
         "written_files": [
@@ -98,6 +104,7 @@ def rebuild_all(*, root: Path) -> dict:
             str(root / "state" / "logs" / "event_board.json"),
             str(root / "state" / "logs" / "review_inbox.json"),
             str(root / "state" / "logs" / "state_export.json"),
+            str(root / "state" / "logs" / "heartbeat_report.json"),
             str(root / "state" / "logs" / "output_board.json"),
             str(root / "state" / "flowstate_sources" / "index.json"),
         ],

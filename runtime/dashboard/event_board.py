@@ -48,12 +48,16 @@ def build_event_board(root: Path, limit: int = 50) -> dict:
                 "created_at": record.get("created_at"),
                 "from_status": normalize_status_name(_pick(record, "from_status")),
                 "to_status": normalize_status_name(_pick(record, "to_status")),
+                "from_lifecycle_state": _pick(record, "from_lifecycle_state"),
+                "to_lifecycle_state": _pick(record, "to_lifecycle_state"),
                 "checkpoint_summary": _pick(record, "checkpoint_summary"),
                 "reason": _pick(record, "reason"),
                 "final_outcome": _pick(record, "final_outcome"),
                 "artifact_id": _pick(record, "artifact_id"),
                 "artifact_type": _pick(record, "artifact_type"),
                 "artifact_title": _pick(record, "artifact_title") or _pick(record, "title"),
+                "execution_backend": _pick(record, "execution_backend"),
+                "backend_run_id": _pick(record, "backend_run_id"),
                 "already_linked": _pick(record, "already_linked"),
             }
         )
@@ -67,6 +71,7 @@ def build_event_board(root: Path, limit: int = 50) -> dict:
     }
 
     out_path = root / "state" / "logs" / "event_board.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
 
