@@ -30,6 +30,7 @@ def build_heartbeat_report(root: Path) -> dict:
         "events": _folder_counts(root / "state" / "events"),
         "reviews": _folder_counts(root / "state" / "reviews"),
         "approvals": _folder_counts(root / "state" / "approvals"),
+        "approval_checkpoints": _folder_counts(root / "state" / "approval_checkpoints"),
         "artifacts": _folder_counts(root / "state" / "artifacts"),
         "outputs": _folder_counts(root / "workspace" / "out"),
         "logs": _folder_counts(logs_dir),

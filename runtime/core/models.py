@@ -297,6 +297,53 @@ class ApprovalRecord:
 
 
 @dataclass
+class ApprovalCheckpointRecord:
+    checkpoint_id: str
+    approval_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    created_by: str
+    lane: str
+    status: str = "pending"
+    linked_artifact_ids: list[str] = field(default_factory=list)
+    task_status_when_paused: str = TaskStatus.WAITING_APPROVAL.value
+    task_lifecycle_state_when_paused: str = RecordLifecycleState.WORKING.value
+    checkpoint_summary: str = ""
+    final_outcome_snapshot: str = ""
+    execution_backend: str = "unassigned"
+    backend_run_id: Optional[str] = None
+    resume_target_status: str = TaskStatus.QUEUED.value
+    resume_reason: str = ""
+    resume_count: int = 0
+    resumed_at: Optional[str] = None
+    task_snapshot: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ApprovalCheckpointRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("status", "pending")
+        data.setdefault("linked_artifact_ids", [])
+        data.setdefault("task_status_when_paused", TaskStatus.WAITING_APPROVAL.value)
+        data.setdefault("task_lifecycle_state_when_paused", RecordLifecycleState.WORKING.value)
+        data.setdefault("checkpoint_summary", "")
+        data.setdefault("final_outcome_snapshot", "")
+        data.setdefault("execution_backend", "unassigned")
+        data.setdefault("backend_run_id", None)
+        data.setdefault("resume_target_status", TaskStatus.QUEUED.value)
+        data.setdefault("resume_reason", "")
+        data.setdefault("resume_count", 0)
+        data.setdefault("resumed_at", None)
+        data.setdefault("task_snapshot", {})
+        return cls(**data)
+
+
+@dataclass
 class TaskEventRecord:
     event_id: str
     task_id: str

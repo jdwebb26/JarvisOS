@@ -44,6 +44,7 @@ def build_state_export(root: Path) -> dict:
     tasks = _load_jsons(root / "state" / "tasks")
     reviews = _load_jsons(root / "state" / "reviews")
     approvals = _load_jsons(root / "state" / "approvals")
+    approval_checkpoints = _load_jsons(root / "state" / "approval_checkpoints")
     artifacts = _load_jsons(root / "state" / "artifacts")
     outputs = _load_jsons(root / "workspace" / "out")
     flowstate_sources = _load_flowstate_source_records(root / "state" / "flowstate_sources")
@@ -53,6 +54,7 @@ def build_state_export(root: Path) -> dict:
             "tasks": len(tasks),
             "reviews": len(reviews),
             "approvals": len(approvals),
+            "approval_checkpoints": len(approval_checkpoints),
             "artifacts": len(artifacts),
             "outputs": len(outputs),
             "flowstate_sources": len(flowstate_sources),

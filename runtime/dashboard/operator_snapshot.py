@@ -64,6 +64,7 @@ def build_operator_snapshot(root: Path) -> dict:
             "status": a["status"],
             "summary": a["summary"],
             "linked_artifact_ids": a.get("linked_artifact_ids", []),
+            "resumable_checkpoint_id": a.get("resumable_checkpoint_id"),
         }
         for a in approvals
         if a.get("status") == "pending"
