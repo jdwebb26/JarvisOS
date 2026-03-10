@@ -13,6 +13,7 @@ from runtime.integrations.hermes_adapter import execute_hermes_task, load_hermes
 from runtime.memory.governance import list_memory_candidates_for_task, load_memory_candidate, save_memory_candidate
 from runtime.ralph.consolidator import execute_consolidation
 from scripts.operator_action_ledger import latest_successful_action_for_action_id
+from scripts.operator_checkpoint_action_pack import with_action_pack_provenance
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +62,16 @@ def _run_json(cmd: list[str], *, expect_ok: bool = True) -> dict:
             f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
         )
     return json.loads(completed.stdout)
+
+
+def _expire_pack(path: Path) -> dict:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["generated_at"] = "2000-01-01T00:00:00+00:00"
+    payload["recommended_ttl_seconds"] = 1
+    payload["expires_at"] = "2000-01-01T00:00:01+00:00"
+    payload = with_action_pack_provenance(payload)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return payload
 
 
 def test_operator_action_executor_runs_review_action(tmp_path: Path):
@@ -120,6 +131,245 @@ def test_operator_action_executor_runs_review_action(tmp_path: Path):
     assert record["dry_run"] is False
     assert record["ack_summary"]
     assert record["return_code"] == 0
+
+
+def test_operator_action_executor_runs_against_explicit_saved_pack(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_explicit_pack", review_required=True)
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "explicit_pack_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Explicit pack candidate",
+            "summary": "candidate for explicit pack executor",
+            "content": "candidate body",
+        },
+    )
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="Review pending for explicit pack executor",
+        root=tmp_path,
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    pack_path = Path(action_pack["json_path"])
+    action_id = action_pack["pack"]["pending_review_commands"][0]["action_ids"]["approve"]
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+            "--action-pack-path",
+            str(pack_path),
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["action_pack_validation"]["status"] == "valid"
+    assert result["action_pack_validation"]["resolution"] == "pinned"
+    assert result["execution_record"]["source_action_pack_id"] == action_pack["pack"]["action_pack_id"]
+    assert result["execution_record"]["source_action_pack_fingerprint"] == action_pack["pack"]["action_pack_fingerprint"]
+
+
+def test_operator_action_executor_fails_cleanly_if_explicit_pack_is_missing(tmp_path: Path):
+    missing_path = tmp_path / "state" / "logs" / "missing_operator_checkpoint_action_pack.json"
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            "pending_review:approve:rev_missing",
+            "--action-pack-path",
+            str(missing_path),
+        ],
+        expect_ok=False,
+    )
+
+    assert result["ok"] is False
+    assert "Explicit action pack not found" in result["error"]
+
+
+def test_operator_action_executor_fails_cleanly_if_explicit_pack_is_mismatched(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_pack_mismatch", review_required=True)
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "pack_mismatch_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Pack mismatch candidate",
+            "summary": "candidate for pack mismatch executor",
+            "content": "candidate body",
+        },
+    )
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="Review pending for pack mismatch executor",
+        root=tmp_path,
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    pack_path = Path(action_pack["json_path"])
+    pack_payload = json.loads(pack_path.read_text(encoding="utf-8"))
+    pack_payload["operator_focus"] = "mutated after save"
+    pack_path.write_text(json.dumps(pack_payload, indent=2) + "\n", encoding="utf-8")
+    action_id = action_pack["pack"]["pending_review_commands"][0]["action_ids"]["approve"]
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+            "--action-pack-path",
+            str(pack_path),
+        ],
+        expect_ok=False,
+    )
+
+    assert result["ok"] is False
+    assert "fingerprint does not match" in result["error"]
+
+
+def test_operator_action_executor_fails_cleanly_if_explicit_pack_is_expired(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_pack_expired", review_required=True)
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "pack_expired_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Pack expired candidate",
+            "summary": "candidate for pack expired executor",
+            "content": "candidate body",
+        },
+    )
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="Review pending for pack expired executor",
+        root=tmp_path,
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    pack_path = Path(action_pack["json_path"])
+    _expire_pack(pack_path)
+    action_id = action_pack["pack"]["pending_review_commands"][0]["action_ids"]["approve"]
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+            "--action-pack-path",
+            str(pack_path),
+        ],
+        expect_ok=False,
+    )
+
+    assert result["ok"] is False
+    assert result["failure"]["kind"] == "expired_pack"
+    assert result["action_pack_validation"]["status"] == "expired"
+
+
+def test_operator_action_executor_rebuilds_implicit_pack_when_expired(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_pack_rebuild", review_required=True)
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "pack_rebuild_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Pack rebuild candidate",
+            "summary": "candidate for pack rebuild executor",
+            "content": "candidate body",
+        },
+    )
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="Review pending for pack rebuild executor",
+        root=tmp_path,
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    pack_path = Path(action_pack["json_path"])
+    expired_pack = _expire_pack(pack_path)
+    action_id = action_pack["pack"]["pending_review_commands"][0]["action_ids"]["approve"]
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["action_pack_validation"]["resolution"] == "rebuilt"
+    assert result["action_pack_validation"]["rebuild_reason"] == "expired"
+    assert result["execution_record"]["source_action_pack_id"] != expired_pack["action_pack_id"]
 
 
 def test_operator_action_executor_runs_memory_action(tmp_path: Path):

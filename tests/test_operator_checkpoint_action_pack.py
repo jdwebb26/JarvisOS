@@ -105,6 +105,11 @@ def test_operator_checkpoint_action_pack_produces_commands(tmp_path: Path):
     pack = payload["pack"]
     assert Path(payload["json_path"]).exists()
     assert Path(payload["markdown_path"]).exists()
+    assert pack["action_pack_id"].startswith("opack_")
+    assert len(pack["action_pack_fingerprint"]) == 64
+    assert pack["recommended_ttl_seconds"] > 0
+    assert pack["expires_at"]
+    assert pack["stale_after_reason"]
     assert pack["pending_review_commands"]
     assert pack["pending_approval_commands"]
     assert pack["memory_decision_commands"]

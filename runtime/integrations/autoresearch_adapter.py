@@ -36,6 +36,7 @@ from runtime.core.models import (
 from runtime.core.review_store import latest_review_for_task, request_review, save_review
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_store import load_task, save_task, transition_task
+from runtime.evals.trace_store import record_run_trace
 from runtime.researchlab.runner import (
     list_experiment_runs_for_campaign,
     save_experiment_run,
@@ -428,6 +429,35 @@ def execute_research_campaign(
                 raw_result={},
                 execution_backend=AUTORESEARCH_BACKEND_ID,
             )
+            trace = record_run_trace(
+                task_id=task_id,
+                trace_kind="research_experiment",
+                actor=actor,
+                lane=lane,
+                execution_backend=AUTORESEARCH_BACKEND_ID,
+                backend_run_id=run.run_id,
+                status=FAILED_STATUS,
+                request_summary=request.objective,
+                response_summary="",
+                decision_summary=f"Research experiment failed: {run.stop_reason}",
+                request_payload=request.to_dict(),
+                response_payload={},
+                replay_payload={
+                    "objective": request.objective,
+                    "primary_metric": request.primary_metric,
+                    "primary_direction": request.metric_directions.get(request.primary_metric, "maximize"),
+                    "metrics": {},
+                    "expected_status": FAILED_STATUS,
+                },
+                source_refs={
+                    "campaign_id": campaign.campaign_id,
+                    "request_id": request.request_id,
+                    "run_id": run.run_id,
+                },
+                error=run.stop_reason,
+                root=root_path,
+            )
+            run.trace_id = trace.trace_id
             save_experiment_run(run, root=root_path)
             campaign.status = FAILED_STATUS
             campaign.comparison_summary = run.stop_reason
@@ -483,7 +513,6 @@ def execute_research_campaign(
             raw_result=result.to_dict(),
             execution_backend=AUTORESEARCH_BACKEND_ID,
         )
-        save_experiment_run(run, root=root_path)
 
         primary_value = result.metrics[campaign.primary_metric]
         primary_direction = normalized_directions[campaign.primary_metric]
@@ -522,6 +551,38 @@ def execute_research_campaign(
             )
             save_metric_result(metric_row, root=root_path)
             metric_rows.append(metric_row)
+
+        trace = record_run_trace(
+            task_id=task_id,
+            trace_kind="research_experiment",
+            actor=actor,
+            lane=lane,
+            execution_backend=AUTORESEARCH_BACKEND_ID,
+            backend_run_id=run.run_id,
+            status=result.status,
+            request_summary=request.objective,
+            response_summary=result.summary,
+            decision_summary=result.comparison_summary or f"Primary metric {campaign.primary_metric}={primary_value:.4f}",
+            request_payload=request.to_dict(),
+            response_payload=result.to_dict(),
+            replay_payload={
+                "objective": request.objective,
+                "primary_metric": campaign.primary_metric,
+                "primary_direction": primary_direction,
+                "metrics": dict(result.metrics),
+                "budget_used": result.budget_used,
+                "expected_status": result.status,
+            },
+            source_refs={
+                "campaign_id": campaign.campaign_id,
+                "request_id": request.request_id,
+                "result_id": result.result_id,
+                "run_id": run.run_id,
+            },
+            root=root_path,
+        )
+        run.trace_id = trace.trace_id
+        save_experiment_run(run, root=root_path)
 
         campaign.completed_passes = pass_index
         campaign.budget_used += result.budget_used

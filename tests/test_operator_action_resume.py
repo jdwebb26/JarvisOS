@@ -1,6 +1,8 @@
 import json
 import subprocess
 import sys
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
@@ -10,6 +12,7 @@ from runtime.evals.trace_store import replay_trace_to_eval
 from runtime.integrations.hermes_adapter import execute_hermes_task, load_hermes_result
 from runtime.memory.governance import load_memory_candidate
 from runtime.ralph.consolidator import execute_consolidation
+from scripts.operator_checkpoint_action_pack import with_action_pack_provenance
 from scripts.operator_action_ledger import (
     latest_action_by_category,
     latest_failed_action_for_task,
@@ -55,6 +58,16 @@ def _run_json(cmd: list[str], *, expect_ok: bool = True) -> dict:
             f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
         )
     return json.loads(completed.stdout)
+
+
+def _expire_pack(path: Path) -> dict:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["generated_at"] = "2000-01-01T00:00:00+00:00"
+    payload["recommended_ttl_seconds"] = 1
+    payload["expires_at"] = "2000-01-01T00:00:01+00:00"
+    payload = with_action_pack_provenance(payload)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return payload
 
 
 def _seed_memory_action_pack(root: Path, *, task_id: str, review_required: bool) -> dict:
@@ -204,6 +217,9 @@ def test_resume_from_dry_run_action(tmp_path: Path):
     assert dry_run["execution_record"]["dry_run"] is True
     assert resumed["ok"] is True
     assert resumed["resumed_from_execution_id"] == dry_run["execution_record"]["execution_id"]
+    assert resumed["execution_record"]["source_action_pack_id"] == dry_run["execution_record"]["source_action_pack_id"]
+    assert resumed["execution_record"]["source_action_pack_fingerprint"] == dry_run["execution_record"]["source_action_pack_fingerprint"]
+    assert resumed["action_pack_validation"]["status"] == "valid"
     assert review is not None
     assert review.status == "approved"
 
@@ -439,3 +455,78 @@ def test_resume_respects_stale_action_guard(tmp_path: Path):
 
     assert resumed["ok"] is False
     assert resumed["failure"]["kind"] == "stale_action"
+
+
+def test_resume_respects_expired_pinned_pack_provenance(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_resume_pinned_pack", review_required=True)
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "resume_pinned_pack_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Resume pinned pack candidate",
+            "summary": "resume pinned pack summary",
+            "content": "candidate body",
+        },
+    )
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="Resume pinned pack review request",
+        root=tmp_path,
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    pack_path = Path(action_pack["json_path"])
+    short_lived_payload = json.loads(pack_path.read_text(encoding="utf-8"))
+    generated_at = datetime.now(timezone.utc)
+    short_lived_payload["generated_at"] = generated_at.isoformat()
+    short_lived_payload["recommended_ttl_seconds"] = 1
+    short_lived_payload["expires_at"] = (generated_at + timedelta(seconds=1)).isoformat()
+    short_lived_payload = with_action_pack_provenance(short_lived_payload)
+    pack_path.write_text(json.dumps(short_lived_payload, indent=2) + "\n", encoding="utf-8")
+    action_id = action_pack["pack"]["pending_review_commands"][0]["action_ids"]["approve"]
+    dry_run = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+            "--action-pack-path",
+            str(pack_path),
+            "--dry-run",
+        ]
+    )
+    time.sleep(1.2)
+
+    resumed = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_resume_action.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "pending_review",
+        ],
+        expect_ok=False,
+    )
+
+    assert dry_run["execution_record"]["source_action_pack_requested_explicit"] is True
+    assert resumed["ok"] is False
+    assert resumed["failure"]["kind"] == "expired_pack"

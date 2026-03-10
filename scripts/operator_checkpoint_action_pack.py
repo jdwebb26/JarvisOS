@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.operator_handoff_pack import build_operator_handoff_pack
+
+
+DEFAULT_ACTION_PACK_TTL_SECONDS = 1800
+ACTION_PACK_STALE_REASON = (
+    "Checkpoint action packs are bounded snapshots over mutable review, approval, memory, and artifact state. "
+    "Refresh or rebuild the pack after the TTL or after manual operator decisions."
+)
 
 
 def _quote(value: str) -> str:
@@ -488,6 +497,9 @@ def _build_markdown(pack: dict[str, Any]) -> str:
         "# Operator Checkpoint Action Pack",
         "",
         f"Generated at: {pack['generated_at']}",
+        f"Action pack id: {pack['action_pack_id']}",
+        f"Fingerprint: {pack['action_pack_fingerprint']}",
+        f"Expires at: {pack['expires_at']}",
         "",
         "## Recommended Execution Order",
     ]
@@ -520,6 +532,276 @@ def _build_markdown(pack: dict[str, Any]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def _pack_identity_payload(pack: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in pack.items()
+        if key not in {"action_pack_id", "action_pack_fingerprint"}
+    }
+
+
+def _parse_iso(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _compute_expires_at(generated_at: str, ttl_seconds: int) -> str:
+    generated = _parse_iso(generated_at)
+    if generated is None:
+        generated = _now_utc()
+    return (generated + timedelta(seconds=ttl_seconds)).isoformat()
+
+
+def compute_action_pack_fingerprint(pack: dict[str, Any]) -> str:
+    canonical = json.dumps(_pack_identity_payload(pack), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def with_action_pack_provenance(pack: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(pack)
+    generated_at = str(enriched.get("generated_at") or "")
+    if not generated_at:
+        generated_at = _now_utc().isoformat()
+        enriched["generated_at"] = generated_at
+    ttl_seconds = int(enriched.get("recommended_ttl_seconds") or DEFAULT_ACTION_PACK_TTL_SECONDS)
+    enriched["recommended_ttl_seconds"] = ttl_seconds
+    enriched["expires_at"] = str(enriched.get("expires_at") or _compute_expires_at(generated_at, ttl_seconds))
+    enriched["stale_after_reason"] = str(enriched.get("stale_after_reason") or ACTION_PACK_STALE_REASON)
+    fingerprint = compute_action_pack_fingerprint(enriched)
+    enriched["action_pack_fingerprint"] = fingerprint
+    enriched["action_pack_id"] = f"opack_{fingerprint[:12]}"
+    return enriched
+
+
+def classify_action_pack(
+    pack: dict[str, Any],
+    *,
+    expected_action_pack_id: str | None = None,
+    expected_action_pack_fingerprint: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(pack, dict):
+        return {
+            "status": "malformed",
+            "reason": "Action pack payload is not a JSON object.",
+            "action_pack_id": None,
+            "action_pack_fingerprint": None,
+            "generated_at": None,
+            "expires_at": None,
+            "recommended_ttl_seconds": None,
+            "fresh": False,
+        }
+
+    required_fields = [
+        "generated_at",
+        "action_pack_id",
+        "action_pack_fingerprint",
+        "recommended_ttl_seconds",
+        "expires_at",
+        "stale_after_reason",
+        "action_index",
+        "recommended_execution_order",
+    ]
+    missing_fields = [field for field in required_fields if field not in pack]
+    if missing_fields:
+        return {
+            "status": "malformed",
+            "reason": f"Action pack is missing required fields: {', '.join(missing_fields)}.",
+            "action_pack_id": pack.get("action_pack_id"),
+            "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+            "generated_at": pack.get("generated_at"),
+            "expires_at": pack.get("expires_at"),
+            "recommended_ttl_seconds": pack.get("recommended_ttl_seconds"),
+            "fresh": False,
+        }
+
+    generated_at = str(pack.get("generated_at") or "")
+    expires_at = str(pack.get("expires_at") or "")
+    generated_dt = _parse_iso(generated_at)
+    expires_dt = _parse_iso(expires_at)
+    try:
+        ttl_seconds = int(pack.get("recommended_ttl_seconds"))
+    except Exception:
+        ttl_seconds = 0
+    if generated_dt is None or expires_dt is None or ttl_seconds <= 0:
+        return {
+            "status": "malformed",
+            "reason": "Action pack timing metadata is malformed.",
+            "action_pack_id": pack.get("action_pack_id"),
+            "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+            "generated_at": generated_at,
+            "expires_at": expires_at,
+            "recommended_ttl_seconds": pack.get("recommended_ttl_seconds"),
+            "fresh": False,
+        }
+    expected_expires_at = _compute_expires_at(generated_at, ttl_seconds)
+    if expected_expires_at != expires_at:
+        return {
+            "status": "malformed",
+            "reason": "Action pack expiry metadata is inconsistent with generated_at and recommended_ttl_seconds.",
+            "action_pack_id": pack.get("action_pack_id"),
+            "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+            "generated_at": generated_at,
+            "expires_at": expires_at,
+            "recommended_ttl_seconds": ttl_seconds,
+            "fresh": False,
+        }
+
+    actual_fingerprint = compute_action_pack_fingerprint(pack)
+    actual_action_pack_id = f"opack_{actual_fingerprint[:12]}"
+
+    if pack.get("action_pack_fingerprint") != actual_fingerprint:
+        return {
+            "status": "fingerprint_invalid",
+            "reason": "Action pack fingerprint does not match its current contents.",
+            "action_pack_id": pack.get("action_pack_id"),
+            "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+            "generated_at": generated_at,
+            "expires_at": expires_at,
+            "recommended_ttl_seconds": ttl_seconds,
+            "fresh": False,
+        }
+    if pack.get("action_pack_id") != actual_action_pack_id:
+        return {
+            "status": "fingerprint_invalid",
+            "reason": "Action pack id does not match its current contents.",
+            "action_pack_id": pack.get("action_pack_id"),
+            "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+            "generated_at": generated_at,
+            "expires_at": expires_at,
+            "recommended_ttl_seconds": ttl_seconds,
+            "fresh": False,
+        }
+    if expected_action_pack_id and pack.get("action_pack_id") != expected_action_pack_id:
+        return {
+            "status": "fingerprint_invalid",
+            "reason": f"Action pack id mismatch. Expected `{expected_action_pack_id}`, found `{pack.get('action_pack_id')}`.",
+            "action_pack_id": pack.get("action_pack_id"),
+            "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+            "generated_at": generated_at,
+            "expires_at": expires_at,
+            "recommended_ttl_seconds": ttl_seconds,
+            "fresh": False,
+        }
+    if expected_action_pack_fingerprint and pack.get("action_pack_fingerprint") != expected_action_pack_fingerprint:
+        return {
+            "status": "fingerprint_invalid",
+            "reason": (
+                "Action pack fingerprint mismatch. "
+                f"Expected `{expected_action_pack_fingerprint}`, found `{pack.get('action_pack_fingerprint')}`."
+            ),
+            "action_pack_id": pack.get("action_pack_id"),
+            "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+            "generated_at": generated_at,
+            "expires_at": expires_at,
+            "recommended_ttl_seconds": ttl_seconds,
+            "fresh": False,
+        }
+    if _now_utc() >= expires_dt:
+        return {
+            "status": "expired",
+            "reason": f"Action pack expired at {expires_at}.",
+            "action_pack_id": pack.get("action_pack_id"),
+            "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+            "generated_at": generated_at,
+            "expires_at": expires_at,
+            "recommended_ttl_seconds": ttl_seconds,
+            "fresh": False,
+        }
+    return {
+        "status": "valid",
+        "reason": "",
+        "action_pack_id": pack.get("action_pack_id"),
+        "action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+        "generated_at": generated_at,
+        "expires_at": expires_at,
+        "recommended_ttl_seconds": ttl_seconds,
+        "fresh": True,
+    }
+
+
+def load_action_pack_from_path(
+    path: Path,
+    *,
+    expected_action_pack_id: str | None = None,
+    expected_action_pack_fingerprint: str | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any], str | None]:
+    if not path.exists():
+        return None, {"status": "malformed", "reason": f"Explicit action pack not found: {path}", "fresh": False}, (
+            f"Explicit action pack not found: {path}"
+        )
+    try:
+        pack = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return None, {
+            "status": "malformed",
+            "reason": f"Explicit action pack is malformed: {path} ({exc})",
+            "fresh": False,
+        }, f"Explicit action pack is malformed: {path} ({exc})"
+
+    validation = classify_action_pack(
+        pack,
+        expected_action_pack_id=expected_action_pack_id,
+        expected_action_pack_fingerprint=expected_action_pack_fingerprint,
+    )
+    if validation["status"] != "valid":
+        return None, validation, validation["reason"]
+    return pack, validation, None
+
+
+def resolve_action_pack(
+    root: Path,
+    *,
+    limit: int = 10,
+    explicit_pack_path: Path | None = None,
+    expected_action_pack_id: str | None = None,
+    expected_action_pack_fingerprint: str | None = None,
+    allow_rebuild: bool = True,
+) -> tuple[dict[str, Any] | None, Path, dict[str, Any], str | None]:
+    if explicit_pack_path is not None:
+        pack, validation, error = load_action_pack_from_path(
+            explicit_pack_path,
+            expected_action_pack_id=expected_action_pack_id,
+            expected_action_pack_fingerprint=expected_action_pack_fingerprint,
+        )
+        validation = dict(validation)
+        validation["resolution"] = "pinned"
+        validation["requested_explicit"] = True
+        validation["rebuild_reason"] = None
+        return pack, explicit_pack_path, validation, error
+
+    pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
+    existing_pack, existing_validation, error = load_action_pack_from_path(pack_path)
+    if existing_pack is not None and existing_validation["status"] == "valid":
+        validation = dict(existing_validation)
+        validation["resolution"] = "current"
+        validation["requested_explicit"] = False
+        validation["rebuild_reason"] = None
+        return existing_pack, pack_path, validation, None
+
+    rebuild_reason = existing_validation.get("status") if existing_validation else "malformed"
+    if not allow_rebuild:
+        validation = dict(existing_validation or {"status": "malformed", "reason": error or "Unable to load action pack.", "fresh": False})
+        validation["resolution"] = "current"
+        validation["requested_explicit"] = False
+        validation["rebuild_reason"] = None
+        return None, pack_path, validation, error or validation["reason"]
+
+    result = build_operator_checkpoint_action_pack(root, limit=limit)
+    rebuilt_pack = result["pack"]
+    validation = classify_action_pack(rebuilt_pack)
+    validation = dict(validation)
+    validation["resolution"] = "rebuilt"
+    validation["requested_explicit"] = False
+    validation["rebuild_reason"] = rebuild_reason
+    return rebuilt_pack, Path(result["json_path"]), validation, None
+
+
 def build_operator_checkpoint_action_pack(root: Path, *, limit: int = 10) -> dict[str, Any]:
     handoff_result = build_operator_handoff_pack(root, limit=limit)
     handoff = handoff_result["pack"]
@@ -544,6 +826,7 @@ def build_operator_checkpoint_action_pack(root: Path, *, limit: int = 10) -> dic
         "operator_focus": handoff.get("operator_focus", ""),
         "review_inbox_reply": handoff.get("review_inbox_reply", ""),
     }
+    pack = with_action_pack_provenance(pack)
 
     markdown = _build_markdown(pack)
     json_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"

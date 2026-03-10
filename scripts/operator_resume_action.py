@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.operator_action_executor import execute_selected_action
+from scripts.operator_checkpoint_action_pack import resolve_action_pack
 from scripts.operator_action_ledger import (
     latest_action_by_category,
     latest_action_for_task,
@@ -107,15 +108,51 @@ def main() -> int:
         print(json.dumps(payload, indent=2))
         return 1
 
+    source_action_pack_path = Path(record["source_action_pack_path"])
+    source_action_pack_id = record.get("source_action_pack_id")
+    source_action_pack_fingerprint = record.get("source_action_pack_fingerprint")
+    if record.get("source_action_pack_requested_explicit"):
+        pack, _, pack_meta, pack_error = resolve_action_pack(
+            root,
+            limit=10,
+            explicit_pack_path=source_action_pack_path,
+            expected_action_pack_id=source_action_pack_id,
+            expected_action_pack_fingerprint=source_action_pack_fingerprint,
+            allow_rebuild=False,
+        )
+    else:
+        pack, _, pack_meta, pack_error = resolve_action_pack(root, limit=10)
+    if pack_error is not None or pack is None:
+        payload = {
+            "ok": False,
+            "error": pack_error or "Unable to validate recorded source action pack.",
+            "failure": {
+                "kind": "expired_pack" if pack_meta.get("status") == "expired" else "pinned_pack_validation_failed",
+                "error": pack_error or "Unable to validate recorded source action pack.",
+            },
+            "action_pack_validation": pack_meta,
+            "matched_record": record,
+        }
+        print(json.dumps(payload, indent=2))
+        return 1
+
     payload, exit_code = execute_selected_action(
         root,
         action_id=record["action_id"],
         action=selected_action,
-        action_pack_path=Path(record["source_action_pack_path"]),
+        action_pack_path=source_action_pack_path,
+        invoked_by="resume",
         dry_run=args.dry_run,
         force=args.force,
+        source_action_pack_id=pack.get("action_pack_id"),
+        source_action_pack_fingerprint=pack.get("action_pack_fingerprint"),
+        source_action_pack_validation_status=pack_meta.get("status", "valid"),
+        source_action_pack_resolution=pack_meta.get("resolution", "pinned"),
+        source_action_pack_rebuild_reason=pack_meta.get("rebuild_reason") or "",
+        source_action_pack_requested_explicit=bool(pack_meta.get("requested_explicit")),
     )
     payload["resumed_from_execution_id"] = record["execution_id"]
+    payload["action_pack_validation"] = pack_meta
     payload["selectors"] = {
         "task_id": args.task_id or None,
         "category": args.category or None,

@@ -25,6 +25,7 @@ from runtime.core.models import ApprovalStatus, ReviewStatus, TaskStatus, new_id
 from runtime.core.review_store import latest_review_for_task, save_review
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_store import load_task, save_task, transition_task
+from runtime.evals.trace_store import record_run_trace
 
 
 HERMES_BACKEND_ID = "hermes_adapter"
@@ -86,6 +87,7 @@ class HermesTaskResult:
     content: str = ""
     error: str = ""
     candidate_artifact_id: Optional[str] = None
+    trace_id: Optional[str] = None
     raw_response: dict[str, Any] = field(default_factory=dict)
     schema_version: str = "v5.1"
 
@@ -451,6 +453,39 @@ def execute_hermes_task(
         )
 
     final_task = load_task(task_id, root=root_path)
+    trace = record_run_trace(
+        task_id=task_id,
+        trace_kind="hermes_task",
+        actor=actor,
+        lane=lane,
+        execution_backend=HERMES_BACKEND_ID,
+        backend_run_id=result.run_id,
+        status=result.status,
+        request_summary=request.summary,
+        response_summary=result.summary or result.error,
+        decision_summary=(
+            f"Hermes candidate artifact stored: {result.candidate_artifact_id}"
+            if result.candidate_artifact_id
+            else f"Hermes run ended without candidate artifact: {result.status}"
+        ),
+        request_payload=request.to_dict(),
+        response_payload=result.to_dict(),
+        replay_payload={
+            "expected_status": result.status,
+            "family": result.family,
+            "model_name": result.model_name,
+            "required_response_fields": ["title", "summary", "content"] if result.status == SUCCESS_STATUS else [],
+        },
+        source_refs={
+            "request_id": request.request_id,
+            "result_id": result.result_id,
+        },
+        candidate_artifact_id=result.candidate_artifact_id,
+        error=result.error,
+        root=root_path,
+    )
+    result.trace_id = trace.trace_id
+    save_hermes_result(result, root=root_path)
     return {
         "request": request.to_dict(),
         "result": result.to_dict(),

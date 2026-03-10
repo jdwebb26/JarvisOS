@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 from runtime.core.models import new_id, now_iso
 from scripts.operator_action_executor import execute_selected_action, revalidate_selected_action
 from scripts.operator_action_ledger import latest_successful_action_for_action_id
-from scripts.operator_checkpoint_action_pack import build_operator_checkpoint_action_pack
+from scripts.operator_checkpoint_action_pack import resolve_action_pack
 
 
 DEFAULT_ALLOWED_CATEGORIES = {"pending_review"}
@@ -32,17 +32,6 @@ def save_queue_run(root: Path, record: dict[str, Any]) -> dict[str, Any]:
     path = operator_queue_runs_dir(root) / f"{record['queue_run_id']}.json"
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     return record
-
-
-def _load_or_build_action_pack(root: Path, *, limit: int) -> tuple[dict[str, Any], Path]:
-    pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
-    if pack_path.exists():
-        try:
-            return json.loads(pack_path.read_text(encoding="utf-8")), pack_path
-        except Exception:
-            pass
-    result = build_operator_checkpoint_action_pack(root, limit=limit)
-    return result["pack"], Path(result["json_path"])
 
 
 def _filtered_actions(
@@ -140,7 +129,15 @@ def run_queue(
     force: bool = False,
     limit: int = 10,
 ) -> tuple[dict[str, Any], int]:
-    pack, pack_path = _load_or_build_action_pack(root, limit=limit)
+    pack, pack_path, pack_meta, pack_error = resolve_action_pack(root, limit=limit)
+    if pack_error is not None or pack is None:
+        payload = {
+            "ok": False,
+            "error": pack_error or "Unable to load action pack.",
+            "action_pack_path": str(pack_path),
+            "action_pack_validation": pack_meta,
+        }
+        return payload, 1
     allowed_categories = set(DEFAULT_ALLOWED_CATEGORIES)
     allowed_categories.update(allow_categories or set())
     denied_categories = set(deny_categories or set())
@@ -149,6 +146,12 @@ def run_queue(
         "started_at": now_iso(),
         "completed_at": None,
         "source_action_pack_path": str(pack_path),
+        "source_action_pack_id": pack.get("action_pack_id"),
+        "source_action_pack_fingerprint": pack.get("action_pack_fingerprint"),
+        "source_action_pack_validation_status": pack_meta.get("status", "valid"),
+        "source_action_pack_resolution": pack_meta.get("resolution", "current"),
+        "source_action_pack_rebuild_reason": pack_meta.get("rebuild_reason") or "",
+        "action_pack_validation": pack_meta,
         "filters": {
             "task_id": task_id,
             "category": category,
@@ -253,8 +256,15 @@ def run_queue(
                 action_id=action_id,
                 action=action,
                 action_pack_path=pack_path,
+                invoked_by="queue",
                 dry_run=dry_run,
                 force=force,
+                source_action_pack_id=pack.get("action_pack_id"),
+                source_action_pack_fingerprint=pack.get("action_pack_fingerprint"),
+                source_action_pack_validation_status=pack_meta.get("status", "valid"),
+                source_action_pack_resolution=pack_meta.get("resolution", "current"),
+                source_action_pack_rebuild_reason=pack_meta.get("rebuild_reason") or "",
+                source_action_pack_requested_explicit=bool(pack_meta.get("requested_explicit")),
             )
             queue_run["skipped_count"] += 1
             queue_run["skipped_actions"].append(
@@ -275,8 +285,15 @@ def run_queue(
             action_id=action_id,
             action=action,
             action_pack_path=pack_path,
+            invoked_by="queue",
             dry_run=dry_run,
             force=force,
+            source_action_pack_id=pack.get("action_pack_id"),
+            source_action_pack_fingerprint=pack.get("action_pack_fingerprint"),
+            source_action_pack_validation_status=pack_meta.get("status", "valid"),
+            source_action_pack_resolution=pack_meta.get("resolution", "current"),
+            source_action_pack_rebuild_reason=pack_meta.get("rebuild_reason") or "",
+            source_action_pack_requested_explicit=bool(pack_meta.get("requested_explicit")),
         )
         queue_run["attempted_count"] += 1
         if exit_code == 0 and result.get("ok"):

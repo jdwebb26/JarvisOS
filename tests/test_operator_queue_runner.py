@@ -10,6 +10,7 @@ from runtime.core.task_store import create_task
 from runtime.evals.trace_store import replay_trace_to_eval
 from runtime.integrations.hermes_adapter import execute_hermes_task, load_hermes_result
 from runtime.ralph.consolidator import execute_consolidation
+from scripts.operator_checkpoint_action_pack import with_action_pack_provenance
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +59,17 @@ def _latest_queue_run(root: Path) -> dict:
     rows = sorted((root / "state" / "operator_queue_runs").glob("*.json"))
     assert rows
     return json.loads(rows[-1].read_text(encoding="utf-8"))
+
+
+def _expire_current_pack(root: Path) -> dict:
+    path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["generated_at"] = "2000-01-01T00:00:00+00:00"
+    payload["recommended_ttl_seconds"] = 1
+    payload["expires_at"] = "2000-01-01T00:00:01+00:00"
+    payload = with_action_pack_provenance(payload)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return payload
 
 
 def _seed_review_action(root: Path, *, task_id: str) -> TaskRecord:
@@ -174,10 +186,51 @@ def test_queue_runner_dry_run_executes_only_as_dry_run(tmp_path: Path):
 
     assert result["ok"] is True
     assert result["attempted_count"] == 1
+    assert result["source_action_pack_id"].startswith("opack_")
+    assert len(result["source_action_pack_fingerprint"]) == 64
+    assert result["source_action_pack_validation_status"] == "valid"
     assert result["executed_actions"][0]["dry_run"] is True
     assert queue_run["filters"]["dry_run"] is True
+    assert queue_run["source_action_pack_id"] == result["source_action_pack_id"]
+    assert queue_run["source_action_pack_fingerprint"] == result["source_action_pack_fingerprint"]
+    assert queue_run["source_action_pack_validation_status"] == "valid"
     assert review is not None
     assert review.status == "pending"
+
+
+def test_queue_runner_rebuilds_when_current_pack_is_expired(tmp_path: Path):
+    task = _seed_review_action(tmp_path, task_id="task_queue_pack_expired")
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    expired_pack = _expire_current_pack(tmp_path)
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_queue_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "pending_review",
+            "--dry-run",
+        ]
+    )
+    queue_run = _latest_queue_run(tmp_path)
+
+    assert result["ok"] is True
+    assert result["source_action_pack_resolution"] == "rebuilt"
+    assert result["source_action_pack_rebuild_reason"] == "expired"
+    assert queue_run["source_action_pack_validation_status"] == "valid"
+    assert queue_run["source_action_pack_resolution"] == "rebuilt"
+    assert queue_run["source_action_pack_id"] != expired_pack["action_pack_id"]
 
 
 def test_queue_runner_allow_approval_enables_approval_actions(tmp_path: Path):
