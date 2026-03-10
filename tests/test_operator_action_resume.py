@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
-from runtime.core.review_store import latest_review_for_task, record_review_verdict, request_review
+from runtime.core.review_store import latest_review_for_task, load_review, record_review_verdict, request_review
 from runtime.core.task_store import create_task
 from runtime.evals.trace_store import replay_trace_to_eval
 from runtime.integrations.hermes_adapter import execute_hermes_task, load_hermes_result
@@ -366,3 +366,76 @@ def test_resume_allows_force_replay_of_successful_action(tmp_path: Path):
 
     assert resumed["ok"] is True
     assert resumed["selected_action"]["action_id"] == action_id
+
+
+def test_resume_respects_stale_action_guard(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_resume_stale_guard", review_required=True)
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "resume_stale_guard_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Resume stale guard candidate",
+            "summary": "resume stale guard summary",
+            "content": "candidate body",
+        },
+    )
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="Resume stale guard review request",
+        root=tmp_path,
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["pending_review_commands"][0]["action_ids"]["approve"]
+    dry_run = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+            "--dry-run",
+        ]
+    )
+    review = load_review((dry_run["selected_action"] or {})["target_id"], root=tmp_path)
+    assert review is not None
+    record_review_verdict(
+        review_id=review.review_id,
+        verdict="approved",
+        actor="operator",
+        lane="review",
+        reason="Make dry-run action stale before resume",
+        root=tmp_path,
+    )
+
+    resumed = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_resume_action.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "pending_review",
+        ],
+        expect_ok=False,
+    )
+
+    assert resumed["ok"] is False
+    assert resumed["failure"]["kind"] == "stale_action"

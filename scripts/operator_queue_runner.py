@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import new_id, now_iso
-from scripts.operator_action_executor import execute_selected_action
+from scripts.operator_action_executor import execute_selected_action, revalidate_selected_action
 from scripts.operator_action_ledger import latest_successful_action_for_action_id
 from scripts.operator_checkpoint_action_pack import build_operator_checkpoint_action_pack
 
@@ -245,6 +245,30 @@ def run_queue(
                     }
                 )
                 continue
+
+        still_applicable, stale_kind, stale_reason = revalidate_selected_action(root, action=action)
+        if not still_applicable:
+            result, _ = execute_selected_action(
+                root,
+                action_id=action_id,
+                action=action,
+                action_pack_path=pack_path,
+                dry_run=dry_run,
+                force=force,
+            )
+            queue_run["skipped_count"] += 1
+            queue_run["skipped_actions"].append(
+                {
+                    "action_id": action_id,
+                    "category": action.get("category"),
+                    "task_id": action.get("task_id"),
+                    "allowed": False,
+                    "skip_kind": stale_kind,
+                    "skip_reason": stale_reason,
+                    "execution_id": (result.get("execution_record") or {}).get("execution_id"),
+                }
+            )
+            continue
 
         result, exit_code = execute_selected_action(
             root,

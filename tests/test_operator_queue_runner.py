@@ -5,7 +5,7 @@ from pathlib import Path
 
 from runtime.core.approval_store import request_approval
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
-from runtime.core.review_store import latest_review_for_task, request_review
+from runtime.core.review_store import latest_review_for_task, record_review_verdict, request_review
 from runtime.core.task_store import create_task
 from runtime.evals.trace_store import replay_trace_to_eval
 from runtime.integrations.hermes_adapter import execute_hermes_task, load_hermes_result
@@ -421,3 +421,56 @@ def test_queue_runner_force_allows_rerun_of_successful_action_ids(tmp_path: Path
     assert result["succeeded_count"] == 1
     assert result["skipped_count"] == 0
     assert result["executed_actions"][0]["action_id"] == action_id
+
+
+def test_queue_runner_records_stale_skips_separately(tmp_path: Path):
+    task = _seed_review_action(tmp_path, task_id="task_queue_stale_review")
+    _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    review = latest_review_for_task(task.task_id, root=tmp_path)
+    assert review is not None
+    record_review_verdict(
+        review_id=review.review_id,
+        verdict="approved",
+        actor="operator",
+        lane="review",
+        reason="Make queued review action stale before queue run",
+        root=tmp_path,
+    )
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_queue_runner.py"),
+            "--root",
+            str(tmp_path),
+            "--task-id",
+            task.task_id,
+            "--category",
+            "pending_review",
+        ]
+    )
+    queue_run = _latest_queue_run(tmp_path)
+    handoff = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_handoff_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["attempted_count"] == 0
+    assert result["failed_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped_actions"][0]["skip_kind"] == "stale_action"
+    assert "no longer pending" in result["skipped_actions"][0]["skip_reason"]
+    assert queue_run["skipped_actions"][0]["skip_kind"] == "stale_action"
+    assert handoff["pack"]["recent_operator_queue_runs"][0]["stale_skipped_count"] >= 1

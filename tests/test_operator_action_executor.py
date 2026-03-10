@@ -3,14 +3,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from runtime.core.approval_store import request_approval
+from runtime.core.approval_store import load_approval, record_approval_decision, request_approval
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
 from runtime.core.review_store import request_review
-from runtime.core.review_store import latest_review_for_task
+from runtime.core.review_store import latest_review_for_task, record_review_verdict
 from runtime.core.task_store import create_task
 from runtime.evals.trace_store import replay_trace_to_eval
 from runtime.integrations.hermes_adapter import execute_hermes_task, load_hermes_result
-from runtime.memory.governance import list_memory_candidates_for_task, load_memory_candidate
+from runtime.memory.governance import list_memory_candidates_for_task, load_memory_candidate, save_memory_candidate
 from runtime.ralph.consolidator import execute_consolidation
 from scripts.operator_action_ledger import latest_successful_action_for_action_id
 
@@ -461,3 +461,219 @@ def test_operator_action_executor_allows_dry_run_after_success(tmp_path: Path):
     assert dry_run["ok"] is True
     assert dry_run["dry_run"] is True
     assert dry_run["execution_record"]["success"] is True
+
+
+def test_operator_action_executor_blocks_stale_review_action(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_stale_review", review_required=True)
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "stale_review_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Stale review candidate",
+            "summary": "candidate for stale review executor",
+            "content": "candidate body",
+        },
+    )
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="Review pending for stale review executor",
+        root=tmp_path,
+    )
+    review = latest_review_for_task(task.task_id, root=tmp_path)
+    assert review is not None
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["pending_review_commands"][0]["action_ids"]["approve"]
+    record_review_verdict(
+        review_id=review.review_id,
+        verdict="approved",
+        actor="operator",
+        lane="review",
+        reason="Make action stale before executor run",
+        root=tmp_path,
+    )
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ],
+        expect_ok=False,
+    )
+
+    assert result["ok"] is False
+    assert result["failure"]["kind"] == "stale_action"
+    assert "no longer pending" in result["failure"]["error"]
+
+
+def test_operator_action_executor_blocks_stale_approval_action(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_stale_approval", approval_required=True)
+    approval = request_approval(
+        task_id=task.task_id,
+        approval_type=task.task_type,
+        requested_by="tester",
+        requested_reviewer="operator",
+        lane="review",
+        summary="Approval pending for stale approval executor",
+        root=tmp_path,
+    )
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["pending_approval_commands"][0]["action_ids"]["approve"]
+    record_approval_decision(
+        approval_id=approval.approval_id,
+        decision="approved",
+        actor="operator",
+        lane="review",
+        reason="Make approval action stale before executor run",
+        root=tmp_path,
+    )
+    stored = load_approval(approval.approval_id, root=tmp_path)
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ],
+        expect_ok=False,
+    )
+
+    assert stored is not None
+    assert stored.status == "approved"
+    assert result["ok"] is False
+    assert result["failure"]["kind"] == "stale_action"
+    assert "no longer pending" in result["failure"]["error"]
+
+
+def test_operator_action_executor_blocks_stale_memory_decision_action(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_stale_memory")
+    hermes = execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "stale_memory_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Stale memory candidate",
+            "summary": "candidate for stale memory executor",
+            "content": "candidate body",
+        },
+    )
+    stored_result = load_hermes_result(hermes["result"]["result_id"], root=tmp_path)
+    replay_trace_to_eval(
+        trace_id=stored_result["trace_id"],
+        actor="tester",
+        lane="eval",
+        evaluator_kind="replay_check",
+        objective="Seed eval for stale memory executor",
+        root=tmp_path,
+    )
+    execute_consolidation(task_id=task.task_id, actor="tester", lane="ralph", root=tmp_path)
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["memory_decision_commands"][0]["action_ids"]["reject"]
+    memory_candidate_id = action_pack["pack"]["memory_decision_commands"][0]["memory_candidate_id"]
+    promoted = list_memory_candidates_for_task(task.task_id, root=tmp_path)[0]
+    promoted.lifecycle_state = "promoted"
+    promoted.decision_status = "promoted"
+
+    save_memory_candidate(promoted, root=tmp_path)
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ],
+        expect_ok=False,
+    )
+
+    assert promoted.memory_candidate_id == memory_candidate_id
+    assert result["ok"] is False
+    assert result["failure"]["kind"] == "stale_action"
+    assert "cannot accept `reject`" in result["failure"]["error"]
+
+
+def test_operator_action_executor_still_allows_artifact_inspect_when_state_changes(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_artifact_inspect")
+    hermes = execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "artifact_inspect_executor_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Artifact inspect candidate",
+            "summary": "candidate for artifact inspect executor",
+            "content": "candidate body",
+        },
+    )
+    artifact_id = hermes["candidate_artifact_id"]
+    action_pack = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_checkpoint_action_pack.py"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    action_id = action_pack["pack"]["artifact_followup_commands"][0]["action_ids"]["inspect_artifact_json"]
+    artifact_path = tmp_path / "state" / "artifacts" / f"{artifact_id}.json"
+    payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    payload["lifecycle_state"] = "promoted"
+    artifact_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    result = _run_json(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "operator_action_executor.py"),
+            "--root",
+            str(tmp_path),
+            "--action-id",
+            action_id,
+        ]
+    )
+
+    assert result["ok"] is True
+    assert result["selected_action"]["category"] == "artifact_followup"

@@ -14,6 +14,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import new_id, now_iso
+from runtime.core.approval_store import load_approval
+from runtime.core.review_store import load_review
+from runtime.memory.governance import load_memory_candidate
 from scripts.operator_action_ledger import (
     latest_successful_action_for_action_id,
     save_execution_record,
@@ -119,6 +122,56 @@ def _execute_action(action: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def revalidate_selected_action(root: Path, *, action: dict[str, Any]) -> tuple[bool, str, str]:
+    category = str(action.get("category") or "")
+    verb = str(action.get("verb") or "")
+    target_id = str(action.get("target_id") or "")
+
+    if category == "pending_review":
+        review = load_review(target_id, root=root)
+        if review is None:
+            return False, "stale_action", f"Review {target_id} no longer exists."
+        if review.status != "pending":
+            return False, "stale_action", f"Review {target_id} is `{review.status}` and is no longer pending."
+        return True, "ok", "Review is still pending."
+
+    if category == "pending_approval":
+        approval = load_approval(target_id, root=root)
+        if approval is None:
+            return False, "stale_action", f"Approval {target_id} no longer exists."
+        if approval.status != "pending":
+            return False, "stale_action", f"Approval {target_id} is `{approval.status}` and is no longer pending."
+        return True, "ok", "Approval is still pending."
+
+    if category == "memory_candidate":
+        memory_candidate = load_memory_candidate(target_id, root=root)
+        if memory_candidate is None:
+            return False, "stale_action", f"Memory candidate {target_id} no longer exists."
+        if memory_candidate.lifecycle_state != "candidate":
+            return (
+                False,
+                "stale_action",
+                f"Memory candidate {target_id} is `{memory_candidate.lifecycle_state}` and cannot accept `{verb}`.",
+            )
+        if memory_candidate.decision_status != "candidate":
+            return (
+                False,
+                "stale_action",
+                f"Memory candidate {target_id} already has decision `{memory_candidate.decision_status}`.",
+            )
+        if verb == "promote":
+            if memory_candidate.superseded_by_memory_candidate_id:
+                return False, "stale_action", f"Memory candidate {target_id} is already superseded."
+            if memory_candidate.contradiction_status == "contradicted":
+                return False, "stale_action", f"Memory candidate {target_id} is already contradicted."
+        return True, "ok", "Memory candidate is still actionable."
+
+    if category == "artifact_followup" and verb in {"inspect", "inspect_artifact_json"}:
+        return True, "ok", "Artifact inspection remains informational and allowed."
+
+    return True, "ok", "No wrapper-level stale-action rule blocked this action."
+
+
 def execute_selected_action(
     root: Path,
     *,
@@ -160,6 +213,31 @@ def execute_selected_action(
                 "error": stderr_snapshot,
                 "kind": "already_executed",
                 "prior_execution_id": previous_success.get("execution_id"),
+            },
+            "execution_record": record,
+        }
+        return payload, 1
+
+    allowed, failure_kind, failure_reason = revalidate_selected_action(root, action=action)
+    if not allowed:
+        _complete_record(
+            record,
+            success=False,
+            return_code=1,
+            ack_summary="",
+            stdout_snapshot="",
+            stderr_snapshot=failure_reason,
+        )
+        save_execution_record(root, record)
+        payload = {
+            "ok": False,
+            "action_id": action_id,
+            "action_pack_path": str(action_pack_path),
+            "selected_action": action,
+            "command_run": action["command"],
+            "failure": {
+                "error": failure_reason,
+                "kind": failure_kind,
             },
             "execution_record": record,
         }

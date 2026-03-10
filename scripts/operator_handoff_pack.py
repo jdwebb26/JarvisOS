@@ -120,6 +120,7 @@ def _operator_queue_run_summary(rows: list[dict[str, Any]], *, limit: int) -> li
             "idempotency_skipped_count": sum(
                 1 for item in row.get("skipped_actions", []) if item.get("skip_kind") == "idempotency"
             ),
+            "stale_skipped_count": sum(1 for item in row.get("skipped_actions", []) if item.get("skip_kind") == "stale_action"),
             "stopped_on_action_id": row.get("stopped_on_action_id"),
             "filters": row.get("filters", {}),
             "policy_summary": row.get("policy_summary", {}),
@@ -242,7 +243,7 @@ def _build_markdown(pack: dict[str, Any]) -> str:
     lines.extend(["", "## Recent Queue Runs"])
     for row in pack["recent_operator_queue_runs"]:
         lines.append(
-            f"- {row['queue_run_id']}: ok={row['ok']} attempted={row['attempted_count']} failed={row['failed_count']} skipped={row['skipped_count']} policy_skips={row['policy_skipped_count']} idempotency_skips={row['idempotency_skipped_count']} stopped_on={row['stopped_on_action_id']}"
+            f"- {row['queue_run_id']}: ok={row['ok']} attempted={row['attempted_count']} failed={row['failed_count']} skipped={row['skipped_count']} policy_skips={row['policy_skipped_count']} idempotency_skips={row['idempotency_skipped_count']} stale_skips={row['stale_skipped_count']} stopped_on={row['stopped_on_action_id']}"
         )
         lines.append(
             f"  policy allow={row['policy_summary'].get('effective_allow_categories', [])} deny={row['policy_summary'].get('deny_categories', [])}"
