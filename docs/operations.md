@@ -783,6 +783,47 @@ Current behavior:
 - upstream artifact revocation can revoke dependent memory candidates durably
 - promotion and publish transitions now use explicit governance checks layered on top of the existing review/approval/control spine
 
+## Provenance, Replay, And Multimodal Scaffolding
+
+To inspect compact provenance state:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/provenance_store.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+To inspect replay plan/execution state:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/replay_store.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+To inspect bounded multimodal contract scaffolding:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/modality_contracts.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Provenance / replay / multimodal ledgers:
+
+- `state/task_provenance/*.json`
+- `state/artifact_provenance/*.json`
+- `state/routing_provenance/*.json`
+- `state/decision_provenance/*.json`
+- `state/publish_provenance/*.json`
+- `state/rollback_provenance/*.json`
+- `state/memory_provenance/*.json`
+- `state/replay_plans/*.json`
+- `state/replay_executions/*.json`
+- `state/replay_results/*.json`
+- `state/modality_contracts/*.json`
+
+Current behavior:
+
+- task creation, routing, artifact creation, promotion, publish, approval/review decisions, rollback, and memory transitions now emit compact durable provenance refs
+- replay remains bounded and plan-first; route, promotion, publish, rollback, and memory-promotion replay classify `match`, `drift`, `blocked_by_control`, `missing_source`, or `invalid_replay`
+- revocation propagation now records compact downstream impacts for outputs, task publish-readiness, approvals, reviews, candidates, and memory-linked records
+- multimodal support remains scaffolding only: Qwen-only text is active, file/image/audio contracts stay explicit and disabled by default until later core work
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.

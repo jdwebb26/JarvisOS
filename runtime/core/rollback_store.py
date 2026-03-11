@@ -16,12 +16,14 @@ from runtime.core.artifact_store import demote_artifact, revoke_artifact
 from runtime.controls.control_store import assert_control_allows
 from runtime.core.models import (
     OutputDependencyRecord,
+    RollbackProvenanceRecord,
     RollbackExecutionRecord,
     RollbackPlanRecord,
     RevocationImpactRecord,
     now_iso,
     new_id,
 )
+from runtime.core.provenance_store import save_rollback_provenance
 
 
 def _state_dir(name: str, root: Optional[Path] = None) -> Path:
@@ -172,6 +174,23 @@ def build_rollback_plan(
         ),
         root=root,
     )
+    save_rollback_provenance(
+        RollbackProvenanceRecord(
+            rollback_provenance_id=new_id("rbprov"),
+            rollback_plan_id=plan.rollback_plan_id,
+            rollback_execution_id=None,
+            task_id=task_id,
+            artifact_id=artifact_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            action_kind=action_kind,
+            source_refs={"affected_output_ids": list(plan.affected_output_ids)},
+            replay_input=plan.to_dict(),
+        ),
+        root=root,
+    )
     return plan
 
 
@@ -209,6 +228,149 @@ def _record_impacts(
             root=root,
         )
         impacts.append(impact)
+    try:
+        from runtime.memory.governance import list_memory_candidates
+
+        for candidate in list_memory_candidates(root=root, task_id=task_id, source_artifact_id=artifact_id):
+            impacts.append(
+                save_revocation_impact(
+                    RevocationImpactRecord(
+                        revocation_impact_id=new_id("imp"),
+                        rollback_execution_id=rollback_execution_id,
+                        artifact_id=artifact_id,
+                        task_id=task_id,
+                        created_at=now_iso(),
+                        updated_at=now_iso(),
+                        actor=actor,
+                        lane=lane,
+                        impacted_task_id=candidate.task_id,
+                        impacted_record_type="memory_candidate",
+                        impacted_record_id=candidate.memory_candidate_id,
+                        impact_kind="memory_eligibility_invalidated",
+                        impact_status="recorded",
+                        reason=reason,
+                        source_ref=f"artifact:{artifact_id}",
+                    ),
+                    root=root,
+                )
+            )
+    except Exception:
+        pass
+    try:
+        from runtime.core.approval_store import list_approvals_for_task
+
+        for approval in list_approvals_for_task(task_id, root=root):
+            if approval.status != "pending":
+                continue
+            if approval.linked_artifact_ids and artifact_id not in approval.linked_artifact_ids:
+                continue
+            impacts.append(
+                save_revocation_impact(
+                    RevocationImpactRecord(
+                        revocation_impact_id=new_id("imp"),
+                        rollback_execution_id=rollback_execution_id,
+                        artifact_id=artifact_id,
+                        task_id=task_id,
+                        created_at=now_iso(),
+                        updated_at=now_iso(),
+                        actor=actor,
+                        lane=lane,
+                        impacted_task_id=task_id,
+                        impacted_record_type="approval",
+                        impacted_record_id=approval.approval_id,
+                        impact_kind="approval_in_flight_impacted",
+                        impact_status="recorded",
+                        reason=reason,
+                        source_ref=f"approval:{approval.approval_id}",
+                    ),
+                    root=root,
+                )
+            )
+    except Exception:
+        pass
+    try:
+        from runtime.core.review_store import list_reviews_for_task
+
+        for review in list_reviews_for_task(task_id, root=root):
+            if review.status != "pending":
+                continue
+            if review.linked_artifact_ids and artifact_id not in review.linked_artifact_ids:
+                continue
+            impacts.append(
+                save_revocation_impact(
+                    RevocationImpactRecord(
+                        revocation_impact_id=new_id("imp"),
+                        rollback_execution_id=rollback_execution_id,
+                        artifact_id=artifact_id,
+                        task_id=task_id,
+                        created_at=now_iso(),
+                        updated_at=now_iso(),
+                        actor=actor,
+                        lane=lane,
+                        impacted_task_id=task_id,
+                        impacted_record_type="review",
+                        impacted_record_id=review.review_id,
+                        impact_kind="review_linked_candidate_impacted",
+                        impact_status="recorded",
+                        reason=reason,
+                        source_ref=f"review:{review.review_id}",
+                    ),
+                    root=root,
+                )
+            )
+    except Exception:
+        pass
+    try:
+        from runtime.core.candidate_store import find_candidate_for_artifact
+
+        candidate = find_candidate_for_artifact(artifact_id, root=root)
+        if candidate is not None:
+            impacts.append(
+                save_revocation_impact(
+                    RevocationImpactRecord(
+                        revocation_impact_id=new_id("imp"),
+                        rollback_execution_id=rollback_execution_id,
+                        artifact_id=artifact_id,
+                        task_id=task_id,
+                        created_at=now_iso(),
+                        updated_at=now_iso(),
+                        actor=actor,
+                        lane=lane,
+                        impacted_task_id=task_id,
+                        impacted_record_type="candidate",
+                        impacted_record_id=candidate.candidate_id,
+                        impact_kind="candidate_lifecycle_impacted",
+                        impact_status="recorded",
+                        reason=reason,
+                        source_ref=f"candidate:{candidate.candidate_id}",
+                    ),
+                    root=root,
+                )
+            )
+    except Exception:
+        pass
+    impacts.append(
+        save_revocation_impact(
+            RevocationImpactRecord(
+                revocation_impact_id=new_id("imp"),
+                rollback_execution_id=rollback_execution_id,
+                artifact_id=artifact_id,
+                task_id=task_id,
+                created_at=now_iso(),
+                updated_at=now_iso(),
+                actor=actor,
+                lane=lane,
+                impacted_task_id=task_id,
+                impacted_record_type="task",
+                impacted_record_id=task_id,
+                impact_kind="task_publish_readiness_invalidated",
+                impact_status="recorded",
+                reason=reason,
+                source_ref=f"task:{task_id}",
+            ),
+            root=root,
+        )
+    )
     return impacts
 
 
@@ -278,6 +440,26 @@ def execute_rollback_plan(
     )
     execution.revocation_impact_ids = [row.revocation_impact_id for row in impacts]
     save_rollback_execution(execution, root=root)
+    save_rollback_provenance(
+        RollbackProvenanceRecord(
+            rollback_provenance_id=new_id("rbprov"),
+            rollback_plan_id=plan.rollback_plan_id,
+            rollback_execution_id=execution.rollback_execution_id,
+            task_id=plan.task_id,
+            artifact_id=plan.artifact_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            action_kind=plan.action_kind,
+            source_refs={
+                "affected_output_ids": list(affected_output_ids),
+                "revocation_impact_ids": list(execution.revocation_impact_ids),
+            },
+            replay_input=plan.to_dict(),
+        ),
+        root=root,
+    )
     plan.status = "executed"
     save_rollback_plan(plan, root=root)
     return execution

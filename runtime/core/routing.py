@@ -16,6 +16,7 @@ from runtime.core.models import (
     CapabilityProfileRecord,
     ModelRegistryEntryRecord,
     ProviderAdapterResultRecord,
+    RoutingProvenanceRecord,
     RoutingDecisionRecord,
     RoutingRequestRecord,
     TaskPriority,
@@ -24,6 +25,8 @@ from runtime.core.models import (
     now_iso,
 )
 from runtime.controls.control_store import assert_control_allows, get_effective_control_state
+from runtime.core.provenance_store import save_routing_provenance
+from runtime.core.modality_contracts import ensure_default_modality_contracts
 
 
 ACTIVE_QWEN_MODELS = [
@@ -309,6 +312,7 @@ def route_task_intent(
 ) -> dict:
     root_path = Path(root or ROOT).resolve()
     ensure_default_routing_contracts(root_path)
+    ensure_default_modality_contracts(root_path)
     allowed_models = [row["model_name"] for row in ACTIVE_QWEN_MODELS]
     assert_control_allows(
         action="route_selection",
@@ -402,10 +406,40 @@ def route_task_intent(
         ),
         root=root_path,
     )
+    provenance = save_routing_provenance(
+        RoutingProvenanceRecord(
+            routing_provenance_id=new_id("rprov"),
+            routing_request_id=request.routing_request_id,
+            routing_decision_id=decision.routing_decision_id,
+            task_id=task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            selected_provider_id=entry.provider_id,
+            selected_model_name=entry.model_name,
+            selected_execution_backend=decision.selected_execution_backend,
+            source_refs={
+                "provider_adapter_result_id": adapter_result.provider_adapter_result_id,
+                "model_registry_entry_id": entry.model_registry_entry_id,
+                "capability_profile_id": profile.capability_profile_id,
+            },
+            replay_input={
+                "task_type": task_type,
+                "risk_level": risk_level,
+                "priority": priority,
+                "normalized_request": normalized_request,
+                "required_capabilities": list(required_capabilities),
+                "policy_constraints": dict(policy_constraints),
+            },
+        ),
+        root=root_path,
+    )
     return {
         "request": request.to_dict(),
         "decision": decision.to_dict(),
         "provider_adapter_result": adapter_result.to_dict(),
+        "provenance": provenance.to_dict(),
         "active_registry": {
             "provider_policy": "qwen_only",
             "active_model_names": allowed_models,

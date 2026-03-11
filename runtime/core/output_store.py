@@ -13,8 +13,17 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime.core.models import ArtifactRecord, OutputRecord, OutputStatus, RecordLifecycleState, now_iso
+from runtime.core.models import (
+    PublishProvenanceRecord,
+    ArtifactRecord,
+    OutputRecord,
+    OutputStatus,
+    RecordLifecycleState,
+    new_id,
+    now_iso,
+)
 from runtime.core.promotion_governance import assert_artifact_publish_allowed
+from runtime.core.provenance_store import save_publish_provenance
 from runtime.core.task_events import make_event
 from runtime.core.task_runtime import append_task_event
 
@@ -253,6 +262,25 @@ def publish_artifact(
         actor=actor,
         lane=lane,
         output_status=OutputStatus.PUBLISHED.value,
+        root=root_path,
+    )
+    save_publish_provenance(
+        PublishProvenanceRecord(
+            publish_provenance_id=new_id("pprov"),
+            output_id=out_id,
+            task_id=task_id,
+            artifact_id=artifact_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            output_status=OutputStatus.PUBLISHED.value,
+            source_refs={
+                "event_id": event.event_id,
+                "routing_decision_id": (((task.get("backend_metadata") or {}).get("routing") or {}).get("routing_decision_id")),
+            },
+            replay_input={"task_id": task_id, "artifact_id": artifact_id, "allow_duplicate": allow_duplicate},
+        ),
         root=root_path,
     )
 

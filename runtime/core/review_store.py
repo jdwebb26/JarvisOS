@@ -13,10 +13,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import ApprovalStatus, RecordLifecycleState, ReviewRecord, ReviewStatus, TaskStatus, new_id, now_iso
+from runtime.core.models import DecisionProvenanceRecord
+from runtime.core.provenance_store import save_decision_provenance
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_store import add_review_link, load_task, transition_task
 from runtime.dashboard.rebuild_helpers import rebuild_all_outputs
 from runtime.core.artifact_store import demote_artifact, select_task_artifact
+from runtime.core.candidate_store import record_candidate_rejection
 
 
 def reviews_dir(root: Optional[Path] = None) -> Path:
@@ -244,6 +247,14 @@ def record_review_verdict(
                 lane=lane,
                 root=root,
             )
+            record_candidate_rejection(
+                artifact_id=artifact.artifact_id,
+                actor=actor,
+                lane=lane,
+                reason=reason or f"Review verdict {verdict} rejected the candidate.",
+                trigger_event=f"review:{review_id}",
+                root=root,
+            )
         transition_task(
             task_id=record.task_id,
             to_status=TaskStatus.BLOCKED.value,
@@ -252,8 +263,24 @@ def record_review_verdict(
             summary=f"Review returned non-approval: {review_id}",
             root=root,
             details=reason,
-        )
+            )
 
+    save_decision_provenance(
+        DecisionProvenanceRecord(
+            decision_provenance_id=new_id("dprov"),
+            decision_kind="review_decision",
+            decision_id=record.review_id,
+            task_id=record.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            source_artifact_ids=list(record.linked_artifact_ids),
+            source_refs={"verdict": verdict, "reason": reason},
+            replay_input={"review_id": record.review_id, "verdict": verdict, "task_id": record.task_id},
+        ),
+        root=root,
+    )
     append_event(
         make_event(
             task_id=record.task_id,

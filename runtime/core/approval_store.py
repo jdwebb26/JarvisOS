@@ -24,12 +24,14 @@ from runtime.core.candidate_store import record_candidate_rejection
 from runtime.core.models import (
     ApprovalCheckpointRecord,
     ApprovalRecord,
+    DecisionProvenanceRecord,
     ApprovalStatus,
     RecordLifecycleState,
     TaskStatus,
     new_id,
     now_iso,
 )
+from runtime.core.provenance_store import save_decision_provenance
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_runtime import ready_to_ship_task, save_task
 from runtime.core.task_store import add_approval_link, load_task, transition_task
@@ -684,6 +686,28 @@ def record_approval_decision(
             to_status=None,
             details=control_hold_reason or reason,
             approval_id=approval_id,
+        ),
+        root=root,
+    )
+    save_decision_provenance(
+        DecisionProvenanceRecord(
+            decision_provenance_id=new_id("dprov"),
+            decision_kind="approval_decision",
+            decision_id=approval_id,
+            task_id=record.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            source_artifact_ids=list(record.linked_artifact_ids),
+            source_refs={
+                "decision": decision,
+                "reason": control_hold_reason or reason,
+                "approval_session_state": (
+                    "resumable_pending" if control_hold_reason else ("terminal" if decision != ApprovalStatus.APPROVED.value else "resumed")
+                ),
+            },
+            replay_input={"approval_id": approval_id, "decision": decision, "task_id": record.task_id},
         ),
         root=root,
     )

@@ -16,12 +16,14 @@ if str(ROOT) not in sys.path:
 from runtime.core.models import (
     Priority,
     RiskLevel,
+    TaskProvenanceRecord,
     TaskRecord,
     TaskStatus,
     TriggerType,
     new_id,
     now_iso,
 )
+from runtime.core.provenance_store import save_task_provenance
 from runtime.core.routing import route_task_intent
 from runtime.core.task_dedupe import find_active_duplicate_task
 from runtime.core.task_store import create_task, load_task
@@ -208,6 +210,29 @@ def create_task_from_message(
     )
 
     create_task(record, root=root_path)
+    task_provenance = save_task_provenance(
+        TaskProvenanceRecord(
+            task_provenance_id=new_id("tprov"),
+            task_id=record.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=user,
+            lane=lane,
+            source_lane=lane,
+            source_channel=channel,
+            source_message_id=message_id,
+            source_user=user,
+            routing_decision_id=routing_decision["routing_decision_id"],
+            replay_input={
+                "text": text,
+                "normalized_request": parsed.normalized_request,
+                "task_type": task_type,
+                "priority": priority,
+                "risk_level": risk,
+            },
+        ),
+        root=root_path,
+    )
 
     route_result = None
     route_error = ""
@@ -240,6 +265,7 @@ def create_task_from_message(
         "risk_level": record.risk_level,
         "assigned_model": record.assigned_model,
         "routing_contract": route_contract,
+        "task_provenance": task_provenance.to_dict(),
         "route_result": route_result,
         "route_error": route_error,
     }

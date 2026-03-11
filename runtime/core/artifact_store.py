@@ -14,9 +14,18 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime.core.models import ArtifactRecord, OutputStatus, RecordLifecycleState, TaskStatus
+from runtime.core.models import (
+    ArtifactProvenanceRecord,
+    DecisionProvenanceRecord,
+    ArtifactRecord,
+    OutputStatus,
+    RecordLifecycleState,
+    TaskStatus,
+    new_id,
+)
 from runtime.core.output_store import mark_outputs_impacted
 from runtime.core.promotion_governance import assert_artifact_promotion_allowed
+from runtime.core.provenance_store import save_artifact_provenance, save_decision_provenance
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_runtime import load_task
 from runtime.core.task_store import (
@@ -25,6 +34,7 @@ from runtime.core.task_store import (
     set_task_lifecycle_state,
     transition_task,
 )
+from runtime.core.candidate_store import find_candidate_for_artifact
 
 
 def now_iso() -> str:
@@ -215,6 +225,7 @@ def write_text_artifact(
     result = record.to_dict()
     result["event_id"] = event.event_id
     result["task_lifecycle_state"] = task_after.lifecycle_state
+    candidate_id = None
     if resolved_lifecycle == RecordLifecycleState.CANDIDATE.value:
         from runtime.core.candidate_store import register_candidate_artifact
 
@@ -226,8 +237,39 @@ def write_text_artifact(
             execution_backend=execution_backend,
             root=root_path,
         )
-        result["candidate_id"] = candidate.candidate_id
+        candidate_id = candidate.candidate_id
+        result["candidate_id"] = candidate_id
         result["latest_validation_id"] = candidate.latest_validation_id
+    save_artifact_provenance(
+        ArtifactProvenanceRecord(
+            artifact_provenance_id=new_id("aprov"),
+            artifact_id=artifact_id,
+            task_id=task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            producer_kind=producer_kind,
+            lifecycle_state=resolved_lifecycle,
+            execution_backend=execution_backend,
+            backend_run_id=backend_run_id,
+            candidate_id=candidate_id,
+            source_event_ids=[event.event_id],
+            source_refs={
+                "task_provenance_routing_decision_id": ((task.backend_metadata or {}).get("routing") or {}).get("routing_decision_id"),
+                "provenance_ref": provenance_ref,
+            },
+            replay_input={
+                "task_id": task_id,
+                "artifact_type": artifact_type,
+                "title": title,
+                "summary": summary,
+                "producer_kind": producer_kind,
+                "lifecycle_state": resolved_lifecycle,
+            },
+        ),
+        root=root_path,
+    )
     return result
 
 
@@ -303,6 +345,42 @@ def promote_artifact(
         provenance_ref=artifact.provenance_ref,
         root=root_path,
     )
+    candidate = find_candidate_for_artifact(artifact.artifact_id, root=root_path)
+    save_artifact_provenance(
+        ArtifactProvenanceRecord(
+            artifact_provenance_id=new_id("aprov"),
+            artifact_id=artifact.artifact_id,
+            task_id=artifact.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            producer_kind=artifact.producer_kind,
+            lifecycle_state=artifact.lifecycle_state,
+            execution_backend=artifact.execution_backend,
+            backend_run_id=artifact.backend_run_id,
+            candidate_id=None if candidate is None else candidate.candidate_id,
+            source_refs={"provenance_ref": artifact.provenance_ref},
+            replay_input={"artifact_id": artifact.artifact_id, "task_id": artifact.task_id, "transition": "promote"},
+        ),
+        root=root_path,
+    )
+    save_decision_provenance(
+        DecisionProvenanceRecord(
+            decision_provenance_id=new_id("dprov"),
+            decision_kind="candidate_promotion",
+            decision_id=artifact.artifact_id,
+            task_id=artifact.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            source_artifact_ids=[artifact.artifact_id],
+            source_refs={"candidate_id": None if candidate is None else candidate.candidate_id},
+            replay_input={"artifact_id": artifact.artifact_id, "task_id": artifact.task_id},
+        ),
+        root=root_path,
+    )
     return artifact
 
 
@@ -342,6 +420,26 @@ def demote_artifact(
     )
     artifact.downstream_impacted_output_ids = impacted_output_ids
     save_artifact(artifact, root=root_path)
+    candidate = find_candidate_for_artifact(artifact.artifact_id, root=root_path)
+    save_artifact_provenance(
+        ArtifactProvenanceRecord(
+            artifact_provenance_id=new_id("aprov"),
+            artifact_id=artifact.artifact_id,
+            task_id=artifact.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            producer_kind=artifact.producer_kind,
+            lifecycle_state=artifact.lifecycle_state,
+            execution_backend=artifact.execution_backend,
+            backend_run_id=artifact.backend_run_id,
+            candidate_id=None if candidate is None else candidate.candidate_id,
+            source_refs={"superseded_by_artifact_id": superseded_by_artifact_id},
+            replay_input={"artifact_id": artifact.artifact_id, "task_id": artifact.task_id, "transition": "demote"},
+        ),
+        root=root_path,
+    )
     if impacted_output_ids:
         mark_task_output_impacts(
             task_id=artifact.task_id,
@@ -427,6 +525,26 @@ def revoke_artifact(
     )
     artifact.downstream_impacted_output_ids = impacted_output_ids
     save_artifact(artifact, root=root_path)
+    candidate = find_candidate_for_artifact(artifact.artifact_id, root=root_path)
+    save_artifact_provenance(
+        ArtifactProvenanceRecord(
+            artifact_provenance_id=new_id("aprov"),
+            artifact_id=artifact.artifact_id,
+            task_id=artifact.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            producer_kind=artifact.producer_kind,
+            lifecycle_state=artifact.lifecycle_state,
+            execution_backend=artifact.execution_backend,
+            backend_run_id=artifact.backend_run_id,
+            candidate_id=None if candidate is None else candidate.candidate_id,
+            source_refs={"revocation_reason": reason},
+            replay_input={"artifact_id": artifact.artifact_id, "task_id": artifact.task_id, "transition": "revoke"},
+        ),
+        root=root_path,
+    )
 
     mark_task_artifact_revoked(
         task_id=artifact.task_id,
@@ -480,6 +598,22 @@ def revoke_artifact(
         actor=actor,
         lane=lane,
         reason=reason,
+        root=root_path,
+    )
+    save_decision_provenance(
+        DecisionProvenanceRecord(
+            decision_provenance_id=new_id("dprov"),
+            decision_kind="artifact_revocation",
+            decision_id=artifact.artifact_id,
+            task_id=artifact.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            source_artifact_ids=[artifact.artifact_id],
+            source_refs={"impacted_output_ids": list(impacted_output_ids), "reason": reason},
+            replay_input={"artifact_id": artifact.artifact_id, "task_id": artifact.task_id, "reason": reason},
+        ),
         root=root_path,
     )
     return artifact

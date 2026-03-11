@@ -71,6 +71,17 @@ def build_state_export(root: Path) -> dict:
     promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
     rejection_decisions = _load_jsons(root / "state" / "rejection_decisions")
     candidate_revocations = _load_jsons(root / "state" / "candidate_revocations")
+    task_provenance = _load_jsons(root / "state" / "task_provenance")
+    artifact_provenance = _load_jsons(root / "state" / "artifact_provenance")
+    routing_provenance = _load_jsons(root / "state" / "routing_provenance")
+    decision_provenance = _load_jsons(root / "state" / "decision_provenance")
+    publish_provenance = _load_jsons(root / "state" / "publish_provenance")
+    rollback_provenance = _load_jsons(root / "state" / "rollback_provenance")
+    memory_provenance = _load_jsons(root / "state" / "memory_provenance")
+    replay_plans = _load_jsons(root / "state" / "replay_plans")
+    replay_executions = _load_jsons(root / "state" / "replay_executions")
+    replay_results = _load_jsons(root / "state" / "replay_results")
+    modality_contracts = _load_jsons(root / "state" / "modality_contracts")
     output_dependencies = _load_jsons(root / "state" / "output_dependencies")
     rollback_plans = _load_jsons(root / "state" / "rollback_plans")
     rollback_executions = _load_jsons(root / "state" / "rollback_executions")
@@ -147,6 +158,17 @@ def build_state_export(root: Path) -> dict:
             "promotion_decisions": len(promotion_decisions),
             "rejection_decisions": len(rejection_decisions),
             "candidate_revocations": len(candidate_revocations),
+            "task_provenance": len(task_provenance),
+            "artifact_provenance": len(artifact_provenance),
+            "routing_provenance": len(routing_provenance),
+            "decision_provenance": len(decision_provenance),
+            "publish_provenance": len(publish_provenance),
+            "rollback_provenance": len(rollback_provenance),
+            "memory_provenance": len(memory_provenance),
+            "replay_plans": len(replay_plans),
+            "replay_executions": len(replay_executions),
+            "replay_results": len(replay_results),
+            "modality_contracts": len(modality_contracts),
             "output_dependencies": len(output_dependencies),
             "rollback_plans": len(rollback_plans),
             "rollback_executions": len(rollback_executions),
@@ -348,6 +370,26 @@ def build_state_export(root: Path) -> dict:
         "latest_rejection_decision_id": (rejection_decisions[-1] if rejection_decisions else {}).get("rejection_decision_id"),
         "latest_revocation_id": (candidate_revocations[-1] if candidate_revocations else {}).get("revocation_id"),
     }
+    summary["provenance_summary"] = {
+        "task_provenance_count": len(task_provenance),
+        "artifact_provenance_count": len(artifact_provenance),
+        "routing_provenance_count": len(routing_provenance),
+        "decision_provenance_count": len(decision_provenance),
+        "publish_provenance_count": len(publish_provenance),
+        "rollback_provenance_count": len(rollback_provenance),
+        "memory_provenance_count": len(memory_provenance),
+        "latest_task_provenance_id": (task_provenance[-1] if task_provenance else {}).get("task_provenance_id"),
+        "latest_publish_provenance_id": (publish_provenance[-1] if publish_provenance else {}).get("publish_provenance_id"),
+    }
+    summary["replay_summary"] = {
+        "replay_plan_count": len(replay_plans),
+        "replay_execution_count": len(replay_executions),
+        "replay_result_count": len(replay_results),
+        "replay_drift_count": sum(1 for row in replay_results if row.get("result_kind") == "drift"),
+        "latest_replay_plan_id": (replay_plans[-1] if replay_plans else {}).get("replay_plan_id"),
+        "latest_replay_execution_id": (replay_executions[-1] if replay_executions else {}).get("replay_execution_id"),
+        "latest_replay_result_kind": (replay_results[-1] if replay_results else {}).get("result_kind"),
+    }
     summary["rollback_summary"] = {
         "latest_rollback_execution_id": (rollback_executions[-1] if rollback_executions else {}).get("rollback_execution_id"),
         "latest_revocation_impact_id": (revocation_impacts[-1] if revocation_impacts else {}).get("revocation_impact_id"),
@@ -371,6 +413,11 @@ def build_state_export(root: Path) -> dict:
     summary["subsystem_contract_summary"] = {
         "latest_subsystem_contract_id": (subsystem_contracts[-1] if subsystem_contracts else {}).get("subsystem_contract_id"),
         "subsystem_contract_count": len(subsystem_contracts),
+    }
+    summary["multimodal_summary"] = {
+        "modality_contract_count": len(modality_contracts),
+        "enabled_modality_contract_count": sum(1 for row in modality_contracts if row.get("enabled")),
+        "latest_modality_contract_id": (modality_contracts[-1] if modality_contracts else {}).get("modality_contract_id"),
     }
     summary["memory_discipline_summary"] = {
         "latest_memory_candidate_id": (memory_candidates[-1] if memory_candidates else {}).get("memory_candidate_id"),

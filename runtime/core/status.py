@@ -14,9 +14,11 @@ if str(ROOT) not in sys.path:
 from runtime.core.candidate_store import build_candidate_summary
 from runtime.core.models import OutputStatus, RecordLifecycleState, TaskRecord, TaskStatus
 from runtime.core.approval_sessions import build_approval_session_summary
+from runtime.core.provenance_store import build_provenance_summary
 from runtime.core.promotion_governance import build_promotion_governance_summary
 from runtime.core.rollback_store import build_rollback_summary
 from runtime.core.routing import build_model_registry_summary
+from runtime.core.modality_contracts import build_modality_summary
 from runtime.core.subsystem_contracts import build_subsystem_contract_summary
 from runtime.controls.control_store import build_control_summary, get_effective_control_state, list_blocked_actions, list_control_events, list_control_records
 
@@ -209,6 +211,17 @@ def build_status(root: Path) -> dict[str, Any]:
     promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
     rejection_decisions = _load_jsons(root / "state" / "rejection_decisions")
     candidate_revocations = _load_jsons(root / "state" / "candidate_revocations")
+    task_provenance = _load_jsons(root / "state" / "task_provenance")
+    artifact_provenance = _load_jsons(root / "state" / "artifact_provenance")
+    routing_provenance = _load_jsons(root / "state" / "routing_provenance")
+    decision_provenance = _load_jsons(root / "state" / "decision_provenance")
+    publish_provenance = _load_jsons(root / "state" / "publish_provenance")
+    rollback_provenance = _load_jsons(root / "state" / "rollback_provenance")
+    memory_provenance = _load_jsons(root / "state" / "memory_provenance")
+    replay_plans = _load_jsons(root / "state" / "replay_plans")
+    replay_executions = _load_jsons(root / "state" / "replay_executions")
+    replay_results = _load_jsons(root / "state" / "replay_results")
+    modality_contracts = _load_jsons(root / "state" / "modality_contracts")
     output_dependencies = _load_jsons(root / "state" / "output_dependencies")
     rollback_plans = _load_jsons(root / "state" / "rollback_plans")
     rollback_executions = _load_jsons(root / "state" / "rollback_executions")
@@ -238,6 +251,11 @@ def build_status(root: Path) -> dict[str, Any]:
     memory_discipline_summary = build_memory_governance_summary(root=root)
     promotion_governance_summary = build_promotion_governance_summary(root=root)
     rollback_summary = build_rollback_summary(root)
+    provenance_summary = build_provenance_summary(root)
+    from runtime.core.replay_store import build_replay_summary
+
+    replay_summary = build_replay_summary(root)
+    multimodal_summary = build_modality_summary(root)
     approval_session_summary = build_approval_session_summary(root)
     subsystem_contract_summary = build_subsystem_contract_summary(root)
     control_summary = build_control_summary(root=root)
@@ -405,8 +423,19 @@ def build_status(root: Path) -> dict[str, Any]:
         "candidate_validations": len(candidate_validations),
         "promotion_decisions": len(promotion_decisions),
         "rejection_decisions": len(rejection_decisions),
-        "candidate_revocations": len(candidate_revocations),
-        "output_dependencies": len(output_dependencies),
+            "candidate_revocations": len(candidate_revocations),
+            "task_provenance": len(task_provenance),
+            "artifact_provenance": len(artifact_provenance),
+            "routing_provenance": len(routing_provenance),
+            "decision_provenance": len(decision_provenance),
+            "publish_provenance": len(publish_provenance),
+            "rollback_provenance": len(rollback_provenance),
+            "memory_provenance": len(memory_provenance),
+            "replay_plans": len(replay_plans),
+            "replay_executions": len(replay_executions),
+            "replay_results": len(replay_results),
+            "modality_contracts": len(modality_contracts),
+            "output_dependencies": len(output_dependencies),
         "rollback_plans": len(rollback_plans),
         "rollback_executions": len(rollback_executions),
         "revocation_impacts": len(revocation_impacts),
@@ -535,6 +564,9 @@ def build_status(root: Path) -> dict[str, Any]:
         "candidate_artifacts": candidate_artifacts,
         "routing_summary": routing_summary,
         "candidate_promotion_summary": candidate_promotion_summary,
+        "provenance_summary": provenance_summary,
+        "replay_summary": replay_summary,
+        "multimodal_summary": multimodal_summary,
         "memory_discipline_summary": memory_discipline_summary,
         "promotion_governance_summary": promotion_governance_summary,
         "rollback_summary": rollback_summary,

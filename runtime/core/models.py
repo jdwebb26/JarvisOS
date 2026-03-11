@@ -164,6 +164,14 @@ class MemoryEligibilityStatus(StrEnum):
     INELIGIBLE = "ineligible"
 
 
+class ReplayResultKind(StrEnum):
+    MATCH = "match"
+    DRIFT = "drift"
+    BLOCKED_BY_CONTROL = "blocked_by_control"
+    MISSING_SOURCE = "missing_source"
+    INVALID_REPLAY = "invalid_replay"
+
+
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -1587,9 +1595,12 @@ class RevocationImpactRecord:
     lane: str
     output_id: Optional[str] = None
     impacted_task_id: Optional[str] = None
+    impacted_record_type: Optional[str] = None
+    impacted_record_id: Optional[str] = None
     impact_kind: str = "output_invalidated"
     impact_status: str = "recorded"
     reason: str = ""
+    source_ref: str = ""
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
 
@@ -1601,9 +1612,12 @@ class RevocationImpactRecord:
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
         data.setdefault("output_id", None)
         data.setdefault("impacted_task_id", None)
+        data.setdefault("impacted_record_type", None)
+        data.setdefault("impacted_record_id", None)
         data.setdefault("impact_kind", "output_invalidated")
         data.setdefault("impact_status", "recorded")
         data.setdefault("reason", "")
+        data.setdefault("source_ref", "")
         return cls(**data)
 
 
@@ -1799,6 +1813,348 @@ class SubsystemContractRecord:
         data.setdefault("output_contract", {})
         data.setdefault("state_refs", [])
         data.setdefault("active", True)
+        return cls(**data)
+
+
+@dataclass
+class TaskProvenanceRecord:
+    task_provenance_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    source_lane: str
+    source_channel: str
+    source_message_id: str
+    source_user: str
+    parent_task_id: Optional[str] = None
+    routing_decision_id: Optional[str] = None
+    source_event_ids: list[str] = field(default_factory=list)
+    replay_input: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "TaskProvenanceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("parent_task_id", None)
+        data.setdefault("routing_decision_id", None)
+        data.setdefault("source_event_ids", [])
+        data.setdefault("replay_input", {})
+        return cls(**data)
+
+
+@dataclass
+class ArtifactProvenanceRecord:
+    artifact_provenance_id: str
+    artifact_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    producer_kind: str
+    lifecycle_state: str
+    execution_backend: Optional[str] = None
+    backend_run_id: Optional[str] = None
+    candidate_id: Optional[str] = None
+    source_event_ids: list[str] = field(default_factory=list)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    replay_input: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ArtifactProvenanceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("execution_backend", None)
+        data.setdefault("backend_run_id", None)
+        data.setdefault("candidate_id", None)
+        data.setdefault("source_event_ids", [])
+        data.setdefault("source_refs", {})
+        data.setdefault("replay_input", {})
+        return cls(**data)
+
+
+@dataclass
+class RoutingProvenanceRecord:
+    routing_provenance_id: str
+    routing_request_id: str
+    routing_decision_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    selected_provider_id: str
+    selected_model_name: str
+    selected_execution_backend: str
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    replay_input: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RoutingProvenanceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("source_refs", {})
+        data.setdefault("replay_input", {})
+        return cls(**data)
+
+
+@dataclass
+class DecisionProvenanceRecord:
+    decision_provenance_id: str
+    decision_kind: str
+    decision_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    source_artifact_ids: list[str] = field(default_factory=list)
+    source_event_ids: list[str] = field(default_factory=list)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    replay_input: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "DecisionProvenanceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("source_artifact_ids", [])
+        data.setdefault("source_event_ids", [])
+        data.setdefault("source_refs", {})
+        data.setdefault("replay_input", {})
+        return cls(**data)
+
+
+@dataclass
+class PublishProvenanceRecord:
+    publish_provenance_id: str
+    output_id: str
+    task_id: str
+    artifact_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    output_status: str
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    replay_input: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PublishProvenanceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("source_refs", {})
+        data.setdefault("replay_input", {})
+        return cls(**data)
+
+
+@dataclass
+class RollbackProvenanceRecord:
+    rollback_provenance_id: str
+    rollback_plan_id: str
+    rollback_execution_id: Optional[str]
+    task_id: str
+    artifact_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    action_kind: str
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    replay_input: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RollbackProvenanceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("rollback_execution_id", None)
+        data.setdefault("source_refs", {})
+        data.setdefault("replay_input", {})
+        return cls(**data)
+
+
+@dataclass
+class MemoryProvenanceRecord:
+    memory_provenance_id: str
+    memory_candidate_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    memory_type: str
+    decision_kind: str = "candidate"
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    replay_input: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryProvenanceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("decision_kind", "candidate")
+        data.setdefault("source_refs", {})
+        data.setdefault("replay_input", {})
+        return cls(**data)
+
+
+@dataclass
+class ReplayPlanRecord:
+    replay_plan_id: str
+    replay_kind: str
+    source_record_type: str
+    source_record_id: str
+    task_id: Optional[str]
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    mode: str = "plan_only"
+    replay_allowed: bool = True
+    replay_input: dict[str, Any] = field(default_factory=dict)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    reason: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ReplayPlanRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("task_id", None)
+        data.setdefault("mode", "plan_only")
+        data.setdefault("replay_allowed", True)
+        data.setdefault("replay_input", {})
+        data.setdefault("source_refs", {})
+        data.setdefault("reason", "")
+        return cls(**data)
+
+
+@dataclass
+class ReplayExecutionRecord:
+    replay_execution_id: str
+    replay_plan_id: str
+    replay_kind: str
+    task_id: Optional[str]
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    mode: str
+    ok: bool = True
+    source_record_id: str = ""
+    result_kind: str = ReplayResultKind.MATCH.value
+    reason: str = ""
+    result_ref_id: Optional[str] = None
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ReplayExecutionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("task_id", None)
+        data.setdefault("ok", True)
+        data.setdefault("source_record_id", "")
+        data.setdefault("result_kind", ReplayResultKind.MATCH.value)
+        data.setdefault("reason", "")
+        data.setdefault("result_ref_id", None)
+        return cls(**data)
+
+
+@dataclass
+class ReplayResultRecord:
+    replay_result_id: str
+    replay_execution_id: str
+    replay_kind: str
+    source_record_id: str
+    task_id: Optional[str]
+    created_at: str
+    updated_at: str
+    result_kind: str = ReplayResultKind.MATCH.value
+    expected_snapshot: dict[str, Any] = field(default_factory=dict)
+    observed_snapshot: dict[str, Any] = field(default_factory=dict)
+    drift_fields: list[str] = field(default_factory=list)
+    reason: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ReplayResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("task_id", None)
+        data.setdefault("result_kind", ReplayResultKind.MATCH.value)
+        data.setdefault("expected_snapshot", {})
+        data.setdefault("observed_snapshot", {})
+        data.setdefault("drift_fields", [])
+        data.setdefault("reason", "")
+        return cls(**data)
+
+
+@dataclass
+class ModalityContractRecord:
+    modality_contract_id: str
+    contract_name: str
+    created_at: str
+    updated_at: str
+    provider_id: str
+    model_family: str
+    input_modalities: list[str] = field(default_factory=list)
+    output_modalities: list[str] = field(default_factory=list)
+    enabled: bool = False
+    policy_tags: list[str] = field(default_factory=list)
+    control_flags: list[str] = field(default_factory=list)
+    bounded_rules: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ModalityContractRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("input_modalities", [])
+        data.setdefault("output_modalities", [])
+        data.setdefault("enabled", False)
+        data.setdefault("policy_tags", [])
+        data.setdefault("control_flags", [])
+        data.setdefault("bounded_rules", {})
         return cls(**data)
 
 

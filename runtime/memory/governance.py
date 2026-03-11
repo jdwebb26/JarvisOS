@@ -18,6 +18,7 @@ from runtime.core.models import (
     MemoryCandidateRecord,
     MemoryEligibilityStatus,
     MemoryPromotionDecisionRecord,
+    MemoryProvenanceRecord,
     MemoryRejectionDecisionRecord,
     MemoryRetrievalRecord,
     MemoryRevocationDecisionRecord,
@@ -27,6 +28,7 @@ from runtime.core.models import (
     new_id,
     now_iso,
 )
+from runtime.core.provenance_store import save_memory_provenance
 from runtime.core.review_store import latest_review_for_task
 from runtime.core.approval_store import latest_approval_for_task
 from runtime.core.task_events import append_event, make_event
@@ -321,6 +323,31 @@ def register_memory_candidate(
     record.eligibility_status = eligibility_status
     record.eligibility_reason = eligibility_reason
     save_memory_candidate(record, root=root_path)
+    save_memory_provenance(
+        MemoryProvenanceRecord(
+            memory_provenance_id=new_id("memprov"),
+            memory_candidate_id=record.memory_candidate_id,
+            task_id=record.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            memory_type=record.memory_type,
+            decision_kind="candidate",
+            source_refs={
+                "source_artifact_ids": list(record.source_artifact_ids),
+                "source_trace_ids": list(record.source_trace_ids),
+                "source_eval_result_ids": list(record.source_eval_result_ids),
+                "source_provenance_refs": dict(record.source_provenance_refs),
+            },
+            replay_input={
+                "memory_candidate_id": record.memory_candidate_id,
+                "task_id": record.task_id,
+                "memory_type": record.memory_type,
+            },
+        ),
+        root=root_path,
+    )
     validation = record_memory_validation(
         memory_candidate_id=record.memory_candidate_id,
         task_id=record.task_id,
@@ -422,6 +449,22 @@ def promote_memory_candidate(
     )
     record.latest_promotion_decision_id = decision.memory_promotion_decision_id
     save_memory_candidate(record, root=root_path)
+    save_memory_provenance(
+        MemoryProvenanceRecord(
+            memory_provenance_id=new_id("memprov"),
+            memory_candidate_id=record.memory_candidate_id,
+            task_id=record.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            memory_type=record.memory_type,
+            decision_kind="promotion",
+            source_refs={"promotion_decision_id": decision.memory_promotion_decision_id},
+            replay_input={"memory_candidate_id": record.memory_candidate_id, "task_id": record.task_id},
+        ),
+        root=root_path,
+    )
 
     append_event(
         make_event(
@@ -474,6 +517,22 @@ def reject_memory_candidate(
     )
     record.latest_rejection_decision_id = decision.memory_rejection_decision_id
     save_memory_candidate(record, root=root_path)
+    save_memory_provenance(
+        MemoryProvenanceRecord(
+            memory_provenance_id=new_id("memprov"),
+            memory_candidate_id=record.memory_candidate_id,
+            task_id=record.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            memory_type=record.memory_type,
+            decision_kind="rejection",
+            source_refs={"rejection_decision_id": decision.memory_rejection_decision_id},
+            replay_input={"memory_candidate_id": record.memory_candidate_id, "task_id": record.task_id},
+        ),
+        root=root_path,
+    )
 
     append_event(
         make_event(
@@ -574,6 +633,25 @@ def revoke_memory_candidates_for_artifact(
         )
         record.latest_revocation_decision_id = decision.memory_revocation_decision_id
         save_memory_candidate(record, root=root_path)
+        save_memory_provenance(
+            MemoryProvenanceRecord(
+                memory_provenance_id=new_id("memprov"),
+                memory_candidate_id=record.memory_candidate_id,
+                task_id=record.task_id,
+                created_at=now_iso(),
+                updated_at=now_iso(),
+                actor=actor,
+                lane=lane,
+                memory_type=record.memory_type,
+                decision_kind="revocation",
+                source_refs={
+                    "revocation_decision_id": decision.memory_revocation_decision_id,
+                    "trigger_ref": f"artifact:{artifact_id}",
+                },
+                replay_input={"memory_candidate_id": record.memory_candidate_id, "task_id": record.task_id},
+            ),
+            root=root_path,
+        )
         append_event(
             make_event(
                 task_id=record.task_id,
