@@ -1,10 +1,14 @@
+import json
 from pathlib import Path
 
 from runtime.core.approval_store import load_approval, load_approval_checkpoint
 from runtime.core.artifact_store import load_artifact
 from runtime.core.models import RecordLifecycleState, TaskRecord, TaskStatus, now_iso
+from runtime.core.status import build_status
 from runtime.core.review_store import latest_review_for_task
-from runtime.core.task_store import create_task, load_task
+from runtime.core.task_store import create_task, load_task, save_task
+from runtime.dashboard.operator_snapshot import build_operator_snapshot
+from runtime.dashboard.state_export import build_state_export
 from runtime.integrations.autoresearch_adapter import AUTORESEARCH_BACKEND_ID, execute_research_campaign
 from runtime.researchlab.runner import (
     list_experiment_runs_for_campaign,
@@ -12,6 +16,7 @@ from runtime.researchlab.runner import (
     load_research_campaign,
     load_research_recommendation,
 )
+from scripts.operator_handoff_pack import build_operator_handoff_pack
 
 
 def _make_task(
@@ -172,3 +177,148 @@ def test_autoresearch_malformed_run_blocks_task(tmp_path: Path):
     assert campaign is not None
     assert campaign.status == "failed"
     assert "metrics" in campaign.comparison_summary
+
+
+def test_autoresearch_persists_spec_fields_and_surfaces_summary(tmp_path: Path):
+    task = _make_task(
+        tmp_path,
+        task_id="task_research_contract",
+        status=TaskStatus.QUEUED.value,
+        review_required=True,
+    )
+    task.backend_metadata["autoresearch_contract"] = {
+        "target_module": "runtime/core/routing.py",
+        "program_md_path": "docs/spec/strategy/program.md",
+        "eval_command": "python3 -m pytest -q tests/test_routing_candidate_spine.py",
+        "budget_minutes": 15,
+        "sandbox_root": "workspace/work/research_contract",
+    }
+    save_task(task, root=tmp_path)
+
+    result = execute_research_campaign(
+        task_id=task.task_id,
+        actor="tester",
+        lane="research",
+        objective="Tighten bounded experiment contract",
+        objective_metrics=["win_rate"],
+        primary_metric="win_rate",
+        baseline_ref="baseline:v1",
+        benchmark_slice_ref="slice:smoke",
+        max_passes=1,
+        max_budget_units=1,
+        root=tmp_path,
+        runner=lambda _request: {
+            "run_id": "run_contract",
+            "summary": "contract pass",
+            "hypothesis": "narrower eval contract",
+            "metrics": {"win_rate": 0.63},
+            "baseline_metrics": {"win_rate": 0.58},
+            "candidate_metrics": {"win_rate": 0.63},
+            "delta_metrics": {"win_rate": 0.05},
+            "candidate_patch_path": "workspace/work/research_contract/patch.diff",
+            "experiment_log_path": "workspace/work/research_contract/run.log",
+            "recommendation": {"action": "promote_candidate"},
+            "token_usage": {"prompt_tokens": 120, "completion_tokens": 80, "total_tokens": 200},
+            "budget_used": 1,
+        },
+    )
+
+    request_path = next((tmp_path / "state" / "lab_run_requests").glob("*.json"))
+    result_path = next((tmp_path / "state" / "lab_run_results").glob("*.json"))
+    request_row = json.loads(request_path.read_text(encoding="utf-8"))
+    result_row = json.loads(result_path.read_text(encoding="utf-8"))
+    status = build_status(tmp_path)
+    snapshot = build_operator_snapshot(tmp_path)
+    exported = build_state_export(tmp_path)
+    handoff = build_operator_handoff_pack(tmp_path)
+
+    assert request_row["task_id"] == task.task_id
+    assert request_row["target_module"] == "runtime/core/routing.py"
+    assert request_row["program_md_path"] == "docs/spec/strategy/program.md"
+    assert request_row["eval_command"] == "python3 -m pytest -q tests/test_routing_candidate_spine.py"
+    assert request_row["baseline_ref"] == "baseline:v1"
+    assert request_row["benchmark_slice_ref"] == "slice:smoke"
+    assert request_row["budget_minutes"] == 15
+    assert request_row["sandbox_root"] == "workspace/work/research_contract"
+
+    assert result_row["task_id"] == task.task_id
+    assert result_row["run_id"] == "run_contract"
+    assert result_row["candidate_patch_path"] == "workspace/work/research_contract/patch.diff"
+    assert result_row["baseline_metrics"] == {"win_rate": 0.58}
+    assert result_row["candidate_metrics"] == {"win_rate": 0.63}
+    assert result_row["delta_metrics"] == {"win_rate": 0.05}
+    assert result_row["experiment_log_path"] == "workspace/work/research_contract/run.log"
+    assert result_row["recommendation"] == {"action": "promote_candidate"}
+    assert result_row["token_usage"]["total_tokens"] == 200
+
+    assert status["autoresearch_summary"]["lab_run_request_count"] == 1
+    assert status["autoresearch_summary"]["lab_run_result_count"] == 1
+    assert status["autoresearch_summary"]["latest_lab_run_result"]["run_id"] == "run_contract"
+    assert snapshot["autoresearch_summary"]["latest_lab_run_request"]["target_module"] == "runtime/core/routing.py"
+    assert exported["counts"]["lab_run_requests"] == 1
+    assert exported["counts"]["lab_run_results"] == 1
+    assert exported["autoresearch_summary"]["latest_lab_run_result"]["candidate_patch_path"] == "workspace/work/research_contract/patch.diff"
+    assert handoff["pack"]["autoresearch_summary"]["latest_lab_run_result"]["run_id"] == "run_contract"
+    assert result["candidate_artifact_id"] is not None
+
+
+def test_autoresearch_persists_strategy_diversity_map(tmp_path: Path):
+    task = _make_task(
+        tmp_path,
+        task_id="task_research_diversity",
+        status=TaskStatus.QUEUED.value,
+        review_required=True,
+    )
+
+    execute_research_campaign(
+        task_id=task.task_id,
+        actor="tester",
+        lane="research",
+        objective="Preserve candidate diversity across regimes",
+        objective_metrics=["sharpe_gain"],
+        primary_metric="sharpe_gain",
+        max_passes=1,
+        max_budget_units=1,
+        root=tmp_path,
+        runner=lambda _request: {
+            "run_id": "run_diversity",
+            "summary": "diversity pass",
+            "hypothesis": "regime split broadening",
+            "metrics": {"sharpe_gain": 0.21},
+            "candidate_metrics": {"sharpe_gain": 0.21},
+            "recommendation": {"action": "promote_candidate"},
+            "diversity_map": {
+                "strategy_type": "mean_reversion",
+                "regime_sensitivity": "volatile_open",
+                "turnover_characteristics": "medium_turnover",
+                "drawdown_profile": "shallow_intraday",
+                "style_niche": "opening_imbalance",
+                "metric_quality": "strong",
+                "hard_vetoes": [],
+                "behavioral_diversity_relative_to_promoted": "materially_different",
+            },
+            "budget_used": 1,
+        },
+    )
+
+    diversity_path = next((tmp_path / "state" / "strategy_diversity_maps").glob("*.json"))
+    diversity_row = json.loads(diversity_path.read_text(encoding="utf-8"))
+    status = build_status(tmp_path)
+    exported = build_state_export(tmp_path)
+    handoff = build_operator_handoff_pack(tmp_path)
+
+    assert diversity_row["task_id"] == task.task_id
+    assert diversity_row["run_id"] == "run_diversity"
+    assert diversity_row["strategy_type"] == "mean_reversion"
+    assert diversity_row["regime_sensitivity"] == "volatile_open"
+    assert diversity_row["turnover_characteristics"] == "medium_turnover"
+    assert diversity_row["drawdown_profile"] == "shallow_intraday"
+    assert diversity_row["style_niche"] == "opening_imbalance"
+    assert diversity_row["metric_quality"] == "strong"
+    assert diversity_row["behavioral_diversity_relative_to_promoted"] == "materially_different"
+
+    assert status["autoresearch_summary"]["strategy_diversity_map_count"] == 1
+    assert status["autoresearch_summary"]["latest_strategy_diversity_map"]["strategy_type"] == "mean_reversion"
+    assert exported["counts"]["strategy_diversity_maps"] == 1
+    assert exported["autoresearch_summary"]["latest_strategy_diversity_map"]["style_niche"] == "opening_imbalance"
+    assert handoff["pack"]["autoresearch_summary"]["latest_strategy_diversity_map"]["metric_quality"] == "strong"

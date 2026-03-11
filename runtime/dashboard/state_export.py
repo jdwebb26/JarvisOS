@@ -17,6 +17,7 @@ from runtime.core.eval_profiles import build_eval_profile_summary
 from runtime.core.heartbeat_reports import build_heartbeat_report_summary
 from runtime.core.routing import build_model_registry_summary
 from runtime.core.token_budget import build_token_budget_summary
+from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.dashboard.status_names import normalize_status_name
 
@@ -78,9 +79,11 @@ def build_state_export(root: Path) -> dict:
     research_recommendations = _load_jsons(root / "state" / "research_recommendations")
     lab_run_requests = _load_jsons(root / "state" / "lab_run_requests")
     lab_run_results = _load_jsons(root / "state" / "lab_run_results")
+    strategy_diversity_maps = _load_jsons(root / "state" / "strategy_diversity_maps")
     run_traces = _load_jsons(root / "state" / "run_traces")
     eval_cases = _load_jsons(root / "state" / "eval_cases")
     eval_results = _load_jsons(root / "state" / "eval_results")
+    eval_outcomes = _load_jsons(root / "state" / "eval_outcomes")
     eval_profiles = _load_jsons(root / "state" / "eval_profiles")
     model_registry_entries = _load_jsons(root / "state" / "model_registry_entries")
     capability_profiles = _load_jsons(root / "state" / "capability_profiles")
@@ -105,6 +108,7 @@ def build_state_export(root: Path) -> dict:
     candidate_revocations = _load_jsons(root / "state" / "candidate_revocations")
     task_provenance = _load_jsons(root / "state" / "task_provenance")
     artifact_provenance = _load_jsons(root / "state" / "artifact_provenance")
+    promotion_provenance = _load_jsons(root / "state" / "promotion_provenance")
     routing_provenance = _load_jsons(root / "state" / "routing_provenance")
     decision_provenance = _load_jsons(root / "state" / "decision_provenance")
     publish_provenance = _load_jsons(root / "state" / "publish_provenance")
@@ -122,9 +126,12 @@ def build_state_export(root: Path) -> dict:
     approval_decision_contexts = _load_jsons(root / "state" / "approval_decision_contexts")
     approval_resume_tokens = _load_jsons(root / "state" / "approval_resume_tokens")
     subsystem_contracts = _load_jsons(root / "state" / "subsystem_contracts")
+    trajectories = _load_jsons(root / "state" / "trajectories")
+    operator_profiles = _load_jsons(root / "state" / "operator_profiles")
     consolidation_runs = _load_jsons(root / "state" / "consolidation_runs")
     digest_artifact_links = _load_jsons(root / "state" / "digest_artifact_links")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
+    memory_entries = _load_jsons(root / "state" / "memory_entries")
     memory_retrievals = _load_jsons(root / "state" / "memory_retrievals")
     memory_validations = _load_jsons(root / "state" / "memory_validations")
     memory_promotion_decisions = _load_jsons(root / "state" / "memory_promotion_decisions")
@@ -179,9 +186,11 @@ def build_state_export(root: Path) -> dict:
             "research_recommendations": len(research_recommendations),
             "lab_run_requests": len(lab_run_requests),
             "lab_run_results": len(lab_run_results),
+            "strategy_diversity_maps": len(strategy_diversity_maps),
             "run_traces": len(run_traces),
             "eval_cases": len(eval_cases),
             "eval_results": len(eval_results),
+            "eval_outcomes": len(eval_outcomes),
             "eval_profiles": len(eval_profiles),
             "model_registry_entries": len(model_registry_entries),
             "capability_profiles": len(capability_profiles),
@@ -206,6 +215,7 @@ def build_state_export(root: Path) -> dict:
             "candidate_revocations": len(candidate_revocations),
             "task_provenance": len(task_provenance),
             "artifact_provenance": len(artifact_provenance),
+            "promotion_provenance": len(promotion_provenance),
             "routing_provenance": len(routing_provenance),
             "decision_provenance": len(decision_provenance),
             "publish_provenance": len(publish_provenance),
@@ -223,9 +233,12 @@ def build_state_export(root: Path) -> dict:
             "approval_decision_contexts": len(approval_decision_contexts),
             "approval_resume_tokens": len(approval_resume_tokens),
             "subsystem_contracts": len(subsystem_contracts),
+            "trajectories": len(trajectories),
+            "operator_profiles": len(operator_profiles),
             "consolidation_runs": len(consolidation_runs),
             "digest_artifact_links": len(digest_artifact_links),
             "memory_candidates": len(memory_candidates),
+            "memory_entries": len(memory_entries),
             "memory_retrievals": len(memory_retrievals),
             "memory_validations": len(memory_validations),
             "memory_promotion_decisions": len(memory_promotion_decisions),
@@ -442,6 +455,7 @@ def build_state_export(root: Path) -> dict:
     latest_subsystem_contract = _latest_row(subsystem_contracts)
     latest_modality_contract = _latest_row(modality_contracts)
     latest_memory_candidate = _latest_row(memory_candidates)
+    latest_memory_entry = _latest_row(memory_entries)
     latest_memory_validation = _latest_row(memory_validations)
     latest_memory_promotion = _latest_row(memory_promotion_decisions)
     latest_memory_rejection = _latest_row(memory_rejection_decisions)
@@ -476,9 +490,14 @@ def build_state_export(root: Path) -> dict:
     from runtime.integrations.autoresearch_adapter import build_autoresearch_summary
 
     summary["autoresearch_summary"] = build_autoresearch_summary(root=root)
+    from runtime.evals.trace_store import build_eval_outcome_summary
+
+    summary["eval_outcome_summary"] = build_eval_outcome_summary(root=root)
     summary["eval_profile_summary"] = build_eval_profile_summary(root=root)
     summary["browser_control_allowlist_summary"] = build_browser_control_allowlist_summary(root=root)
     summary["voice_session_summary"] = build_voice_session_summary(root=root)
+    summary["trajectory_summary"] = build_trajectory_summary(root=root)
+    summary["operator_profile_summary"] = build_operator_profile_summary(root=root)
     summary["task_envelope_summary"] = {
         "task_envelope_task_count": sum(1 for row in tasks if row.get("task_envelope")),
         "autonomy_mode_counts": dict(summary.get("autonomy_mode_counts", {})),
@@ -575,11 +594,13 @@ def build_state_export(root: Path) -> dict:
             latest_memory_event = {"event_kind": kind, **latest}
     summary["memory_discipline_summary"] = {
         "memory_candidate_count": len(memory_candidates),
+        "memory_entry_count": len(memory_entries),
         "memory_validation_count": len(memory_validations),
         "memory_promotion_count": len(memory_promotion_decisions),
         "memory_rejection_count": len(memory_rejection_decisions),
         "memory_revocation_count": len(memory_revocation_decisions),
         "latest_memory_candidate": latest_memory_candidate,
+        "latest_memory_entry": latest_memory_entry,
         "latest_memory_validation": latest_memory_validation,
         "latest_memory_event": latest_memory_event,
     }

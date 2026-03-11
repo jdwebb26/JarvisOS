@@ -17,6 +17,7 @@ from runtime.core.models import (
     DecisionProvenanceRecord,
     MemoryProvenanceRecord,
     PublishProvenanceRecord,
+    PromotionProvenanceRecord,
     RollbackProvenanceRecord,
     RoutingProvenanceRecord,
     TaskProvenanceRecord,
@@ -36,6 +37,10 @@ def task_provenance_dir(root: Optional[Path] = None) -> Path:
 
 def artifact_provenance_dir(root: Optional[Path] = None) -> Path:
     return _state_dir("artifact_provenance", root=root)
+
+
+def promotion_provenance_dir(root: Optional[Path] = None) -> Path:
+    return _state_dir("promotion_provenance", root=root)
 
 
 def routing_provenance_dir(root: Optional[Path] = None) -> Path:
@@ -91,6 +96,10 @@ def save_artifact_provenance(record: ArtifactProvenanceRecord, *, root: Optional
     return _save_record(artifact_provenance_dir(root), record, record.artifact_provenance_id)
 
 
+def save_promotion_provenance(record: PromotionProvenanceRecord, *, root: Optional[Path] = None) -> PromotionProvenanceRecord:
+    return _save_record(promotion_provenance_dir(root), record, record.promotion_provenance_id)
+
+
 def save_routing_provenance(record: RoutingProvenanceRecord, *, root: Optional[Path] = None) -> RoutingProvenanceRecord:
     return _save_record(routing_provenance_dir(root), record, record.routing_provenance_id)
 
@@ -119,6 +128,10 @@ def list_artifact_provenance(root: Optional[Path] = None) -> list[ArtifactProven
     return _load_rows(artifact_provenance_dir(root), ArtifactProvenanceRecord)
 
 
+def list_promotion_provenance(root: Optional[Path] = None) -> list[PromotionProvenanceRecord]:
+    return _load_rows(promotion_provenance_dir(root), PromotionProvenanceRecord)
+
+
 def list_routing_provenance(root: Optional[Path] = None) -> list[RoutingProvenanceRecord]:
     return _load_rows(routing_provenance_dir(root), RoutingProvenanceRecord)
 
@@ -142,6 +155,7 @@ def list_memory_provenance(root: Optional[Path] = None) -> list[MemoryProvenance
 def build_provenance_summary(root: Optional[Path] = None) -> dict:
     task_rows = list_task_provenance(root=root)
     artifact_rows = list_artifact_provenance(root=root)
+    promotion_rows = list_promotion_provenance(root=root)
     routing_rows = list_routing_provenance(root=root)
     decision_rows = list_decision_provenance(root=root)
     publish_rows = list_publish_provenance(root=root)
@@ -150,6 +164,7 @@ def build_provenance_summary(root: Optional[Path] = None) -> dict:
     return {
         "task_provenance_count": len(task_rows),
         "artifact_provenance_count": len(artifact_rows),
+        "promotion_provenance_count": len(promotion_rows),
         "routing_provenance_count": len(routing_rows),
         "decision_provenance_count": len(decision_rows),
         "publish_provenance_count": len(publish_rows),
@@ -157,6 +172,7 @@ def build_provenance_summary(root: Optional[Path] = None) -> dict:
         "memory_provenance_count": len(memory_rows),
         "latest_task_provenance": task_rows[0].to_dict() if task_rows else None,
         "latest_artifact_provenance": artifact_rows[0].to_dict() if artifact_rows else None,
+        "latest_promotion_provenance": promotion_rows[0].to_dict() if promotion_rows else None,
         "latest_routing_provenance": routing_rows[0].to_dict() if routing_rows else None,
         "latest_decision_provenance": decision_rows[0].to_dict() if decision_rows else None,
         "latest_publish_provenance": publish_rows[0].to_dict() if publish_rows else None,

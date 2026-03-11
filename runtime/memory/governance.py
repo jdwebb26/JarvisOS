@@ -16,6 +16,7 @@ from runtime.controls.control_store import assert_control_allows
 from runtime.core.models import (
     ApprovalStatus,
     MemoryCandidateRecord,
+    MemoryEntryRecord,
     MemoryEligibilityStatus,
     MemoryPromotionDecisionRecord,
     MemoryProvenanceRecord,
@@ -52,6 +53,10 @@ def memory_retrievals_dir(root: Optional[Path] = None) -> Path:
     return _state_dir("memory_retrievals", root=root)
 
 
+def memory_entries_dir(root: Optional[Path] = None) -> Path:
+    return _state_dir("memory_entries", root=root)
+
+
 def memory_validations_dir(root: Optional[Path] = None) -> Path:
     return _state_dir("memory_validations", root=root)
 
@@ -75,6 +80,15 @@ def _record_path(folder: Path, record_id: str) -> Path:
 def save_memory_candidate(record: MemoryCandidateRecord, *, root: Optional[Path] = None) -> MemoryCandidateRecord:
     record.updated_at = now_iso()
     _record_path(memory_candidates_dir(root), record.memory_candidate_id).write_text(
+        json.dumps(record.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return record
+
+
+def save_memory_entry(record: MemoryEntryRecord, *, root: Optional[Path] = None) -> MemoryEntryRecord:
+    record.updated_at = now_iso()
+    _record_path(memory_entries_dir(root), record.memory_id).write_text(
         json.dumps(record.to_dict(), indent=2) + "\n",
         encoding="utf-8",
     )
@@ -136,6 +150,24 @@ def load_memory_candidate(memory_candidate_id: str, *, root: Optional[Path] = No
     return MemoryCandidateRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
+def load_memory_entry(memory_id: str, *, root: Optional[Path] = None) -> Optional[MemoryEntryRecord]:
+    path = _record_path(memory_entries_dir(root), memory_id)
+    if not path.exists():
+        return None
+    return MemoryEntryRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def load_memory_entry_by_candidate_id(
+    memory_candidate_id: str,
+    *,
+    root: Optional[Path] = None,
+) -> Optional[MemoryEntryRecord]:
+    for row in list_memory_entries(root=root):
+        if row.memory_candidate_id == memory_candidate_id:
+            return row
+    return None
+
+
 def list_memory_candidates(
     *,
     root: Optional[Path] = None,
@@ -160,6 +192,30 @@ def list_memory_candidates(
         if source_trace_id and source_trace_id not in row.source_trace_ids:
             continue
         if source_eval_result_id and source_eval_result_id not in row.source_eval_result_ids:
+            continue
+        rows.append(row)
+    rows.sort(key=lambda row: (row.confidence_score, row.updated_at), reverse=True)
+    return rows
+
+
+def list_memory_entries(
+    *,
+    root: Optional[Path] = None,
+    task_id: Optional[str] = None,
+    memory_class: Optional[str] = None,
+    structural_type: Optional[str] = None,
+) -> list[MemoryEntryRecord]:
+    rows: list[MemoryEntryRecord] = []
+    for path in memory_entries_dir(root).glob("*.json"):
+        try:
+            row = MemoryEntryRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+        if task_id and row.task_id != task_id:
+            continue
+        if memory_class and row.memory_class != memory_class:
+            continue
+        if structural_type and row.structural_type != structural_type:
             continue
         rows.append(row)
     rows.sort(key=lambda row: (row.confidence_score, row.updated_at), reverse=True)
@@ -259,6 +315,141 @@ def _candidate_eligibility(*, memory_candidate: MemoryCandidateRecord, root: Pat
         if approval is None or approval.status != ApprovalStatus.APPROVED.value:
             return MemoryEligibilityStatus.APPROVAL_REQUIRED.value, "approved approval required before memory promotion."
     return MemoryEligibilityStatus.ELIGIBLE.value, ""
+
+
+def _derive_memory_class(record: MemoryCandidateRecord) -> str:
+    explicit = (record.source_provenance_refs or {}).get("memory_class")
+    if explicit:
+        return str(explicit)
+    memory_type = record.memory_type.lower()
+    if "preference" in memory_type:
+        return "operator_preference_memory"
+    if "decision" in memory_type:
+        return "decision_memory"
+    if "research" in memory_type or "claim" in memory_type or "eval" in memory_type:
+        return "research_claim_memory"
+    if "risk" in memory_type:
+        return "risk_memory"
+    return "artifact_memory"
+
+
+def _derive_structural_type(record: MemoryCandidateRecord) -> str:
+    explicit = (record.source_provenance_refs or {}).get("structural_type")
+    if explicit:
+        return str(explicit)
+    memory_type = record.memory_type.lower()
+    if "digest" in memory_type:
+        return "episodic"
+    if "procedure" in memory_type or "playbook" in memory_type:
+        return "procedural"
+    return "semantic"
+
+
+def _derive_approval_requirement(task) -> str:
+    if task.approval_required:
+        return "approval_required"
+    if task.review_required:
+        return "review_required"
+    return "none"
+
+
+def _derive_review_state(*, task, candidate: MemoryCandidateRecord) -> str:
+    if candidate.decision_status == "revoked":
+        return "revoked"
+    if candidate.superseded_by_memory_candidate_id:
+        return "superseded"
+    if task.approval_required or task.review_required:
+        return "approved"
+    return "not_required"
+
+
+def _build_memory_entry(*, candidate: MemoryCandidateRecord, task, actor: str, lane: str) -> MemoryEntryRecord:
+    ts = candidate.promoted_at or now_iso()
+    return MemoryEntryRecord(
+        memory_id=new_id("ment"),
+        memory_candidate_id=candidate.memory_candidate_id,
+        task_id=candidate.task_id,
+        created_at=ts,
+        updated_at=ts,
+        actor=actor,
+        lane=lane,
+        memory_class=_derive_memory_class(candidate),
+        structural_type=_derive_structural_type(candidate),
+        source_refs={
+            "artifact_ids": list(candidate.source_artifact_ids),
+            "trace_ids": list(candidate.source_trace_ids),
+            "eval_result_ids": list(candidate.source_eval_result_ids),
+            "candidate_ids": list(candidate.source_candidate_ids),
+            "output_ids": list(candidate.source_output_ids),
+            "task_event_ids": list(candidate.source_task_event_ids),
+            "provenance_refs": dict(candidate.source_provenance_refs),
+        },
+        approval_requirement=_derive_approval_requirement(task),
+        confidence_score=candidate.confidence_score,
+        confidence_decay_days=int((candidate.source_provenance_refs or {}).get("confidence_decay_days", 30)),
+        last_retrieved_at=None,
+        contradiction_check={
+            "status": candidate.contradiction_status,
+            "reason": candidate.contradiction_reason,
+            "contradicted_at": candidate.contradicted_at,
+            "contradicted_by": candidate.contradicted_by,
+        },
+        superseded_by=candidate.superseded_by_memory_candidate_id,
+        review_state=_derive_review_state(task=task, candidate=candidate),
+        memory_type=candidate.memory_type,
+        title=candidate.title,
+        summary=candidate.summary,
+        content=candidate.content,
+        lifecycle_state=RecordLifecycleState.PROMOTED.value,
+        execution_backend=candidate.execution_backend or MEMORY_BACKEND_ID,
+    )
+
+
+def _upsert_memory_entry_for_candidate(
+    *,
+    candidate: MemoryCandidateRecord,
+    actor: str,
+    lane: str,
+    root: Path,
+) -> MemoryEntryRecord:
+    task = load_task(candidate.task_id, root=root)
+    if task is None:
+        raise ValueError(f"Task not found for memory candidate: {candidate.task_id}")
+    record = load_memory_entry_by_candidate_id(candidate.memory_candidate_id, root=root)
+    if record is None:
+        record = _build_memory_entry(candidate=candidate, task=task, actor=actor, lane=lane)
+    else:
+        record.actor = actor
+        record.lane = lane
+        record.memory_class = _derive_memory_class(candidate)
+        record.structural_type = _derive_structural_type(candidate)
+        record.source_refs = {
+            "artifact_ids": list(candidate.source_artifact_ids),
+            "trace_ids": list(candidate.source_trace_ids),
+            "eval_result_ids": list(candidate.source_eval_result_ids),
+            "candidate_ids": list(candidate.source_candidate_ids),
+            "output_ids": list(candidate.source_output_ids),
+            "task_event_ids": list(candidate.source_task_event_ids),
+            "provenance_refs": dict(candidate.source_provenance_refs),
+        }
+        record.approval_requirement = _derive_approval_requirement(task)
+        record.confidence_score = candidate.confidence_score
+        record.confidence_decay_days = int((candidate.source_provenance_refs or {}).get("confidence_decay_days", 30))
+        record.contradiction_check = {
+            "status": candidate.contradiction_status,
+            "reason": candidate.contradiction_reason,
+            "contradicted_at": candidate.contradicted_at,
+            "contradicted_by": candidate.contradicted_by,
+        }
+        record.superseded_by = candidate.superseded_by_memory_candidate_id
+        record.review_state = _derive_review_state(task=task, candidate=candidate)
+        record.memory_type = candidate.memory_type
+        record.title = candidate.title
+        record.summary = candidate.summary
+        record.content = candidate.content
+        record.lifecycle_state = candidate.lifecycle_state
+        record.execution_backend = candidate.execution_backend or MEMORY_BACKEND_ID
+    return save_memory_entry(record, root=root)
 
 
 def record_memory_validation(
@@ -449,6 +640,7 @@ def promote_memory_candidate(
     )
     record.latest_promotion_decision_id = decision.memory_promotion_decision_id
     save_memory_candidate(record, root=root_path)
+    _upsert_memory_entry_for_candidate(candidate=record, actor=actor, lane=lane, root=root_path)
     save_memory_provenance(
         MemoryProvenanceRecord(
             memory_provenance_id=new_id("memprov"),
@@ -517,6 +709,11 @@ def reject_memory_candidate(
     )
     record.latest_rejection_decision_id = decision.memory_rejection_decision_id
     save_memory_candidate(record, root=root_path)
+    existing_entry = load_memory_entry_by_candidate_id(record.memory_candidate_id, root=root_path)
+    if existing_entry is not None:
+        existing_entry.review_state = "rejected"
+        existing_entry.lifecycle_state = RecordLifecycleState.DEMOTED.value
+        save_memory_entry(existing_entry, root=root_path)
     save_memory_provenance(
         MemoryProvenanceRecord(
             memory_provenance_id=new_id("memprov"),
@@ -577,6 +774,18 @@ def supersede_memory_candidate(
     record.contradicted_by = actor
     record.superseded_by_memory_candidate_id = superseded_by_memory_candidate_id
     save_memory_candidate(record, root=root_path)
+    existing_entry = load_memory_entry_by_candidate_id(record.memory_candidate_id, root=root_path)
+    if existing_entry is not None:
+        existing_entry.superseded_by = superseded_by_memory_candidate_id
+        existing_entry.contradiction_check = {
+            "status": record.contradiction_status,
+            "reason": record.contradiction_reason,
+            "contradicted_at": record.contradicted_at,
+            "contradicted_by": record.contradicted_by,
+        }
+        existing_entry.review_state = "superseded"
+        existing_entry.lifecycle_state = RecordLifecycleState.SUPERSEDED.value
+        save_memory_entry(existing_entry, root=root_path)
 
     append_event(
         make_event(
@@ -633,6 +842,17 @@ def revoke_memory_candidates_for_artifact(
         )
         record.latest_revocation_decision_id = decision.memory_revocation_decision_id
         save_memory_candidate(record, root=root_path)
+        existing_entry = load_memory_entry_by_candidate_id(record.memory_candidate_id, root=root_path)
+        if existing_entry is not None:
+            existing_entry.review_state = "revoked"
+            existing_entry.lifecycle_state = RecordLifecycleState.DEMOTED.value
+            existing_entry.contradiction_check = {
+                "status": "revoked_upstream",
+                "reason": reason,
+                "contradicted_at": record.decided_at,
+                "contradicted_by": actor,
+            }
+            save_memory_entry(existing_entry, root=root_path)
         save_memory_provenance(
             MemoryProvenanceRecord(
                 memory_provenance_id=new_id("memprov"),
@@ -672,6 +892,7 @@ def revoke_memory_candidates_for_artifact(
 
 def build_memory_governance_summary(*, root: Optional[Path] = None) -> dict:
     candidates = list_memory_candidates(root=root)
+    entries = list_memory_entries(root=root)
     validations = list_memory_validations(root=root)
     promotions = list_memory_promotion_decisions(root=root)
     rejections = list_memory_rejection_decisions(root=root)
@@ -686,11 +907,13 @@ def build_memory_governance_summary(*, root: Optional[Path] = None) -> dict:
             latest_event = {"event_kind": kind, **rows[0].to_dict()}
     return {
         "memory_candidate_count": len(candidates),
+        "memory_entry_count": len(entries),
         "memory_validation_count": len(validations),
         "memory_promotion_count": len(promotions),
         "memory_rejection_count": len(rejections),
         "memory_revocation_count": len(revocations),
         "latest_memory_candidate": candidates[0].to_dict() if candidates else None,
+        "latest_memory_entry": entries[0].to_dict() if entries else None,
         "latest_memory_validation": validations[0].to_dict() if validations else None,
         "latest_memory_event": latest_event,
     }
@@ -758,6 +981,11 @@ def retrieve_memory(
         result_count=len(filtered),
     )
     save_memory_retrieval(retrieval, root=root_path)
+    for row in filtered:
+        entry = load_memory_entry_by_candidate_id(row.memory_candidate_id, root=root_path)
+        if entry is not None:
+            entry.last_retrieved_at = retrieval.updated_at
+            save_memory_entry(entry, root=root_path)
 
     return {
         "retrieval": retrieval.to_dict(),

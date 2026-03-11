@@ -17,6 +17,7 @@ from runtime.core.eval_profiles import ensure_default_eval_profiles, resolve_eva
 from runtime.core.models import (
     EvalCaseRecord,
     EvalDerivedOutcome,
+    EvalOutcomeRecord,
     EvalResultRecord,
     RunTraceRecord,
     new_id,
@@ -45,6 +46,10 @@ def eval_cases_dir(root: Optional[Path] = None) -> Path:
 
 def eval_results_dir(root: Optional[Path] = None) -> Path:
     return _state_dir("eval_results", root=root)
+
+
+def eval_outcomes_dir(root: Optional[Path] = None) -> Path:
+    return _state_dir("eval_outcomes", root=root)
 
 
 def _record_path(folder: Path, record_id: str) -> Path:
@@ -105,6 +110,15 @@ def save_eval_result(record: EvalResultRecord, *, root: Optional[Path] = None) -
     return record
 
 
+def save_eval_outcome(record: EvalOutcomeRecord, *, root: Optional[Path] = None) -> EvalOutcomeRecord:
+    record.updated_at = now_iso()
+    _record_path(eval_outcomes_dir(root), record.eval_outcome_id).write_text(
+        json.dumps(record.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return record
+
+
 def load_eval_result(eval_result_id: str, *, root: Optional[Path] = None) -> Optional[EvalResultRecord]:
     path = _record_path(eval_results_dir(root), eval_result_id)
     if not path.exists():
@@ -123,6 +137,37 @@ def list_eval_results_for_task(task_id: str, *, root: Optional[Path] = None) -> 
             rows.append(row)
     rows.sort(key=lambda row: row.updated_at, reverse=True)
     return rows
+
+
+def list_eval_outcomes_for_task(task_id: str, *, root: Optional[Path] = None) -> list[EvalOutcomeRecord]:
+    rows: list[EvalOutcomeRecord] = []
+    for path in eval_outcomes_dir(root).glob("*.json"):
+        try:
+            row = EvalOutcomeRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+        if row.task_id == task_id:
+            rows.append(row)
+    rows.sort(key=lambda row: row.updated_at, reverse=True)
+    return rows
+
+
+def build_eval_outcome_summary(root: Optional[Path] = None) -> dict[str, Any]:
+    rows: list[EvalOutcomeRecord] = []
+    for path in eval_outcomes_dir(root).glob("*.json"):
+        try:
+            rows.append(EvalOutcomeRecord.from_dict(json.loads(path.read_text(encoding="utf-8"))))
+        except Exception:
+            continue
+    rows.sort(key=lambda row: row.updated_at, reverse=True)
+    outcome_counts: dict[str, int] = {}
+    for row in rows:
+        outcome_counts[row.derived_outcome] = outcome_counts.get(row.derived_outcome, 0) + 1
+    return {
+        "eval_outcome_count": len(rows),
+        "eval_outcome_counts": outcome_counts,
+        "latest_eval_outcome": rows[0].to_dict() if rows else None,
+    }
 
 
 def record_run_trace(
@@ -520,6 +565,38 @@ def replay_trace_to_eval(
         eval_result.report_artifact_id = artifact["artifact_id"]
 
     save_eval_result(eval_result, root=root_path)
+    replay_result_id = None
+    source_refs = dict(trace.source_refs or {})
+    for key in ("replay_result_id", "source_replay_result_id"):
+        value = source_refs.get(key)
+        if value:
+            replay_result_id = str(value)
+            break
+    eval_outcome = EvalOutcomeRecord(
+        eval_outcome_id=new_id("evalout"),
+        eval_result_id=eval_result.eval_result_id,
+        eval_case_id=eval_case.eval_case_id,
+        task_id=trace.task_id,
+        created_at=now_iso(),
+        updated_at=now_iso(),
+        profile_id=eval_case.profile_id,
+        profile_version=eval_case.profile_version,
+        replay_result_id=replay_result_id,
+        trace_id=trace.trace_id,
+        veto_results=dict(eval_result.veto_results),
+        quality_scores=dict(eval_result.quality_scores),
+        pass_fail=bool(eval_result.passed),
+        metrics=dict(eval_result.metrics),
+        notes=eval_result.notes,
+        derived_outcome=eval_result.derived_outcome,
+        derived_reason=eval_result.derived_reason,
+        source_refs={
+            "report_artifact_id": eval_result.report_artifact_id,
+            "evaluator_kind": eval_result.evaluator_kind,
+            "lane": eval_result.lane,
+        },
+    )
+    save_eval_outcome(eval_outcome, root=root_path)
     eval_case.status = "completed"
     eval_case.latest_eval_result_id = eval_result.eval_result_id
     save_eval_case(eval_case, root=root_path)
@@ -542,5 +619,6 @@ def replay_trace_to_eval(
     return {
         "eval_case": eval_case.to_dict(),
         "eval_result": eval_result.to_dict(),
+        "eval_outcome": eval_outcome.to_dict(),
         "report_artifact_id": eval_result.report_artifact_id,
     }

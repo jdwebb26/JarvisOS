@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -31,10 +31,13 @@ from runtime.core.execution_contracts import (
 )
 from runtime.core.models import (
     ExperimentRunRecord,
+    LabRunRequestRecord as LabRunRequest,
+    LabRunResultRecord as LabRunResult,
     MetricResultRecord,
     ResearchCampaignRecord,
     ResearchRecommendationRecord,
     ReviewStatus,
+    StrategyDiversityMapRecord,
     TaskStatus,
     new_id,
     now_iso,
@@ -68,54 +71,150 @@ def _serialize(instance: Any) -> dict[str, Any]:
     return asdict(instance)
 
 
-@dataclass
-class LabRunRequest:
-    request_id: str
-    campaign_id: str
-    task_id: str
-    created_at: str
-    requested_by: str
-    lane: str
-    pass_index: int
-    objective: str
-    objective_metrics: list[str]
-    primary_metric: str
-    metric_directions: dict[str, str]
-    baseline_ref: Optional[str]
-    benchmark_slice_ref: Optional[str]
-    remaining_passes: int
-    remaining_budget_units: int
-    stop_conditions: dict[str, Any] = field(default_factory=dict)
-    execution_backend: str = AUTORESEARCH_BACKEND_ID
-    sandbox_class: str = "bounded"
-    schema_version: str = "v5.1"
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
+def lab_run_requests_dir(root: Optional[Path] = None) -> Path:
+    path = Path(root or ROOT).resolve() / "state" / "lab_run_requests"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
-@dataclass
-class LabRunResult:
-    result_id: str
-    request_id: str
-    campaign_id: str
-    task_id: str
-    run_id: str
-    received_at: str
-    status: str
-    summary: str
-    hypothesis: str
-    metrics: dict[str, float]
-    comparison_summary: str = ""
-    budget_used: int = 1
-    recommendation_hint: str = ""
-    stop_signal: bool = False
-    raw_result: dict[str, Any] = field(default_factory=dict)
-    execution_backend: str = AUTORESEARCH_BACKEND_ID
-    schema_version: str = "v5.1"
+def lab_run_results_dir(root: Optional[Path] = None) -> Path:
+    path = Path(root or ROOT).resolve() / "state" / "lab_run_results"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
+
+def strategy_diversity_maps_dir(root: Optional[Path] = None) -> Path:
+    path = Path(root or ROOT).resolve() / "state" / "strategy_diversity_maps"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def lab_run_request_path(request_id: str, *, root: Optional[Path] = None) -> Path:
+    return lab_run_requests_dir(root) / f"{request_id}.json"
+
+
+def lab_run_result_path(result_id: str, *, root: Optional[Path] = None) -> Path:
+    return lab_run_results_dir(root) / f"{result_id}.json"
+
+
+def strategy_diversity_map_path(diversity_map_id: str, *, root: Optional[Path] = None) -> Path:
+    return strategy_diversity_maps_dir(root) / f"{diversity_map_id}.json"
+
+
+def save_lab_run_request(record: LabRunRequest, *, root: Optional[Path] = None) -> LabRunRequest:
+    lab_run_request_path(record.request_id, root=root).write_text(
+        json.dumps(record.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return record
+
+
+def save_lab_run_result(record: LabRunResult, *, root: Optional[Path] = None) -> LabRunResult:
+    lab_run_result_path(record.result_id, root=root).write_text(
+        json.dumps(record.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return record
+
+
+def save_strategy_diversity_map(record: StrategyDiversityMapRecord, *, root: Optional[Path] = None) -> StrategyDiversityMapRecord:
+    strategy_diversity_map_path(record.diversity_map_id, root=root).write_text(
+        json.dumps(record.to_dict(), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return record
+
+
+def load_lab_run_request(request_id: str, *, root: Optional[Path] = None) -> dict[str, Any]:
+    return json.loads(lab_run_request_path(request_id, root=root).read_text(encoding="utf-8"))
+
+
+def load_lab_run_result(result_id: str, *, root: Optional[Path] = None) -> dict[str, Any]:
+    return json.loads(lab_run_result_path(result_id, root=root).read_text(encoding="utf-8"))
+
+
+def list_lab_run_requests(root: Optional[Path] = None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in sorted(lab_run_requests_dir(root).glob("*.json")):
+        try:
+            rows.append(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+    rows.sort(key=lambda row: row.get("created_at", ""), reverse=True)
+    return rows
+
+
+def list_lab_run_results(root: Optional[Path] = None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in sorted(lab_run_results_dir(root).glob("*.json")):
+        try:
+            rows.append(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+    rows.sort(key=lambda row: row.get("received_at", ""), reverse=True)
+    return rows
+
+
+def list_strategy_diversity_maps(root: Optional[Path] = None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in sorted(strategy_diversity_maps_dir(root).glob("*.json")):
+        try:
+            rows.append(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+    rows.sort(key=lambda row: row.get("updated_at", row.get("created_at", "")), reverse=True)
+    return rows
+
+
+def build_autoresearch_summary(root: Optional[Path] = None) -> dict[str, Any]:
+    requests = list_lab_run_requests(root=root)
+    results = list_lab_run_results(root=root)
+    diversity_maps = list_strategy_diversity_maps(root=root)
+    status_counts: dict[str, int] = {}
+    for row in results:
+        status = row.get("status", "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    return {
+        "lab_run_request_count": len(requests),
+        "lab_run_result_count": len(results),
+        "strategy_diversity_map_count": len(diversity_maps),
+        "lab_run_status_counts": status_counts,
+        "latest_lab_run_request": requests[0] if requests else None,
+        "latest_lab_run_result": results[0] if results else None,
+        "latest_strategy_diversity_map": diversity_maps[0] if diversity_maps else None,
+    }
+
+
+def _build_strategy_diversity_map(
+    *,
+    campaign: ResearchCampaignRecord,
+    task_id: str,
+    run_id: str,
+    artifact_id: str,
+    result: LabRunResult,
+) -> StrategyDiversityMapRecord:
+    payload = dict(result.raw_result.get("diversity_map") or {})
+    return StrategyDiversityMapRecord(
+        diversity_map_id=new_id("divmap"),
+        campaign_id=campaign.campaign_id,
+        task_id=task_id,
+        run_id=run_id,
+        artifact_id=artifact_id,
+        created_at=now_iso(),
+        updated_at=now_iso(),
+        strategy_type=str(payload.get("strategy_type") or ""),
+        regime_sensitivity=str(payload.get("regime_sensitivity") or ""),
+        turnover_characteristics=str(payload.get("turnover_characteristics") or ""),
+        drawdown_profile=str(payload.get("drawdown_profile") or ""),
+        style_niche=str(payload.get("style_niche") or ""),
+        metric_quality=str(payload.get("metric_quality") or ""),
+        hard_vetoes=[str(item) for item in payload.get("hard_vetoes", [])],
+        behavioral_diversity_relative_to_promoted=str(
+            payload.get("behavioral_diversity_relative_to_promoted") or ""
+        ),
+        source_result_id=result.result_id,
+        execution_backend=AUTORESEARCH_BACKEND_ID,
+    )
 
 
 def _direction_for(metric_name: str, metric_directions: dict[str, str]) -> str:
@@ -159,6 +258,19 @@ def _parse_result(*, request: LabRunRequest, payload: dict[str, Any]) -> LabRunR
     if budget_used < 1:
         raise LabRunMalformedError("Lab run response `budget_used` must be >= 1.")
 
+    baseline_metrics = dict(payload.get("baseline_metrics") or {})
+    candidate_metrics = dict(payload.get("candidate_metrics") or raw_metrics)
+    delta_metrics = dict(payload.get("delta_metrics") or {})
+    if not delta_metrics and baseline_metrics:
+        for metric_name, metric_value in metrics.items():
+            baseline_value = baseline_metrics.get(metric_name)
+            if baseline_value is None:
+                continue
+            try:
+                delta_metrics[metric_name] = float(metric_value) - float(baseline_value)
+            except (TypeError, ValueError):
+                continue
+
     return LabRunResult(
         result_id=new_id("labres"),
         request_id=request.request_id,
@@ -167,9 +279,15 @@ def _parse_result(*, request: LabRunRequest, payload: dict[str, Any]) -> LabRunR
         run_id=str(payload.get("run_id") or new_id("labrun")),
         received_at=now_iso(),
         status=str(payload.get("status") or SUCCESS_STATUS),
+        candidate_patch_path=str(payload.get("candidate_patch_path") or ""),
+        baseline_metrics=baseline_metrics,
+        candidate_metrics=candidate_metrics,
+        delta_metrics=delta_metrics,
+        experiment_log_path=str(payload.get("experiment_log_path") or ""),
+        recommendation=dict(payload.get("recommendation") or {}),
+        token_usage=dict(payload.get("token_usage") or {}),
         summary=summary,
         hypothesis=hypothesis,
-        metrics=metrics,
         comparison_summary=str(payload.get("comparison_summary") or "").strip(),
         budget_used=budget_used,
         recommendation_hint=str(payload.get("recommendation_hint") or "").strip(),
@@ -382,6 +500,7 @@ def execute_research_campaign(
     use_runner = runner or _default_runner
     best_score: Optional[float] = None
     best_run_id: Optional[str] = None
+    best_result: Optional[LabRunResult] = None
     baseline_primary: Optional[float] = None
     no_improvement_passes = 0
     final_stop_reason = "pass_limit_reached"
@@ -409,17 +528,26 @@ def execute_research_campaign(
             created_at=now_iso(),
             requested_by=actor,
             lane=lane,
+            target_module=str((metadata := (task.backend_metadata or {}).get("autoresearch_contract", {})).get("target_module") or ""),
+            program_md_path=str(metadata.get("program_md_path") or ""),
+            eval_command=str(metadata.get("eval_command") or ""),
+            baseline_ref=campaign.baseline_ref,
+            benchmark_slice_ref=campaign.benchmark_slice_ref,
+            budget_minutes=metadata.get("budget_minutes"),
+            sandbox_root=str(metadata.get("sandbox_root") or ""),
             pass_index=pass_index,
             objective=campaign.objective,
             objective_metrics=list(campaign.objective_metrics),
             primary_metric=campaign.primary_metric,
             metric_directions=dict(campaign.metric_directions),
-            baseline_ref=campaign.baseline_ref,
-            benchmark_slice_ref=campaign.benchmark_slice_ref,
             remaining_passes=max_passes - pass_index + 1,
             remaining_budget_units=max_budget_units - campaign.budget_used,
             stop_conditions=dict(campaign.stop_conditions),
+            execution_backend=AUTORESEARCH_BACKEND_ID,
+            sandbox_class="bounded",
+            metadata={"task_type": task.task_type},
         )
+        save_lab_run_request(request, root=root_path)
         execution_identity = resolve_execution_identity(task=task, routing_meta=routing_meta)
         execution_request = record_backend_execution_request(
             task_id=task_id,
@@ -441,8 +569,27 @@ def execute_research_campaign(
         try:
             result = _parse_result(request=request, payload=use_runner(request))
         except Exception as exc:
-            run = ExperimentRunRecord(
+            result = LabRunResult(
+                result_id=new_id("labres"),
+                request_id=request.request_id,
+                campaign_id=campaign.campaign_id,
+                task_id=task_id,
                 run_id=new_id("labrun"),
+                received_at=now_iso(),
+                status=FAILED_STATUS,
+                experiment_log_path="",
+                recommendation={},
+                token_usage={},
+                summary="",
+                hypothesis="",
+                comparison_summary=f"{type(exc).__name__}: {exc}",
+                recommendation_hint="",
+                raw_result={},
+                execution_backend=AUTORESEARCH_BACKEND_ID,
+            )
+            save_lab_run_result(result, root=root_path)
+            run = ExperimentRunRecord(
+                run_id=result.run_id,
                 campaign_id=campaign.campaign_id,
                 task_id=task_id,
                 pass_index=pass_index,
@@ -451,7 +598,7 @@ def execute_research_campaign(
                 actor=actor,
                 lane=lane,
                 status=FAILED_STATUS,
-                stop_reason=f"{type(exc).__name__}: {exc}",
+                stop_reason=result.comparison_summary,
                 raw_result={},
                 execution_backend=AUTORESEARCH_BACKEND_ID,
             )
@@ -565,7 +712,7 @@ def execute_research_campaign(
             execution_backend=AUTORESEARCH_BACKEND_ID,
         )
 
-        primary_value = result.metrics[campaign.primary_metric]
+        primary_value = result.candidate_metrics[campaign.primary_metric]
         primary_direction = normalized_directions[campaign.primary_metric]
         if baseline_primary is None:
             baseline_primary = primary_value
@@ -578,11 +725,12 @@ def execute_research_campaign(
         if improved:
             best_score = primary_value
             best_run_id = run.run_id
+            best_result = result
             no_improvement_passes = 0
         else:
             no_improvement_passes += 1
 
-        for metric_name, metric_value in result.metrics.items():
+        for metric_name, metric_value in result.candidate_metrics.items():
             direction = normalized_directions[metric_name]
             baseline_value = baseline_primary if metric_name == campaign.primary_metric else None
             delta_value = None if baseline_value is None else metric_value - baseline_value
@@ -620,7 +768,7 @@ def execute_research_campaign(
                 "objective": request.objective,
                 "primary_metric": campaign.primary_metric,
                 "primary_direction": primary_direction,
-                "metrics": dict(result.metrics),
+                "metrics": dict(result.candidate_metrics),
                 "budget_used": result.budget_used,
                 "expected_status": result.status,
             },
@@ -634,6 +782,7 @@ def execute_research_campaign(
         )
         run.trace_id = trace.trace_id
         save_experiment_run(run, root=root_path)
+        save_lab_run_result(result, root=root_path)
         execution_request.status = "completed"
         execution_request.backend_run_id = run.run_id
         save_backend_execution_request(execution_request, root=root_path)
@@ -656,7 +805,7 @@ def execute_research_campaign(
                 "result_id": result.result_id,
                 "run_id": run.run_id,
             },
-            metadata={"metrics": dict(result.metrics), "budget_used": result.budget_used},
+            metadata={"metrics": dict(result.candidate_metrics), "budget_used": result.budget_used, "token_usage": dict(result.token_usage)},
             root=root_path,
         )
         latest_execution_result_id = execution_result.backend_execution_result_id
@@ -755,6 +904,18 @@ def execute_research_campaign(
     recommendation.recommended_artifact_id = report_artifact["artifact_id"]
     recommendation.linked_artifact_ids = [report_artifact["artifact_id"]]
     save_research_recommendation(recommendation, root=root_path)
+
+    if best_result is not None:
+        save_strategy_diversity_map(
+            _build_strategy_diversity_map(
+                campaign=campaign,
+                task_id=task_id,
+                run_id=best_run_id or best_result.run_id,
+                artifact_id=report_artifact["artifact_id"],
+                result=best_result,
+            ),
+            root=root_path,
+        )
 
     campaign.latest_recommendation_id = recommendation.recommendation_id
     campaign.linked_artifact_ids = [report_artifact["artifact_id"]]

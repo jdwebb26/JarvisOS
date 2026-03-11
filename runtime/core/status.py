@@ -27,6 +27,7 @@ from runtime.core.rollback_store import build_rollback_summary
 from runtime.core.routing import build_model_registry_summary
 from runtime.core.modality_contracts import build_modality_summary
 from runtime.core.subsystem_contracts import build_subsystem_contract_summary
+from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.controls.control_store import build_control_summary, get_effective_control_state, list_blocked_actions, list_control_events, list_control_records
 
@@ -260,6 +261,7 @@ def build_status(root: Path) -> dict[str, Any]:
     approval_resume_tokens = _load_jsons(root / "state" / "approval_resume_tokens")
     subsystem_contracts = _load_jsons(root / "state" / "subsystem_contracts")
     eval_profiles = _load_jsons(root / "state" / "eval_profiles")
+    strategy_diversity_maps = _load_jsons(root / "state" / "strategy_diversity_maps")
     from scripts.operator_checkpoint_action_pack import classify_action_pack
     from scripts.operator_triage_support import (
         build_decision_inbox_data,
@@ -286,6 +288,9 @@ def build_status(root: Path) -> dict[str, Any]:
     from runtime.core.replay_store import build_replay_summary
 
     replay_summary = build_replay_summary(root)
+    from runtime.evals.trace_store import build_eval_outcome_summary
+
+    eval_outcome_summary = build_eval_outcome_summary(root=root)
     multimodal_summary = build_modality_summary(root)
     execution_contract_summary = build_execution_contract_summary(root)
     token_budget_summary = build_token_budget_summary(root)
@@ -302,6 +307,8 @@ def build_status(root: Path) -> dict[str, Any]:
     autoresearch_summary = build_autoresearch_summary(root=root)
     approval_session_summary = build_approval_session_summary(root)
     subsystem_contract_summary = build_subsystem_contract_summary(root)
+    trajectory_summary = build_trajectory_summary(root=root)
+    operator_profile_summary = build_operator_profile_summary(root=root)
     control_summary = build_control_summary(root=root)
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
@@ -495,6 +502,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "approval_resume_tokens": len(approval_resume_tokens),
         "subsystem_contracts": len(subsystem_contracts),
         "eval_profiles": len(eval_profiles),
+        "strategy_diversity_maps": len(strategy_diversity_maps),
     }
     triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
     decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
@@ -644,12 +652,15 @@ def build_status(root: Path) -> dict[str, Any]:
         "candidate_promotion_summary": candidate_promotion_summary,
         "provenance_summary": provenance_summary,
         "replay_summary": replay_summary,
+        "eval_outcome_summary": eval_outcome_summary,
         "multimodal_summary": multimodal_summary,
         "memory_discipline_summary": memory_discipline_summary,
         "promotion_governance_summary": promotion_governance_summary,
         "rollback_summary": rollback_summary,
         "approval_session_summary": approval_session_summary,
         "subsystem_contract_summary": subsystem_contract_summary,
+        "trajectory_summary": trajectory_summary,
+        "operator_profile_summary": operator_profile_summary,
         "impacted_artifacts": impacted_artifacts,
         "revoked_artifacts": revoked_artifacts,
         "impacted_outputs": impacted_outputs,
@@ -760,6 +771,9 @@ def build_status(root: Path) -> dict[str, Any]:
             "rollback_summary": rollback_summary,
             "approval_session_summary": approval_session_summary,
             "subsystem_contract_summary": subsystem_contract_summary,
+            "trajectory_summary": trajectory_summary,
+            "operator_profile_summary": operator_profile_summary,
+            "eval_outcome_summary": eval_outcome_summary,
             "degradation_summary": degradation_summary,
             "heartbeat_summary": heartbeat_summary,
             "hermes_summary": hermes_summary,

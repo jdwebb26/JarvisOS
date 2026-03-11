@@ -19,13 +19,14 @@ from runtime.core.models import (
     DecisionProvenanceRecord,
     ArtifactRecord,
     OutputStatus,
+    PromotionProvenanceRecord,
     RecordLifecycleState,
     TaskStatus,
     new_id,
 )
 from runtime.core.output_store import mark_outputs_impacted
 from runtime.core.promotion_governance import assert_artifact_promotion_allowed
-from runtime.core.provenance_store import save_artifact_provenance, save_decision_provenance
+from runtime.core.provenance_store import save_artifact_provenance, save_decision_provenance, save_promotion_provenance
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_runtime import load_task
 from runtime.core.task_store import (
@@ -337,7 +338,7 @@ def promote_artifact(
     )
     from runtime.core.candidate_store import record_candidate_promotion
 
-    record_candidate_promotion(
+    promotion_decision = record_candidate_promotion(
         artifact_id=artifact.artifact_id,
         actor=actor,
         lane=lane,
@@ -346,7 +347,7 @@ def promote_artifact(
         root=root_path,
     )
     candidate = find_candidate_for_artifact(artifact.artifact_id, root=root_path)
-    save_artifact_provenance(
+    artifact_provenance = save_artifact_provenance(
         ArtifactProvenanceRecord(
             artifact_provenance_id=new_id("aprov"),
             artifact_id=artifact.artifact_id,
@@ -362,6 +363,45 @@ def promote_artifact(
             candidate_id=None if candidate is None else candidate.candidate_id,
             source_refs={"provenance_ref": artifact.provenance_ref},
             replay_input={"artifact_id": artifact.artifact_id, "task_id": artifact.task_id, "transition": "promote"},
+        ),
+        root=root_path,
+    )
+    from runtime.core.review_store import latest_review_for_task
+    from runtime.evals.trace_store import list_eval_results_for_task
+
+    task = load_task(root_path, artifact.task_id)
+    latest_review = latest_review_for_task(artifact.task_id, root=root_path)
+    eval_results = list_eval_results_for_task(artifact.task_id, root=root_path)
+    routing_metadata = ((task.backend_metadata or {}).get("routing") or {}) if task else {}
+    save_promotion_provenance(
+        PromotionProvenanceRecord(
+            promotion_provenance_id=new_id("pprov"),
+            artifact_id=artifact.artifact_id,
+            task_id=artifact.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            source_task_id=artifact.task_id,
+            source_backend=artifact.execution_backend or "unassigned",
+            model_lane=routing_metadata.get("lane") or (None if task is None else task.assigned_role),
+            input_refs={
+                "routing_request_id": routing_metadata.get("routing_request_id"),
+                "routing_decision_id": routing_metadata.get("routing_decision_id"),
+                "backend_assignment_id": None if task is None else task.backend_assignment_id,
+                "backend_execution_request_id": None if task is None else ((task.backend_metadata or {}).get("latest_execution_request_id")),
+                "backend_execution_result_id": None if task is None else ((task.backend_metadata or {}).get("latest_execution_result_id")),
+            },
+            eval_refs={
+                "eval_result_ids": [row.eval_result_id for row in eval_results],
+                "eval_outcome_ids": [row.latest_eval_outcome_id for row in eval_results if getattr(row, "latest_eval_outcome_id", None)],
+            },
+            reviewer=None if latest_review is None else latest_review.reviewer_role,
+            promoter=actor,
+            promoted_at=artifact.promoted_at,
+            build_or_run_ref=artifact.backend_run_id or (None if task is None else task.backend_run_id),
+            promotion_decision_id=None if promotion_decision is None else promotion_decision.promotion_decision_id,
+            artifact_provenance_id=artifact_provenance.artifact_provenance_id,
         ),
         root=root_path,
     )

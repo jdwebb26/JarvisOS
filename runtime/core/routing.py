@@ -13,9 +13,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import (
+    BackendAssignmentRecord,
     CapabilityProfileRecord,
     ModelRegistryEntryRecord,
     ProviderAdapterResultRecord,
+    RoutingOverrideRecord,
+    RoutingPolicyRecord,
     RoutingProvenanceRecord,
     RoutingDecisionRecord,
     RoutingRequestRecord,
@@ -24,6 +27,7 @@ from runtime.core.models import (
     new_id,
     now_iso,
 )
+from runtime.core.backend_assignments import build_backend_assignment_summary, save_backend_assignment
 from runtime.controls.control_store import assert_control_allows, get_effective_control_state
 from runtime.core.provenance_store import save_routing_provenance
 from runtime.core.modality_contracts import build_modality_summary, ensure_default_modality_contracts
@@ -107,6 +111,14 @@ def capability_profiles_dir(root: Optional[Path] = None) -> Path:
     return _state_dir("capability_profiles", root=root)
 
 
+def routing_policies_dir(root: Optional[Path] = None) -> Path:
+    return _state_dir("routing_policies", root=root)
+
+
+def routing_overrides_dir(root: Optional[Path] = None) -> Path:
+    return _state_dir("routing_overrides", root=root)
+
+
 def routing_requests_dir(root: Optional[Path] = None) -> Path:
     return _state_dir("routing_requests", root=root)
 
@@ -117,6 +129,10 @@ def routing_decisions_dir(root: Optional[Path] = None) -> Path:
 
 def provider_adapter_results_dir(root: Optional[Path] = None) -> Path:
     return _state_dir("provider_adapter_results", root=root)
+
+
+def backend_assignments_dir(root: Optional[Path] = None) -> Path:
+    return _state_dir("backend_assignments", root=root)
 
 
 def _record_path(folder: Path, record_id: str) -> Path:
@@ -158,6 +174,18 @@ def save_routing_request(record: RoutingRequestRecord, root: Optional[Path] = No
     return record
 
 
+def save_routing_policy(record: RoutingPolicyRecord, root: Optional[Path] = None) -> RoutingPolicyRecord:
+    record.updated_at = now_iso()
+    _save_record(routing_policies_dir(root), record.routing_policy_id, record.to_dict())
+    return record
+
+
+def save_routing_override(record: RoutingOverrideRecord, root: Optional[Path] = None) -> RoutingOverrideRecord:
+    record.updated_at = now_iso()
+    _save_record(routing_overrides_dir(root), record.routing_override_id, record.to_dict())
+    return record
+
+
 def save_routing_decision(record: RoutingDecisionRecord, root: Optional[Path] = None) -> RoutingDecisionRecord:
     record.updated_at = now_iso()
     _save_record(routing_decisions_dir(root), record.routing_decision_id, record.to_dict())
@@ -184,9 +212,79 @@ def list_routing_decisions(root: Optional[Path] = None) -> list[RoutingDecisionR
     return rows
 
 
+def list_routing_policies(root: Optional[Path] = None) -> list[RoutingPolicyRecord]:
+    rows = [RoutingPolicyRecord.from_dict(row) for row in _load_rows(routing_policies_dir(root))]
+    rows.sort(key=lambda row: row.updated_at, reverse=True)
+    return rows
+
+
+def list_routing_overrides(root: Optional[Path] = None) -> list[RoutingOverrideRecord]:
+    rows = [RoutingOverrideRecord.from_dict(row) for row in _load_rows(routing_overrides_dir(root))]
+    rows.sort(key=lambda row: row.updated_at, reverse=True)
+    return rows
+
+
 def latest_routing_decision(root: Optional[Path] = None) -> Optional[RoutingDecisionRecord]:
     rows = list_routing_decisions(root=root)
     return rows[0] if rows else None
+
+
+def latest_routing_policy(root: Optional[Path] = None) -> Optional[RoutingPolicyRecord]:
+    rows = list_routing_policies(root=root)
+    return rows[0] if rows else None
+
+
+def _override_is_active(record: RoutingOverrideRecord) -> bool:
+    if not record.active:
+        return False
+    if not record.expires_at:
+        return True
+    return record.expires_at > now_iso()
+
+
+def _matching_override_scope(record: RoutingOverrideRecord, *, lane: str) -> bool:
+    if record.scope_type == "global":
+        return True
+    return record.scope_type == "lane" and record.scope_id == lane
+
+
+def resolve_routing_policy(*, lane: str, root: Optional[Path] = None) -> dict[str, Any]:
+    root_path = Path(root or ROOT).resolve()
+    ensure_default_routing_contracts(root_path)
+    policy = latest_routing_policy(root=root_path)
+    if policy is None:
+        raise ValueError("No routing policy is available.")
+    default_family = policy.default_family
+    lane_override_family = policy.lane_overrides.get(lane)
+    effective_default_family = lane_override_family or default_family
+    allowed_families = list(policy.allowed_families or [default_family])
+    if effective_default_family not in allowed_families:
+        allowed_families.append(effective_default_family)
+    applied_overrides: list[RoutingOverrideRecord] = []
+    for record in list_routing_overrides(root=root_path):
+        if not _override_is_active(record):
+            continue
+        if not _matching_override_scope(record, lane=lane):
+            continue
+        applied_overrides.append(record)
+    applied_overrides.sort(key=lambda item: (item.scope_type == "lane", item.updated_at))
+    latest_override = applied_overrides[-1] if applied_overrides else None
+    if latest_override is not None:
+        effective_default_family = latest_override.override_family
+        if latest_override.allowed_families:
+            allowed_families = list(latest_override.allowed_families)
+        elif effective_default_family not in allowed_families:
+            allowed_families.append(effective_default_family)
+    if effective_default_family not in allowed_families:
+        allowed_families.append(effective_default_family)
+    return {
+        "policy": policy,
+        "effective_default_family": effective_default_family,
+        "allowed_families": allowed_families,
+        "lane_override_family": lane_override_family,
+        "active_overrides": applied_overrides,
+        "latest_override": latest_override,
+    }
 
 
 def ensure_default_routing_contracts(root: Optional[Path] = None) -> dict[str, list[dict]]:
@@ -230,9 +328,25 @@ def ensure_default_routing_contracts(root: Optional[Path] = None) -> dict[str, l
                 ),
                 root=root_path,
             )
+    if latest_routing_policy(root=root_path) is None:
+        save_routing_policy(
+            RoutingPolicyRecord(
+                routing_policy_id="routing_policy_default",
+                created_at=now_iso(),
+                updated_at=now_iso(),
+                actor="system",
+                lane="routing",
+                default_family="qwen3.5",
+                allowed_families=["qwen3.5"],
+                lane_overrides={},
+            ),
+            root=root_path,
+        )
     return {
         "model_registry_entries": [row.to_dict() for row in list_model_registry_entries(root_path)],
         "capability_profiles": [row.to_dict() for row in list_capability_profiles(root_path)],
+        "routing_policies": [row.to_dict() for row in list_routing_policies(root_path)],
+        "routing_overrides": [row.to_dict() for row in list_routing_overrides(root_path)],
     }
 
 
@@ -264,7 +378,8 @@ def _choose_entry(
     required_capabilities: list[str],
     task_type: str,
     risk_level: str,
-    allowed_models: list[str],
+    allowed_families: list[str],
+    preferred_family: str,
     root: Path,
 ) -> tuple[ModelRegistryEntryRecord, CapabilityProfileRecord, list[str]]:
     effective_controls = get_effective_control_state(root=root)
@@ -274,7 +389,7 @@ def _choose_entry(
         row
         for row in list_model_registry_entries(root)
         if row.active
-        and row.model_name in allowed_models
+        and row.model_family in allowed_families
         and row.provider_id not in disabled_providers
         and row.default_execution_backend not in disabled_backends
     ]
@@ -286,9 +401,10 @@ def _choose_entry(
             if profile is None:
                 continue
             score = _profile_score(profile, required_capabilities, task_type, risk_level)
-            ranked.append(((*score, -entry.priority_rank), entry, profile))
+            preferred_family_bonus = 1 if entry.model_family == preferred_family else 0
+            ranked.append(((*score, preferred_family_bonus, -entry.priority_rank), entry, profile))
     if not ranked:
-        raise ValueError("No active routing candidates were available for the current Qwen-only policy.")
+        raise ValueError("No active routing candidates were available for the current routing policy.")
     ranked.sort(key=lambda item: item[0], reverse=True)
     selected_entry, selected_profile = ranked[0][1], ranked[0][2]
     candidate_model_names = [item[1].model_name for item in ranked]
@@ -313,7 +429,11 @@ def route_task_intent(
     root_path = Path(root or ROOT).resolve()
     ensure_default_routing_contracts(root_path)
     modality_summary = build_modality_summary(root_path)
-    allowed_models = [row["model_name"] for row in ACTIVE_QWEN_MODELS]
+    effective_policy = resolve_routing_policy(lane=lane, root=root_path)
+    policy = effective_policy["policy"]
+    latest_override = effective_policy["latest_override"]
+    allowed_families = list(effective_policy["allowed_families"])
+    preferred_family = str(effective_policy["effective_default_family"])
     assert_control_allows(
         action="route_selection",
         root=root_path,
@@ -323,9 +443,13 @@ def route_task_intent(
     )
     effective_controls = get_effective_control_state(root=root_path)
     policy_constraints = {
-        "qwen_only": True,
-        "allowed_models": allowed_models,
-        "provider_lock": "qwen",
+        "default_family": preferred_family,
+        "allowed_families": list(allowed_families),
+        "provider_policy": "qwen_only" if allowed_families == ["qwen3.5"] else "policy_override",
+        "routing_policy_id": policy.routing_policy_id,
+        "lane_override_family": effective_policy["lane_override_family"],
+        "active_override_ids": [row.routing_override_id for row in effective_policy["active_overrides"]],
+        "latest_override_id": latest_override.routing_override_id if latest_override is not None else None,
         "enabled_input_modalities": list(modality_summary.get("enabled_input_modalities", [])),
         "multimodal_runtime_enabled": False,
         "disabled_provider_ids": list(effective_controls.get("disabled_provider_ids", [])),
@@ -359,7 +483,8 @@ def route_task_intent(
         required_capabilities=required_capabilities,
         task_type=task_type,
         risk_level=risk_level,
-        allowed_models=allowed_models,
+        allowed_families=allowed_families,
+        preferred_family=preferred_family,
         root=root_path,
     )
     decision = save_routing_decision(
@@ -377,7 +502,7 @@ def route_task_intent(
             selected_model_name=entry.model_name,
             selected_execution_backend=profile.preferred_execution_backend or entry.default_execution_backend,
             selection_reason=(
-                f"Matched capabilities {required_capabilities} under qwen_only policy using profile {profile.profile_name}."
+                f"Matched capabilities {required_capabilities} under routing family {preferred_family} using profile {profile.profile_name}."
             ),
             candidate_model_names=candidate_model_names,
             policy_constraints=policy_constraints,
@@ -408,6 +533,31 @@ def route_task_intent(
         ),
         root=root_path,
     )
+    assignment = save_backend_assignment(
+        BackendAssignmentRecord(
+            backend_assignment_id=new_id("bassign"),
+            task_id=task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            routing_request_id=request.routing_request_id,
+            routing_decision_id=decision.routing_decision_id,
+            provider_adapter_result_id=adapter_result.provider_adapter_result_id,
+            provider_id=entry.provider_id,
+            model_name=entry.model_name,
+            execution_backend=decision.selected_execution_backend,
+            model_registry_entry_id=entry.model_registry_entry_id,
+            capability_profile_id=profile.capability_profile_id,
+            assignment_reason=decision.selection_reason,
+            status="assigned",
+            source_refs={
+                "routing_policy_id": policy.routing_policy_id,
+                "routing_override_id": latest_override.routing_override_id if latest_override is not None else None,
+            },
+        ),
+        root=root_path,
+    )
     provenance = save_routing_provenance(
         RoutingProvenanceRecord(
             routing_provenance_id=new_id("rprov"),
@@ -423,6 +573,7 @@ def route_task_intent(
             selected_execution_backend=decision.selected_execution_backend,
             source_refs={
                 "provider_adapter_result_id": adapter_result.provider_adapter_result_id,
+                "backend_assignment_id": assignment.backend_assignment_id,
                 "model_registry_entry_id": entry.model_registry_entry_id,
                 "capability_profile_id": profile.capability_profile_id,
             },
@@ -441,12 +592,25 @@ def route_task_intent(
         "request": request.to_dict(),
         "decision": decision.to_dict(),
         "provider_adapter_result": adapter_result.to_dict(),
+        "backend_assignment": assignment.to_dict(),
         "provenance": provenance.to_dict(),
         "active_registry": {
-            "provider_policy": "qwen_only",
-            "active_model_names": allowed_models,
-            "active_model_count": len(allowed_models),
+            "provider_policy": "qwen_only" if allowed_families == ["qwen3.5"] else "policy_override",
+            "default_family": preferred_family,
+            "allowed_families": list(allowed_families),
+            "active_model_names": [
+                row.model_name
+                for row in sorted(
+                    [row for row in list_model_registry_entries(root_path) if row.active and row.model_family in allowed_families],
+                    key=lambda row: row.priority_rank,
+                    reverse=True,
+                )
+            ],
+            "active_model_count": sum(1 for row in list_model_registry_entries(root_path) if row.active and row.model_family in allowed_families),
             "enabled_input_modalities": list(modality_summary.get("enabled_input_modalities", [])),
+            "routing_policy_id": policy.routing_policy_id,
+            "lane_override_family": effective_policy["lane_override_family"],
+            "latest_override_id": latest_override.routing_override_id if latest_override is not None else None,
             "disabled_provider_ids": list(effective_controls.get("disabled_provider_ids", [])),
             "disabled_execution_backends": list(effective_controls.get("disabled_execution_backends", [])),
         },
@@ -455,27 +619,46 @@ def route_task_intent(
 
 def build_model_registry_summary(root: Optional[Path] = None) -> dict:
     root_path = Path(root or ROOT).resolve()
+    ensure_default_routing_contracts(root_path)
     modality_summary = build_modality_summary(root_path)
     effective_controls = get_effective_control_state(root=root_path)
+    effective_policy = resolve_routing_policy(lane="routing", root=root_path)
+    policy = effective_policy["policy"]
+    active_overrides = [row for row in list_routing_overrides(root_path) if _override_is_active(row)]
+    latest_override = active_overrides[0] if active_overrides else None
+    allowed_families = list(effective_policy["allowed_families"])
+    preferred_family = str(effective_policy["effective_default_family"])
     disabled_providers = set(effective_controls.get("disabled_provider_ids", []))
     disabled_backends = set(effective_controls.get("disabled_execution_backends", []))
     entries = [
         row
         for row in list_model_registry_entries(root_path)
-        if row.active and row.provider_id not in disabled_providers and row.default_execution_backend not in disabled_backends
+        if row.active
+        and row.model_family in allowed_families
+        and row.provider_id not in disabled_providers
+        and row.default_execution_backend not in disabled_backends
     ]
     decisions = list_routing_decisions(root_path)
     latest = decisions[0].to_dict() if decisions else None
+    backend_assignment_summary = build_backend_assignment_summary(root=root_path)
     return {
-        "provider_policy": "qwen_only",
+        "provider_policy": "qwen_only" if allowed_families == ["qwen3.5"] else "policy_override",
+        "architecture_mode": "provider_agnostic",
+        "routing_policy_id": policy.routing_policy_id,
+        "default_family": preferred_family,
+        "allowed_families": list(allowed_families),
+        "lane_overrides": dict(policy.lane_overrides),
+        "latest_override": latest_override.to_dict() if latest_override is not None else None,
+        "active_override_count": len(active_overrides),
         "provider_ids": sorted({row.provider_id for row in entries}),
-        "active_model_names": [row.model_name for row in sorted(entries, key=lambda row: row.priority_rank)],
+        "active_model_names": [row.model_name for row in sorted(entries, key=lambda row: row.priority_rank, reverse=True)],
         "active_model_count": len(entries),
         "enabled_input_modalities": list(modality_summary.get("enabled_input_modalities", [])),
         "multimodal_runtime_enabled": False,
         "disabled_provider_ids": get_effective_control_state(root=root_path).get("disabled_provider_ids", []),
         "disabled_execution_backends": get_effective_control_state(root=root_path).get("disabled_execution_backends", []),
         "latest_routing_decision": latest,
+        "backend_assignment_summary": backend_assignment_summary,
     }
 
 

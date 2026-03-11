@@ -31,7 +31,7 @@ from runtime.core.models import (
 from runtime.core.output_store import find_existing_output
 from runtime.core.promotion_governance import assert_artifact_promotion_allowed, assert_artifact_publish_allowed
 from runtime.core.rollback_store import list_rollback_plans
-from runtime.core.routing import _choose_entry, ensure_default_routing_contracts, infer_required_capabilities, list_model_registry_entries
+from runtime.core.routing import _choose_entry, ensure_default_routing_contracts, infer_required_capabilities, resolve_routing_policy
 from runtime.core.task_store import load_task
 from runtime.memory.governance import load_memory_candidate
 
@@ -77,6 +77,11 @@ def save_replay_execution(record: ReplayExecutionRecord, *, root: Optional[Path]
 def save_replay_result(record: ReplayResultRecord, *, root: Optional[Path] = None) -> ReplayResultRecord:
     record.updated_at = now_iso()
     _save(_path(replay_results_dir(root), record.replay_result_id), record.to_dict())
+    execution = next((row for row in list_replay_executions(root=root) if row.replay_execution_id == record.replay_execution_id), None)
+    if execution is not None:
+        from runtime.core.trajectory_profiles import record_trajectory_from_replay
+
+        record_trajectory_from_replay(replay_execution=execution, replay_result=record, root=root)
     return record
 
 
@@ -329,7 +334,7 @@ def execute_replay_plan(*, replay_plan_id: str, actor: str, lane: str, root: Opt
             reason = message
         else:
             ensure_default_routing_contracts(root_path)
-            allowed_models = [row.model_name for row in list_model_registry_entries(root_path) if row.active]
+            effective_policy = resolve_routing_policy(lane=request.get("lane", lane), root=root_path)
             entry, profile, _ = _choose_entry(
                 required_capabilities=request.get("required_capabilities") or infer_required_capabilities(
                     task_type=request["task_type"],
@@ -339,7 +344,8 @@ def execute_replay_plan(*, replay_plan_id: str, actor: str, lane: str, root: Opt
                 ),
                 task_type=request["task_type"],
                 risk_level=request["risk_level"],
-                allowed_models=allowed_models,
+                allowed_families=list(effective_policy["allowed_families"]),
+                preferred_family=str(effective_policy["effective_default_family"]),
                 root=root_path,
             )
             expected_snapshot = {

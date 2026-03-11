@@ -1079,6 +1079,50 @@ class EvalResultRecord:
 
 
 @dataclass
+class EvalOutcomeRecord:
+    eval_outcome_id: str
+    eval_result_id: str
+    eval_case_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    profile_id: Optional[str] = None
+    profile_version: Optional[str] = None
+    replay_result_id: Optional[str] = None
+    trace_id: Optional[str] = None
+    veto_results: dict[str, Any] = field(default_factory=dict)
+    quality_scores: dict[str, Any] = field(default_factory=dict)
+    pass_fail: bool = False
+    metrics: dict[str, Any] = field(default_factory=dict)
+    notes: str = ""
+    derived_outcome: str = EvalDerivedOutcome.OPERATOR_DEFINED_EVAL_PENDING.value
+    derived_reason: str = ""
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "EvalOutcomeRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("profile_id", None)
+        data.setdefault("profile_version", None)
+        data.setdefault("replay_result_id", None)
+        data.setdefault("trace_id", None)
+        data.setdefault("veto_results", {})
+        data.setdefault("quality_scores", {})
+        data.setdefault("pass_fail", False)
+        data.setdefault("metrics", {})
+        data.setdefault("notes", "")
+        data.setdefault("derived_outcome", EvalDerivedOutcome.OPERATOR_DEFINED_EVAL_PENDING.value)
+        data.setdefault("derived_reason", "")
+        data.setdefault("source_refs", {})
+        return cls(**data)
+
+
+@dataclass
 class EvalProfileRecord:
     profile_id: str
     profile_version: str
@@ -1343,6 +1387,57 @@ class MemoryCandidateRecord:
         data.setdefault("latest_revocation_decision_id", None)
         data.setdefault("lifecycle_state", RecordLifecycleState.CANDIDATE.value)
         data.setdefault("execution_backend", "ralph_adapter")
+        return cls(**data)
+
+
+@dataclass
+class MemoryEntryRecord:
+    memory_id: str
+    memory_candidate_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    memory_class: str
+    structural_type: str
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    approval_requirement: str = "none"
+    confidence_score: float = 0.5
+    confidence_decay_days: int = 30
+    last_retrieved_at: Optional[str] = None
+    contradiction_check: dict[str, Any] = field(default_factory=dict)
+    superseded_by: Optional[str] = None
+    review_state: str = "not_required"
+    memory_type: str = ""
+    title: str = ""
+    summary: str = ""
+    content: str = ""
+    lifecycle_state: str = RecordLifecycleState.PROMOTED.value
+    execution_backend: str = "memory_spine"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryEntryRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("source_refs", {})
+        data.setdefault("approval_requirement", "none")
+        data.setdefault("confidence_score", 0.5)
+        data.setdefault("confidence_decay_days", 30)
+        data.setdefault("last_retrieved_at", None)
+        data.setdefault("contradiction_check", {})
+        data.setdefault("superseded_by", None)
+        data.setdefault("review_state", "not_required")
+        data.setdefault("memory_type", "")
+        data.setdefault("title", "")
+        data.setdefault("summary", "")
+        data.setdefault("content", "")
+        data.setdefault("lifecycle_state", RecordLifecycleState.PROMOTED.value)
+        data.setdefault("execution_backend", "memory_spine")
         return cls(**data)
 
 
@@ -1929,6 +2024,47 @@ class LabRunResultRecord:
         data.setdefault("recommendation_hint", "")
         data.setdefault("stop_signal", False)
         data.setdefault("raw_result", {})
+        data.setdefault("execution_backend", "autoresearch_adapter")
+        return cls(**data)
+
+
+@dataclass
+class StrategyDiversityMapRecord:
+    diversity_map_id: str
+    campaign_id: str
+    task_id: str
+    run_id: str
+    artifact_id: str
+    created_at: str
+    updated_at: str
+    strategy_type: str = ""
+    regime_sensitivity: str = ""
+    turnover_characteristics: str = ""
+    drawdown_profile: str = ""
+    style_niche: str = ""
+    metric_quality: str = ""
+    hard_vetoes: list[str] = field(default_factory=list)
+    behavioral_diversity_relative_to_promoted: str = ""
+    source_result_id: Optional[str] = None
+    execution_backend: str = "autoresearch_adapter"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "StrategyDiversityMapRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("strategy_type", "")
+        data.setdefault("regime_sensitivity", "")
+        data.setdefault("turnover_characteristics", "")
+        data.setdefault("drawdown_profile", "")
+        data.setdefault("style_niche", "")
+        data.setdefault("metric_quality", "")
+        data.setdefault("hard_vetoes", [])
+        data.setdefault("behavioral_diversity_relative_to_promoted", "")
+        data.setdefault("source_result_id", None)
         data.setdefault("execution_backend", "autoresearch_adapter")
         return cls(**data)
 
@@ -2539,6 +2675,47 @@ class ArtifactProvenanceRecord:
 
 
 @dataclass
+class PromotionProvenanceRecord:
+    promotion_provenance_id: str
+    artifact_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    source_task_id: str
+    source_backend: str
+    model_lane: Optional[str] = None
+    input_refs: dict[str, Any] = field(default_factory=dict)
+    eval_refs: dict[str, Any] = field(default_factory=dict)
+    reviewer: Optional[str] = None
+    promoter: str = ""
+    promoted_at: Optional[str] = None
+    build_or_run_ref: Optional[str] = None
+    promotion_decision_id: Optional[str] = None
+    artifact_provenance_id: Optional[str] = None
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PromotionProvenanceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("model_lane", None)
+        data.setdefault("input_refs", {})
+        data.setdefault("eval_refs", {})
+        data.setdefault("reviewer", None)
+        data.setdefault("promoter", "")
+        data.setdefault("promoted_at", None)
+        data.setdefault("build_or_run_ref", None)
+        data.setdefault("promotion_decision_id", None)
+        data.setdefault("artifact_provenance_id", None)
+        return cls(**data)
+
+
+@dataclass
 class RoutingProvenanceRecord:
     routing_provenance_id: str
     routing_request_id: str
@@ -2778,6 +2955,79 @@ class ReplayResultRecord:
         data.setdefault("observed_snapshot", {})
         data.setdefault("drift_fields", [])
         data.setdefault("reason", "")
+        return cls(**data)
+
+
+@dataclass
+class TrajectoryRecord:
+    trajectory_id: str
+    task_id: Optional[str]
+    created_at: str
+    updated_at: str
+    prompt_class: str = ""
+    task_type: str = ""
+    backend: str = ""
+    tools_used: list[str] = field(default_factory=list)
+    outcome_quality: str = ""
+    review_result: str = ""
+    replay_plan_id: Optional[str] = None
+    replay_execution_id: Optional[str] = None
+    replay_result_id: Optional[str] = None
+    eval_result_id: Optional[str] = None
+    trace_id: Optional[str] = None
+    collection_policy: str = "policy_controlled"
+    sensitive_collection_enabled: bool = False
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "TrajectoryRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("task_id", None)
+        data.setdefault("prompt_class", "")
+        data.setdefault("task_type", "")
+        data.setdefault("backend", "")
+        data.setdefault("tools_used", [])
+        data.setdefault("outcome_quality", "")
+        data.setdefault("review_result", "")
+        data.setdefault("replay_plan_id", None)
+        data.setdefault("replay_execution_id", None)
+        data.setdefault("replay_result_id", None)
+        data.setdefault("eval_result_id", None)
+        data.setdefault("trace_id", None)
+        data.setdefault("collection_policy", "policy_controlled")
+        data.setdefault("sensitive_collection_enabled", False)
+        data.setdefault("source_refs", {})
+        return cls(**data)
+
+
+@dataclass
+class OperatorProfileRecord:
+    operator_profile_id: str
+    operator_id: str
+    created_at: str
+    updated_at: str
+    notification_preference_refs: list[str] = field(default_factory=list)
+    approval_surface_preference: str = ""
+    verbosity_style: str = ""
+    escalation_rules_ref: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "OperatorProfileRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("notification_preference_refs", [])
+        data.setdefault("approval_surface_preference", "")
+        data.setdefault("verbosity_style", "")
+        data.setdefault("escalation_rules_ref", "")
         return cls(**data)
 
 

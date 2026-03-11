@@ -176,6 +176,7 @@ def create_task_from_message(
     )
     routing_decision = route_contract["decision"]
     provider_adapter_result = route_contract["provider_adapter_result"]
+    backend_assignment = route_contract["backend_assignment"]
 
     record = TaskRecord(
         task_id=task_id,
@@ -194,6 +195,7 @@ def create_task_from_message(
         status=TaskStatus.QUEUED.value,
         assigned_role="executor",
         assigned_model=routing_decision["selected_model_name"],
+        backend_assignment_id=backend_assignment["backend_assignment_id"],
         execution_backend=routing_decision["selected_execution_backend"],
         backend_metadata={
             "routing_policy": "provider_agnostic_qwen_first",
@@ -201,6 +203,7 @@ def create_task_from_message(
                 "routing_request_id": route_contract["request"]["routing_request_id"],
                 "routing_decision_id": routing_decision["routing_decision_id"],
                 "provider_adapter_result_id": provider_adapter_result["provider_adapter_result_id"],
+                "backend_assignment_id": backend_assignment["backend_assignment_id"],
                 "provider_id": routing_decision["selected_provider_id"],
                 "model_name": routing_decision["selected_model_name"],
                 "model_registry_entry_id": routing_decision["selected_model_registry_entry_id"],
