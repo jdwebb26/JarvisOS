@@ -13,6 +13,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.degradation_policy import list_degradation_policies
+from runtime.core.a2a_policy import build_a2a_policy_summary
+from runtime.core.mcp_policy import build_mcp_policy_summary
+from runtime.core.plugin_policy import build_plugin_policy_summary
 from runtime.core.risk_tier import evaluate_risk_tier
 
 
@@ -160,9 +163,15 @@ def build_security_validation_summary(root: Optional[Path] = None) -> dict:
             "tool_output_safety",
             "degradation_safety",
             "route_safety",
+            "mcp_policy",
+            "plugin_policy",
+            "a2a_policy",
         ],
         "degradation_policy_count_checked": len(degradation_checks),
         "degradation_policy_flag_count": degradation_flag_count,
+        "a2a_policy_summary": build_a2a_policy_summary(root=root_path),
+        "mcp_policy_summary": build_mcp_policy_summary(root=root_path),
+        "plugin_policy_summary": build_plugin_policy_summary(root=root_path),
         "latest_example_findings": [row["findings"] for row in degradation_checks if row["findings"]][:3],
     }
 
