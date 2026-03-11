@@ -21,15 +21,21 @@ from runtime.core.browser_control_allowlist import build_browser_control_allowli
 from runtime.core.backend_assignments import build_backend_assignment_summary
 from runtime.core.eval_profiles import build_eval_profile_summary
 from runtime.core.heartbeat_reports import build_heartbeat_report_summary
+from runtime.core.mcp_policy import build_mcp_policy_summary
+from runtime.core.plugin_policy import build_plugin_policy_summary
+from runtime.core.prompt_caching_policy import build_prompt_caching_policy_summary
 from runtime.core.provenance_store import build_provenance_summary
 from runtime.core.promotion_governance import build_promotion_governance_summary
 from runtime.core.rollback_store import build_rollback_summary
 from runtime.core.routing import build_model_registry_summary
+from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.modality_contracts import build_modality_summary
 from runtime.core.subsystem_contracts import build_subsystem_contract_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
+from runtime.core.a2a_policy import build_a2a_policy_summary
 from runtime.controls.control_store import build_control_summary, get_effective_control_state, list_blocked_actions, list_control_events, list_control_records
+from runtime.voice.router import build_voice_route_capability_summary
 
 
 def _load_jsons(folder: Path) -> list[dict[str, Any]]:
@@ -309,6 +315,12 @@ def build_status(root: Path) -> dict[str, Any]:
     subsystem_contract_summary = build_subsystem_contract_summary(root)
     trajectory_summary = build_trajectory_summary(root=root)
     operator_profile_summary = build_operator_profile_summary(root=root)
+    security_validation_summary = build_security_validation_summary(root=root)
+    prompt_caching_policy_summary = build_prompt_caching_policy_summary(root=root)
+    mcp_policy_summary = build_mcp_policy_summary(root=root)
+    plugin_policy_summary = build_plugin_policy_summary(root=root)
+    a2a_policy_summary = build_a2a_policy_summary(root=root)
+    voice_route_capability_summary = build_voice_route_capability_summary()
     control_summary = build_control_summary(root=root)
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
@@ -661,6 +673,12 @@ def build_status(root: Path) -> dict[str, Any]:
         "subsystem_contract_summary": subsystem_contract_summary,
         "trajectory_summary": trajectory_summary,
         "operator_profile_summary": operator_profile_summary,
+        "security_validation_summary": security_validation_summary,
+        "prompt_caching_policy_summary": prompt_caching_policy_summary,
+        "mcp_policy_summary": mcp_policy_summary,
+        "plugin_policy_summary": plugin_policy_summary,
+        "a2a_policy_summary": a2a_policy_summary,
+        "voice_route_capability_summary": voice_route_capability_summary,
         "impacted_artifacts": impacted_artifacts,
         "revoked_artifacts": revoked_artifacts,
         "impacted_outputs": impacted_outputs,

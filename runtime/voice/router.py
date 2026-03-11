@@ -26,6 +26,27 @@ def _looks_like_url_or_site(value: str) -> bool:
     return bool(candidate and _SITE_LIKE_RE.fullmatch(candidate))
 
 
+def build_voice_route_capability_summary() -> dict:
+    return {
+        "voice_route_capability_present": True,
+        "supported_subsystems": [
+            "spotify",
+            "browser",
+            "desktop",
+            "discord",
+            "tradingview",
+            "system",
+            "memory",
+        ],
+        "preview_only_default": True,
+        "explicit_route_execute": True,
+        "notes": [
+            "Voice routing stays preview-first unless route execution is explicitly requested.",
+            "Browser, desktop, Discord, TradingView, and Spotify dispatch remain bounded by their existing gateways.",
+        ],
+    }
+
+
 def classify_voice_route(normalized_command: str) -> dict:
     command = (normalized_command or "").strip()
     lowered = command.lower()
