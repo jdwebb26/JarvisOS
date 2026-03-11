@@ -297,6 +297,9 @@ def build_status(root: Path) -> dict[str, Any]:
     from runtime.integrations.hermes_adapter import build_hermes_summary
 
     hermes_summary = build_hermes_summary(root=root)
+    from runtime.integrations.autoresearch_adapter import build_autoresearch_summary
+
+    autoresearch_summary = build_autoresearch_summary(root=root)
     approval_session_summary = build_approval_session_summary(root)
     subsystem_contract_summary = build_subsystem_contract_summary(root)
     control_summary = build_control_summary(root=root)
@@ -628,6 +631,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "degradation_summary": degradation_summary,
         "heartbeat_summary": heartbeat_summary,
         "hermes_summary": hermes_summary,
+        "autoresearch_summary": autoresearch_summary,
         "eval_profile_summary": eval_profile_summary,
         "browser_control_allowlist_summary": browser_control_allowlist_summary,
         "voice_session_summary": voice_session_summary,
@@ -759,6 +763,7 @@ def build_status(root: Path) -> dict[str, Any]:
             "degradation_summary": degradation_summary,
             "heartbeat_summary": heartbeat_summary,
             "hermes_summary": hermes_summary,
+            "autoresearch_summary": autoresearch_summary,
             "eval_profile_summary": eval_profile_summary,
             "browser_control_allowlist_summary": browser_control_allowlist_summary,
             "voice_session_summary": voice_session_summary,

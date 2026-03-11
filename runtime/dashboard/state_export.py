@@ -76,6 +76,8 @@ def build_state_export(root: Path) -> dict:
     experiment_runs = _load_jsons(root / "state" / "experiment_runs")
     metric_results = _load_jsons(root / "state" / "metric_results")
     research_recommendations = _load_jsons(root / "state" / "research_recommendations")
+    lab_run_requests = _load_jsons(root / "state" / "lab_run_requests")
+    lab_run_results = _load_jsons(root / "state" / "lab_run_results")
     run_traces = _load_jsons(root / "state" / "run_traces")
     eval_cases = _load_jsons(root / "state" / "eval_cases")
     eval_results = _load_jsons(root / "state" / "eval_results")
@@ -175,6 +177,8 @@ def build_state_export(root: Path) -> dict:
             "experiment_runs": len(experiment_runs),
             "metric_results": len(metric_results),
             "research_recommendations": len(research_recommendations),
+            "lab_run_requests": len(lab_run_requests),
+            "lab_run_results": len(lab_run_results),
             "run_traces": len(run_traces),
             "eval_cases": len(eval_cases),
             "eval_results": len(eval_results),
@@ -469,6 +473,9 @@ def build_state_export(root: Path) -> dict:
     from runtime.integrations.hermes_adapter import build_hermes_summary
 
     summary["hermes_summary"] = build_hermes_summary(root=root)
+    from runtime.integrations.autoresearch_adapter import build_autoresearch_summary
+
+    summary["autoresearch_summary"] = build_autoresearch_summary(root=root)
     summary["eval_profile_summary"] = build_eval_profile_summary(root=root)
     summary["browser_control_allowlist_summary"] = build_browser_control_allowlist_summary(root=root)
     summary["voice_session_summary"] = build_voice_session_summary(root=root)

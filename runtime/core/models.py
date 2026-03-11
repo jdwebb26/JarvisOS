@@ -1827,6 +1827,113 @@ class HermesTaskResultRecord:
 
 
 @dataclass
+class LabRunRequestRecord:
+    request_id: str
+    campaign_id: str
+    task_id: str
+    created_at: str
+    requested_by: str
+    lane: str
+    target_module: str = ""
+    program_md_path: str = ""
+    eval_command: str = ""
+    baseline_ref: Optional[str] = None
+    benchmark_slice_ref: Optional[str] = None
+    budget_minutes: Optional[int] = None
+    sandbox_root: str = ""
+    pass_index: int = 1
+    objective: str = ""
+    objective_metrics: list[str] = field(default_factory=list)
+    primary_metric: str = ""
+    metric_directions: dict[str, str] = field(default_factory=dict)
+    remaining_passes: int = 0
+    remaining_budget_units: int = 0
+    stop_conditions: dict[str, Any] = field(default_factory=dict)
+    execution_backend: str = "autoresearch_adapter"
+    sandbox_class: str = "bounded"
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "LabRunRequestRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("target_module", "")
+        data.setdefault("program_md_path", "")
+        data.setdefault("eval_command", "")
+        data.setdefault("baseline_ref", None)
+        data.setdefault("benchmark_slice_ref", None)
+        data.setdefault("budget_minutes", None)
+        data.setdefault("sandbox_root", "")
+        data.setdefault("pass_index", 1)
+        data.setdefault("objective", "")
+        data.setdefault("objective_metrics", [])
+        data.setdefault("primary_metric", "")
+        data.setdefault("metric_directions", {})
+        data.setdefault("remaining_passes", 0)
+        data.setdefault("remaining_budget_units", 0)
+        data.setdefault("stop_conditions", {})
+        data.setdefault("execution_backend", "autoresearch_adapter")
+        data.setdefault("sandbox_class", "bounded")
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class LabRunResultRecord:
+    result_id: str
+    request_id: str
+    campaign_id: str
+    task_id: str
+    run_id: str
+    received_at: str
+    status: str
+    candidate_patch_path: str = ""
+    baseline_metrics: dict[str, Any] = field(default_factory=dict)
+    candidate_metrics: dict[str, Any] = field(default_factory=dict)
+    delta_metrics: dict[str, Any] = field(default_factory=dict)
+    experiment_log_path: str = ""
+    recommendation: dict[str, Any] = field(default_factory=dict)
+    token_usage: dict[str, Any] = field(default_factory=dict)
+    summary: str = ""
+    hypothesis: str = ""
+    comparison_summary: str = ""
+    budget_used: int = 1
+    recommendation_hint: str = ""
+    stop_signal: bool = False
+    raw_result: dict[str, Any] = field(default_factory=dict)
+    execution_backend: str = "autoresearch_adapter"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "LabRunResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("candidate_patch_path", "")
+        data.setdefault("baseline_metrics", {})
+        data.setdefault("candidate_metrics", {})
+        data.setdefault("delta_metrics", {})
+        data.setdefault("experiment_log_path", "")
+        data.setdefault("recommendation", {})
+        data.setdefault("token_usage", {})
+        data.setdefault("summary", "")
+        data.setdefault("hypothesis", "")
+        data.setdefault("comparison_summary", "")
+        data.setdefault("budget_used", 1)
+        data.setdefault("recommendation_hint", "")
+        data.setdefault("stop_signal", False)
+        data.setdefault("raw_result", {})
+        data.setdefault("execution_backend", "autoresearch_adapter")
+        return cls(**data)
+
+
+@dataclass
 class BackendExecutionRequestRecord:
     backend_execution_request_id: str
     task_id: str

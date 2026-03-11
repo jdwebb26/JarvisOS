@@ -153,6 +153,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "degradation_summary": status.get("degradation_summary", {}),
         "heartbeat_summary": status.get("heartbeat_summary", {}),
         "hermes_summary": status.get("hermes_summary", {}),
+        "autoresearch_summary": status.get("autoresearch_summary", {}),
         "eval_profile_summary": status.get("eval_profile_summary", {}),
         "browser_control_allowlist_summary": status.get("browser_control_allowlist_summary", {}),
         "voice_session_summary": status.get("voice_session_summary", {}),
