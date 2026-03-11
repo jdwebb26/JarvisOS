@@ -1309,6 +1309,36 @@ class VoiceSessionRecord:
 
 
 @dataclass
+class VoiceCommandRecord:
+    command_id: str
+    voice_session_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    raw_transcript: str
+    normalized_command: str
+    wake_phrase_detected: bool
+    speaker_confidence: float
+    risk_tier: str
+    task_id: str = ""
+    status: str = "rejected"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "VoiceCommandRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("task_id", "")
+        data.setdefault("status", "rejected")
+        data.setdefault("speaker_confidence", 0.0)
+        return cls(**data)
+
+
+@dataclass
 class ConsolidationRunRecord:
     consolidation_run_id: str
     task_id: str
