@@ -254,6 +254,7 @@ def publish_artifact(
         pass
 
     from runtime.core.rollback_store import record_output_dependency
+    from runtime.core.task_store import recompute_task_readiness
 
     record_output_dependency(
         output_id=out_id,
@@ -263,6 +264,13 @@ def publish_artifact(
         lane=lane,
         output_status=OutputStatus.PUBLISHED.value,
         root=root_path,
+    )
+    recompute_task_readiness(
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        root=root_path,
+        reason=f"Published output recorded: {out_id}",
     )
     save_publish_provenance(
         PublishProvenanceRecord(

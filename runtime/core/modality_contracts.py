@@ -102,10 +102,13 @@ def ensure_default_modality_contracts(root: Optional[Path] = None) -> list[Modal
 
 def build_modality_summary(root: Optional[Path] = None) -> dict:
     rows = ensure_default_modality_contracts(root)
+    enabled_input_modalities = sorted({mod for row in rows if row.enabled for mod in row.input_modalities})
     return {
         "modality_contract_count": len(rows),
         "enabled_modality_contract_count": sum(1 for row in rows if row.enabled),
-        "enabled_input_modalities": sorted({mod for row in rows if row.enabled for mod in row.input_modalities}),
+        "enabled_input_modalities": enabled_input_modalities,
+        "runtime_modality_mode": "text_only_qwen",
+        "multimodal_runtime_enabled": any(mod in {"image_ref", "audio_ref", "file_ref"} for mod in enabled_input_modalities),
         "latest_modality_contract": rows[0].to_dict() if rows else None,
         "policy_tags": sorted({tag for row in rows for tag in row.policy_tags}),
     }

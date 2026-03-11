@@ -21,6 +21,10 @@ from runtime.core.approval_store import (
     save_approval_checkpoint,
 )
 from runtime.core.artifact_store import load_artifact, write_text_artifact
+from runtime.core.execution_contracts import (
+    record_backend_execution_request,
+    record_backend_execution_result,
+)
 from runtime.core.models import (
     ConsolidationRunRecord,
     DigestArtifactLinkRecord,
@@ -280,6 +284,7 @@ def execute_consolidation(
     )
 
     original_status = task.status
+    routing_meta = (task.backend_metadata or {}).get("routing") or {}
     run = ConsolidationRunRecord(
         consolidation_run_id=new_id("ralphrun"),
         task_id=task_id,
@@ -291,6 +296,23 @@ def execute_consolidation(
         execution_backend=RALPH_BACKEND_ID,
     )
     save_consolidation_run(run, root=root_path)
+    execution_request = record_backend_execution_request(
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        request_kind="ralph_consolidation",
+        execution_backend=RALPH_BACKEND_ID,
+        provider_id=str(routing_meta.get("provider_id") or "qwen"),
+        model_name=str(task.assigned_model or "Qwen3.5-35B"),
+        routing_decision_id=routing_meta.get("routing_decision_id"),
+        provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
+        backend_run_id=run.consolidation_run_id,
+        input_summary=task.normalized_request,
+        input_refs={"consolidation_run_id": run.consolidation_run_id, "task_id": task_id},
+        source_refs={"routing_request_id": routing_meta.get("routing_request_id")},
+        status="completed",
+        root=root_path,
+    )
 
     if original_status == TaskStatus.QUEUED.value:
         transition_task(
@@ -431,6 +453,29 @@ def execute_consolidation(
         "digest_artifact_id": digest_artifact["artifact_id"],
         "memory_candidate_ids": list(run.memory_candidate_ids),
     }
+    task.backend_metadata.setdefault("execution_contracts", {})
+    execution_result = record_backend_execution_result(
+        backend_execution_request_id=execution_request.backend_execution_request_id,
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        request_kind="ralph_consolidation",
+        execution_backend=RALPH_BACKEND_ID,
+        provider_id=str(routing_meta.get("provider_id") or "qwen"),
+        model_name=str(task.assigned_model or "Qwen3.5-35B"),
+        status=run.status,
+        backend_run_id=run.consolidation_run_id,
+        candidate_artifact_id=digest_artifact["artifact_id"],
+        outcome_summary=run.summary,
+        source_refs={
+            "consolidation_run_id": run.consolidation_run_id,
+            "digest_artifact_id": digest_artifact["artifact_id"],
+        },
+        metadata={"memory_candidate_ids": list(run.memory_candidate_ids)},
+        root=root_path,
+    )
+    task.backend_metadata["execution_contracts"]["latest_backend_execution_request_id"] = execution_request.backend_execution_request_id
+    task.backend_metadata["execution_contracts"]["latest_backend_execution_result_id"] = execution_result.backend_execution_result_id
     task.checkpoint_summary = f"Ralph digest candidate stored: {digest_artifact['artifact_id']}"
     save_task(task, root=root_path)
 

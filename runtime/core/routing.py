@@ -26,7 +26,7 @@ from runtime.core.models import (
 )
 from runtime.controls.control_store import assert_control_allows, get_effective_control_state
 from runtime.core.provenance_store import save_routing_provenance
-from runtime.core.modality_contracts import ensure_default_modality_contracts
+from runtime.core.modality_contracts import build_modality_summary, ensure_default_modality_contracts
 
 
 ACTIVE_QWEN_MODELS = [
@@ -312,7 +312,7 @@ def route_task_intent(
 ) -> dict:
     root_path = Path(root or ROOT).resolve()
     ensure_default_routing_contracts(root_path)
-    ensure_default_modality_contracts(root_path)
+    modality_summary = build_modality_summary(root_path)
     allowed_models = [row["model_name"] for row in ACTIVE_QWEN_MODELS]
     assert_control_allows(
         action="route_selection",
@@ -326,6 +326,8 @@ def route_task_intent(
         "qwen_only": True,
         "allowed_models": allowed_models,
         "provider_lock": "qwen",
+        "enabled_input_modalities": list(modality_summary.get("enabled_input_modalities", [])),
+        "multimodal_runtime_enabled": False,
         "disabled_provider_ids": list(effective_controls.get("disabled_provider_ids", [])),
         "disabled_execution_backends": list(effective_controls.get("disabled_execution_backends", [])),
     }
@@ -444,6 +446,7 @@ def route_task_intent(
             "provider_policy": "qwen_only",
             "active_model_names": allowed_models,
             "active_model_count": len(allowed_models),
+            "enabled_input_modalities": list(modality_summary.get("enabled_input_modalities", [])),
             "disabled_provider_ids": list(effective_controls.get("disabled_provider_ids", [])),
             "disabled_execution_backends": list(effective_controls.get("disabled_execution_backends", [])),
         },
@@ -452,6 +455,7 @@ def route_task_intent(
 
 def build_model_registry_summary(root: Optional[Path] = None) -> dict:
     root_path = Path(root or ROOT).resolve()
+    modality_summary = build_modality_summary(root_path)
     effective_controls = get_effective_control_state(root=root_path)
     disabled_providers = set(effective_controls.get("disabled_provider_ids", []))
     disabled_backends = set(effective_controls.get("disabled_execution_backends", []))
@@ -467,6 +471,8 @@ def build_model_registry_summary(root: Optional[Path] = None) -> dict:
         "provider_ids": sorted({row.provider_id for row in entries}),
         "active_model_names": [row.model_name for row in sorted(entries, key=lambda row: row.priority_rank)],
         "active_model_count": len(entries),
+        "enabled_input_modalities": list(modality_summary.get("enabled_input_modalities", [])),
+        "multimodal_runtime_enabled": False,
         "disabled_provider_ids": get_effective_control_state(root=root_path).get("disabled_provider_ids", []),
         "disabled_execution_backends": get_effective_control_state(root=root_path).get("disabled_execution_backends", []),
         "latest_routing_decision": latest,

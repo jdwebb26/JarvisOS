@@ -824,6 +824,26 @@ Current behavior:
 - revocation propagation now records compact downstream impacts for outputs, task publish-readiness, approvals, reviews, candidates, and memory-linked records
 - multimodal support remains scaffolding only: Qwen-only text is active, file/image/audio contracts stay explicit and disabled by default until later core work
 
+## Backend Execution Contracts
+
+To inspect provider-agnostic backend execution request/result records:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/execution_contracts.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Execution contract ledgers:
+
+- `state/backend_execution_requests/*.json`
+- `state/backend_execution_results/*.json`
+
+Current behavior:
+
+- routing selection remains separate from backend execution outcome
+- bounded backend subsystems now emit durable execution request/result records with provider/model/backend provenance
+- task publish-readiness is recomputed explicitly after promotion, publish, and revocation-bearing invalidation paths
+- deployment remains Qwen-only even though execution contracts are provider-agnostic
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.

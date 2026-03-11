@@ -23,6 +23,11 @@ from runtime.core.approval_store import (
     save_approval_checkpoint,
 )
 from runtime.core.artifact_store import write_text_artifact
+from runtime.core.execution_contracts import (
+    record_backend_execution_request,
+    record_backend_execution_result,
+    save_backend_execution_request,
+)
 from runtime.core.models import (
     ExperimentRunRecord,
     MetricResultRecord,
@@ -380,6 +385,9 @@ def execute_research_campaign(
     no_improvement_passes = 0
     final_stop_reason = "pass_limit_reached"
     metric_rows: list[MetricResultRecord] = []
+    latest_execution_request_id: Optional[str] = None
+    latest_execution_result_id: Optional[str] = None
+    routing_meta = (task.backend_metadata or {}).get("routing") or {}
 
     for pass_index in range(1, max_passes + 1):
         if campaign.budget_used >= campaign.max_budget_units:
@@ -411,6 +419,22 @@ def execute_research_campaign(
             remaining_budget_units=max_budget_units - campaign.budget_used,
             stop_conditions=dict(campaign.stop_conditions),
         )
+        execution_request = record_backend_execution_request(
+            task_id=task_id,
+            actor=actor,
+            lane=lane,
+            request_kind="research_experiment",
+            execution_backend=AUTORESEARCH_BACKEND_ID,
+            provider_id=str(routing_meta.get("provider_id") or "qwen"),
+            model_name=str(task.assigned_model or "Qwen3.5-35B"),
+            routing_decision_id=routing_meta.get("routing_decision_id"),
+            provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
+            input_summary=request.objective,
+            input_refs={"campaign_id": campaign.campaign_id, "request_id": request.request_id, "pass_index": pass_index},
+            source_refs={"routing_request_id": routing_meta.get("routing_request_id")},
+            root=root_path,
+        )
+        latest_execution_request_id = execution_request.backend_execution_request_id
 
         try:
             result = _parse_result(request=request, payload=use_runner(request))
@@ -459,6 +483,31 @@ def execute_research_campaign(
             )
             run.trace_id = trace.trace_id
             save_experiment_run(run, root=root_path)
+            execution_request.status = "failed"
+            execution_request.backend_run_id = run.run_id
+            save_backend_execution_request(execution_request, root=root_path)
+            execution_result = record_backend_execution_result(
+                backend_execution_request_id=execution_request.backend_execution_request_id,
+                task_id=task_id,
+                actor=actor,
+                lane=lane,
+                request_kind="research_experiment",
+                execution_backend=AUTORESEARCH_BACKEND_ID,
+                provider_id=str(routing_meta.get("provider_id") or "qwen"),
+                model_name=str(task.assigned_model or "Qwen3.5-35B"),
+                status=FAILED_STATUS,
+                backend_run_id=run.run_id,
+                trace_id=trace.trace_id,
+                outcome_summary=run.stop_reason,
+                error=run.stop_reason,
+                source_refs={
+                    "campaign_id": campaign.campaign_id,
+                    "request_id": request.request_id,
+                    "run_id": run.run_id,
+                },
+                root=root_path,
+            )
+            latest_execution_result_id = execution_result.backend_execution_result_id
             campaign.status = FAILED_STATUS
             campaign.comparison_summary = run.stop_reason
             save_research_campaign(campaign, root=root_path)
@@ -583,6 +632,32 @@ def execute_research_campaign(
         )
         run.trace_id = trace.trace_id
         save_experiment_run(run, root=root_path)
+        execution_request.status = "completed"
+        execution_request.backend_run_id = run.run_id
+        save_backend_execution_request(execution_request, root=root_path)
+        execution_result = record_backend_execution_result(
+            backend_execution_request_id=execution_request.backend_execution_request_id,
+            task_id=task_id,
+            actor=actor,
+            lane=lane,
+            request_kind="research_experiment",
+            execution_backend=AUTORESEARCH_BACKEND_ID,
+            provider_id=str(routing_meta.get("provider_id") or "qwen"),
+            model_name=str(task.assigned_model or "Qwen3.5-35B"),
+            status=result.status,
+            backend_run_id=run.run_id,
+            trace_id=trace.trace_id,
+            outcome_summary=result.comparison_summary or result.summary,
+            source_refs={
+                "campaign_id": campaign.campaign_id,
+                "request_id": request.request_id,
+                "result_id": result.result_id,
+                "run_id": run.run_id,
+            },
+            metadata={"metrics": dict(result.metrics), "budget_used": result.budget_used},
+            root=root_path,
+        )
+        latest_execution_result_id = execution_result.backend_execution_result_id
 
         campaign.completed_passes = pass_index
         campaign.budget_used += result.budget_used
@@ -697,6 +772,9 @@ def execute_research_campaign(
     task = load_task(task_id, root=root_path)
     _update_task_metadata(task, campaign=campaign, recommendation=recommendation)
     task.checkpoint_summary = f"Research campaign complete: {campaign.campaign_id}"
+    task.backend_metadata.setdefault("execution_contracts", {})
+    task.backend_metadata["execution_contracts"]["latest_backend_execution_request_id"] = latest_execution_request_id
+    task.backend_metadata["execution_contracts"]["latest_backend_execution_result_id"] = latest_execution_result_id
     save_task(task, root=root_path)
 
     if original_status == TaskStatus.QUEUED.value:

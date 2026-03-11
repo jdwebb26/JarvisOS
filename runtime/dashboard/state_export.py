@@ -66,6 +66,8 @@ def build_state_export(root: Path) -> dict:
     routing_requests = _load_jsons(root / "state" / "routing_requests")
     routing_decisions = _load_jsons(root / "state" / "routing_decisions")
     provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
+    backend_execution_requests = _load_jsons(root / "state" / "backend_execution_requests")
+    backend_execution_results = _load_jsons(root / "state" / "backend_execution_results")
     candidate_records = _load_jsons(root / "state" / "candidate_records")
     candidate_validations = _load_jsons(root / "state" / "candidate_validations")
     promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
@@ -153,6 +155,8 @@ def build_state_export(root: Path) -> dict:
             "routing_requests": len(routing_requests),
             "routing_decisions": len(routing_decisions),
             "provider_adapter_results": len(provider_adapter_results),
+            "backend_execution_requests": len(backend_execution_requests),
+            "backend_execution_results": len(backend_execution_results),
             "candidate_records": len(candidate_records),
             "candidate_validations": len(candidate_validations),
             "promotion_decisions": len(promotion_decisions),
@@ -231,6 +235,8 @@ def build_state_export(root: Path) -> dict:
         "eval_result_pass_counts": {},
         "model_family_counts": {},
         "routing_backend_counts": {},
+        "backend_execution_status_counts": {},
+        "task_publish_readiness_counts": {},
         "candidate_record_lifecycle_counts": {},
         "candidate_validation_status_counts": {},
         "approval_session_state_counts": {},
@@ -254,6 +260,8 @@ def build_state_export(root: Path) -> dict:
         lifecycle_state = task.get("lifecycle_state", "unknown")
         summary["task_status_counts"][status] = summary["task_status_counts"].get(status, 0) + 1
         summary["task_lifecycle_counts"][lifecycle_state] = summary["task_lifecycle_counts"].get(lifecycle_state, 0) + 1
+        readiness = task.get("publish_readiness_status", "pending")
+        summary["task_publish_readiness_counts"][readiness] = summary["task_publish_readiness_counts"].get(readiness, 0) + 1
 
     for review in reviews:
         status = review.get("status", "unknown")
@@ -319,6 +327,10 @@ def build_state_export(root: Path) -> dict:
         backend = decision.get("selected_execution_backend", "unknown")
         summary["routing_backend_counts"][backend] = summary["routing_backend_counts"].get(backend, 0) + 1
 
+    for result in backend_execution_results:
+        status = result.get("status", "unknown")
+        summary["backend_execution_status_counts"][status] = summary["backend_execution_status_counts"].get(status, 0) + 1
+
     for candidate in candidate_records:
         lifecycle_state = candidate.get("lifecycle_state", "unknown")
         summary["candidate_record_lifecycle_counts"][lifecycle_state] = (
@@ -362,6 +374,13 @@ def build_state_export(root: Path) -> dict:
         "latest_routing_decision_id": (routing_decisions[-1] if routing_decisions else {}).get("routing_decision_id"),
         "latest_selected_model_name": (routing_decisions[-1] if routing_decisions else {}).get("selected_model_name"),
         "latest_selected_execution_backend": (routing_decisions[-1] if routing_decisions else {}).get("selected_execution_backend"),
+    }
+    summary["execution_contract_summary"] = {
+        "backend_execution_request_count": len(backend_execution_requests),
+        "backend_execution_result_count": len(backend_execution_results),
+        "latest_backend_execution_request_id": (backend_execution_requests[-1] if backend_execution_requests else {}).get("backend_execution_request_id"),
+        "latest_backend_execution_result_id": (backend_execution_results[-1] if backend_execution_results else {}).get("backend_execution_result_id"),
+        "latest_backend_execution_status": (backend_execution_results[-1] if backend_execution_results else {}).get("status"),
     }
     summary["candidate_promotion_summary"] = {
         "latest_candidate_id": (candidate_records[-1] if candidate_records else {}).get("candidate_id"),
@@ -418,6 +437,8 @@ def build_state_export(root: Path) -> dict:
         "modality_contract_count": len(modality_contracts),
         "enabled_modality_contract_count": sum(1 for row in modality_contracts if row.get("enabled")),
         "latest_modality_contract_id": (modality_contracts[-1] if modality_contracts else {}).get("modality_contract_id"),
+        "runtime_modality_mode": "text_only_qwen",
+        "multimodal_runtime_enabled": any(row.get("enabled") and any(mod in {"image_ref", "audio_ref", "file_ref"} for mod in row.get("input_modalities", [])) for row in modality_contracts),
     }
     summary["memory_discipline_summary"] = {
         "latest_memory_candidate_id": (memory_candidates[-1] if memory_candidates else {}).get("memory_candidate_id"),

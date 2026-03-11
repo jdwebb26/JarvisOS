@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.candidate_store import build_candidate_summary
+from runtime.core.execution_contracts import build_execution_contract_summary
 from runtime.core.models import OutputStatus, RecordLifecycleState, TaskRecord, TaskStatus
 from runtime.core.approval_sessions import build_approval_session_summary
 from runtime.core.provenance_store import build_provenance_summary
@@ -91,6 +92,9 @@ def _task_summary(task: TaskRecord, events_by_task: dict[str, list[dict[str, Any
         "demoted_artifact_ids": list(task.demoted_artifact_ids),
         "revoked_artifact_ids": list(task.revoked_artifact_ids),
         "impacted_output_ids": list(task.impacted_output_ids),
+        "blocked_dependency_refs": list(task.blocked_dependency_refs),
+        "publish_readiness_status": task.publish_readiness_status,
+        "publish_readiness_reason": task.publish_readiness_reason,
         "reason": _latest_reason(task, events_by_task),
         "control_status": control_state["effective_status"],
         "control_run_state": control_state["effective_run_state"],
@@ -156,6 +160,9 @@ def build_status(root: Path) -> dict[str, Any]:
             "demoted_artifact_ids": list(task.demoted_artifact_ids),
             "revoked_artifact_ids": list(task.revoked_artifact_ids),
             "impacted_output_ids": list(task.impacted_output_ids),
+            "blocked_dependency_refs": list(task.blocked_dependency_refs),
+            "publish_readiness_status": task.publish_readiness_status,
+            "publish_readiness_reason": task.publish_readiness_reason,
             "reason": _latest_reason(task, events_by_task),
             "control_status": control_state["effective_status"],
             "control_run_state": control_state["effective_run_state"],
@@ -206,6 +213,8 @@ def build_status(root: Path) -> dict[str, Any]:
     routing_requests = _load_jsons(root / "state" / "routing_requests")
     routing_decisions = _load_jsons(root / "state" / "routing_decisions")
     provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
+    backend_execution_requests = _load_jsons(root / "state" / "backend_execution_requests")
+    backend_execution_results = _load_jsons(root / "state" / "backend_execution_results")
     candidate_records = _load_jsons(root / "state" / "candidate_records")
     candidate_validations = _load_jsons(root / "state" / "candidate_validations")
     promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
@@ -256,6 +265,7 @@ def build_status(root: Path) -> dict[str, Any]:
 
     replay_summary = build_replay_summary(root)
     multimodal_summary = build_modality_summary(root)
+    execution_contract_summary = build_execution_contract_summary(root)
     approval_session_summary = build_approval_session_summary(root)
     subsystem_contract_summary = build_subsystem_contract_summary(root)
     control_summary = build_control_summary(root=root)
@@ -419,6 +429,8 @@ def build_status(root: Path) -> dict[str, Any]:
         "routing_requests": len(routing_requests),
         "routing_decisions": len(routing_decisions),
         "provider_adapter_results": len(provider_adapter_results),
+        "backend_execution_requests": len(backend_execution_requests),
+        "backend_execution_results": len(backend_execution_results),
         "candidate_records": len(candidate_records),
         "candidate_validations": len(candidate_validations),
         "promotion_decisions": len(promotion_decisions),
@@ -563,6 +575,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "finished_recently": finished_recently,
         "candidate_artifacts": candidate_artifacts,
         "routing_summary": routing_summary,
+        "execution_contract_summary": execution_contract_summary,
         "candidate_promotion_summary": candidate_promotion_summary,
         "provenance_summary": provenance_summary,
         "replay_summary": replay_summary,

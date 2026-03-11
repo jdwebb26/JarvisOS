@@ -231,12 +231,15 @@ class TaskRecord:
     demoted_artifact_ids: list[str] = field(default_factory=list)
     revoked_artifact_ids: list[str] = field(default_factory=list)
     impacted_output_ids: list[str] = field(default_factory=list)
+    blocked_dependency_refs: list[str] = field(default_factory=list)
     related_review_ids: list[str] = field(default_factory=list)
     related_approval_ids: list[str] = field(default_factory=list)
     checkpoint_summary: str = ""
     error_count: int = 0
     last_error: str = ""
     final_outcome: str = ""
+    publish_readiness_status: str = "pending"
+    publish_readiness_reason: str = ""
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
 
@@ -265,12 +268,15 @@ class TaskRecord:
         data.setdefault("demoted_artifact_ids", [])
         data.setdefault("revoked_artifact_ids", [])
         data.setdefault("impacted_output_ids", [])
+        data.setdefault("blocked_dependency_refs", [])
         data.setdefault("related_review_ids", [])
         data.setdefault("related_approval_ids", [])
         data.setdefault("checkpoint_summary", "")
         data.setdefault("error_count", 0)
         data.setdefault("last_error", "")
         data.setdefault("final_outcome", "")
+        data.setdefault("publish_readiness_status", "pending")
+        data.setdefault("publish_readiness_reason", "")
         return cls(**data)
 
 
@@ -1386,6 +1392,84 @@ class ProviderAdapterResultRecord:
         data.setdefault("adapter_kind", "routing_binding")
         data.setdefault("status", "ready")
         data.setdefault("summary", "")
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class BackendExecutionRequestRecord:
+    backend_execution_request_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    request_kind: str
+    execution_backend: str
+    provider_id: str
+    model_name: str
+    routing_decision_id: Optional[str] = None
+    provider_adapter_result_id: Optional[str] = None
+    backend_run_id: Optional[str] = None
+    input_summary: str = ""
+    input_refs: dict[str, Any] = field(default_factory=dict)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    status: str = "pending"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BackendExecutionRequestRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("routing_decision_id", None)
+        data.setdefault("provider_adapter_result_id", None)
+        data.setdefault("backend_run_id", None)
+        data.setdefault("input_summary", "")
+        data.setdefault("input_refs", {})
+        data.setdefault("source_refs", {})
+        data.setdefault("status", "pending")
+        return cls(**data)
+
+
+@dataclass
+class BackendExecutionResultRecord:
+    backend_execution_result_id: str
+    backend_execution_request_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    request_kind: str
+    execution_backend: str
+    provider_id: str
+    model_name: str
+    status: str
+    backend_run_id: Optional[str] = None
+    candidate_artifact_id: Optional[str] = None
+    trace_id: Optional[str] = None
+    outcome_summary: str = ""
+    error: str = ""
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BackendExecutionResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("backend_run_id", None)
+        data.setdefault("candidate_artifact_id", None)
+        data.setdefault("trace_id", None)
+        data.setdefault("outcome_summary", "")
+        data.setdefault("error", "")
+        data.setdefault("source_refs", {})
         data.setdefault("metadata", {})
         return cls(**data)
 

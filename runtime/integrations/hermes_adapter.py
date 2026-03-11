@@ -21,6 +21,11 @@ from runtime.core.approval_store import (
     save_approval_checkpoint,
 )
 from runtime.core.artifact_store import write_text_artifact
+from runtime.core.execution_contracts import (
+    record_backend_execution_request,
+    record_backend_execution_result,
+    save_backend_execution_request,
+)
 from runtime.core.models import ApprovalStatus, ReviewStatus, TaskStatus, new_id, now_iso
 from runtime.core.review_store import latest_review_for_task, save_review
 from runtime.core.task_events import append_event, make_event
@@ -295,6 +300,25 @@ def execute_hermes_task(
     _update_task_for_hermes(task, request=request, result=None)
     save_task(task, root=root_path)
     save_hermes_request(request, root=root_path)
+    routing_meta = (task.backend_metadata or {}).get("routing") or {}
+    execution_request = record_backend_execution_request(
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        request_kind="hermes_task",
+        execution_backend=HERMES_BACKEND_ID,
+        provider_id=str(routing_meta.get("provider_id") or "qwen"),
+        model_name=str(task.assigned_model or "Qwen3.5-35B"),
+        routing_decision_id=routing_meta.get("routing_decision_id"),
+        provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
+        input_summary=request.summary,
+        input_refs={"hermes_request_id": request.request_id},
+        source_refs={
+            "routing_request_id": routing_meta.get("routing_request_id"),
+            "task_source_message_id": task.source_message_id,
+        },
+        root=root_path,
+    )
 
     if original_status == TaskStatus.QUEUED.value:
         transition_task(
@@ -365,6 +389,10 @@ def execute_hermes_task(
         )
     else:
         save_hermes_result(result, root=root_path)
+
+    execution_request.status = "completed" if result.status == SUCCESS_STATUS else "failed"
+    execution_request.backend_run_id = result.run_id
+    save_backend_execution_request(execution_request, root=root_path)
 
     task = load_task(task_id, root=root_path)
     if task is None:
@@ -486,6 +514,43 @@ def execute_hermes_task(
     )
     result.trace_id = trace.trace_id
     save_hermes_result(result, root=root_path)
+    execution_result = record_backend_execution_result(
+        backend_execution_request_id=execution_request.backend_execution_request_id,
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        request_kind="hermes_task",
+        execution_backend=HERMES_BACKEND_ID,
+        provider_id=str(routing_meta.get("provider_id") or "qwen"),
+        model_name=str(result.model_name or task.assigned_model or "Qwen3.5-35B"),
+        status=result.status,
+        backend_run_id=result.run_id,
+        candidate_artifact_id=result.candidate_artifact_id,
+        trace_id=result.trace_id,
+        outcome_summary=result.summary or result.error,
+        error=result.error,
+        source_refs={
+            "routing_decision_id": routing_meta.get("routing_decision_id"),
+            "provider_adapter_result_id": routing_meta.get("provider_adapter_result_id"),
+            "hermes_request_id": request.request_id,
+            "hermes_result_id": result.result_id,
+        },
+        metadata={
+            "family": result.family,
+            "request_status": execution_request.status,
+        },
+        root=root_path,
+    )
+    final_task = load_task(task_id, root=root_path)
+    if final_task is not None:
+        final_task.backend_metadata.setdefault("execution_contracts", {})
+        final_task.backend_metadata["execution_contracts"]["latest_backend_execution_request_id"] = (
+            execution_request.backend_execution_request_id
+        )
+        final_task.backend_metadata["execution_contracts"]["latest_backend_execution_result_id"] = (
+            execution_result.backend_execution_result_id
+        )
+        save_task(final_task, root=root_path)
     return {
         "request": request.to_dict(),
         "result": result.to_dict(),

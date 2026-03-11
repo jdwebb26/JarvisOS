@@ -27,6 +27,7 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
         TaskStatus.CANCELLED.value,
     },
     TaskStatus.RUNNING.value: {
+        TaskStatus.QUEUED.value,
         TaskStatus.WAITING_REVIEW.value,
         TaskStatus.WAITING_APPROVAL.value,
         TaskStatus.BLOCKED.value,
@@ -370,6 +371,13 @@ def set_task_lifecycle_state(
         ),
         root=root,
     )
+    recompute_task_readiness(
+        task_id=record.task_id,
+        actor=actor,
+        lane=lane,
+        root=root,
+        reason=reason or f"Lifecycle recompute after {lifecycle_state}",
+    )
     return record
 
 
@@ -419,6 +427,13 @@ def mark_task_artifact_revoked(
         ),
         root=root,
     )
+    recompute_task_readiness(
+        task_id=record.task_id,
+        actor=actor,
+        lane=lane,
+        root=root,
+        reason=reason or f"Artifact revoked: {artifact_id}",
+    )
     return record
 
 
@@ -457,4 +472,120 @@ def mark_task_output_impacts(
         ),
         root=root,
     )
+    recompute_task_readiness(
+        task_id=record.task_id,
+        actor=actor,
+        lane=lane,
+        root=root,
+        reason=reason or "Output impacts changed",
+    )
+    return record
+
+
+def recompute_task_readiness(
+    task_id: str,
+    actor: str,
+    lane: str,
+    root: Optional[Path] = None,
+    *,
+    reason: str = "",
+) -> TaskRecord:
+    record = load_task(task_id, root=root)
+    if record is None:
+        raise ValueError(f"Task not found: {task_id}")
+
+    previous_status = record.status
+    previous_readiness_status = record.publish_readiness_status
+    previous_readiness_reason = record.publish_readiness_reason
+    previous_blocked_refs = list(record.blocked_dependency_refs)
+
+    blocked_refs: list[str] = []
+    blocked_refs.extend(f"artifact:{artifact_id}" for artifact_id in record.revoked_artifact_ids)
+    blocked_refs.extend(f"output:{output_id}" for output_id in record.impacted_output_ids)
+    if record.promoted_artifact_id is None and record.demoted_artifact_ids:
+        blocked_refs.extend(f"demoted:{artifact_id}" for artifact_id in record.demoted_artifact_ids)
+    seen: set[str] = set()
+    record.blocked_dependency_refs = [item for item in blocked_refs if not (item in seen or seen.add(item))]
+
+    readiness_status = "pending"
+    readiness_reason = ""
+    published_output_exists = False
+    if record.promoted_artifact_id:
+        try:
+            from runtime.core.output_store import find_existing_output
+
+            published_output_exists = (
+                find_existing_output(task_id=record.task_id, artifact_id=record.promoted_artifact_id, root=Path(root or project_root_from_here()))
+                is not None
+            )
+        except Exception:
+            published_output_exists = False
+
+    if record.impacted_output_ids or record.revoked_artifact_ids:
+        readiness_status = "invalidated"
+        readiness_reason = "Downstream impacts or revoked artifacts require recomputation before publish."
+    elif published_output_exists:
+        readiness_status = "published"
+        readiness_reason = "Promoted artifact already has a published output record."
+    elif record.promoted_artifact_id and (record.final_outcome or "").strip() == "candidate_ready_for_live_apply":
+        readiness_status = "ready"
+        readiness_reason = "Promoted artifact is present and final outcome is candidate-ready."
+    elif record.promoted_artifact_id:
+        readiness_status = "promoted_candidate"
+        readiness_reason = "Promoted artifact exists but final outcome is not candidate-ready."
+    elif record.candidate_artifact_ids:
+        readiness_status = "candidate_only"
+        readiness_reason = "Task has candidate artifacts but no promoted artifact."
+    else:
+        readiness_status = "pending"
+        readiness_reason = "No promoted artifact is currently available."
+
+    if readiness_status == "invalidated" and previous_status not in {
+        TaskStatus.COMPLETED.value,
+        TaskStatus.FAILED.value,
+        TaskStatus.CANCELLED.value,
+        TaskStatus.ARCHIVED.value,
+    }:
+        record.status = TaskStatus.BLOCKED.value
+        if not record.last_error:
+            record.last_error = readiness_reason
+        if not record.checkpoint_summary:
+            record.checkpoint_summary = readiness_reason
+    if readiness_status == "invalidated" and record.final_outcome == "candidate_ready_for_live_apply":
+        record.final_outcome = "candidate_invalidated"
+
+    record.publish_readiness_status = readiness_status
+    record.publish_readiness_reason = readiness_reason
+    save_task(record, root=root)
+
+    if (
+        previous_status != record.status
+        or previous_readiness_status != readiness_status
+        or previous_readiness_reason != readiness_reason
+        or previous_blocked_refs != record.blocked_dependency_refs
+    ):
+        append_event(
+            make_event(
+                task_id=record.task_id,
+                event_type="task_readiness_recomputed",
+                actor=actor,
+                lane=lane,
+                summary=reason or f"Task readiness recomputed: {readiness_status}",
+                from_status=previous_status,
+                to_status=record.status,
+                from_lifecycle_state=record.lifecycle_state,
+                to_lifecycle_state=record.lifecycle_state,
+                execution_backend=record.execution_backend,
+                backend_run_id=record.backend_run_id,
+                details=json.dumps(
+                    {
+                        "publish_readiness_status": readiness_status,
+                        "publish_readiness_reason": readiness_reason,
+                        "blocked_dependency_refs": record.blocked_dependency_refs,
+                    },
+                    sort_keys=True,
+                ),
+            ),
+            root=root,
+        )
     return record

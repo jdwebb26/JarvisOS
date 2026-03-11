@@ -147,6 +147,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "current_reply_ack": (status.get("operator_control_plane", {}) or {}).get("current_reply_ack", {}),
         "gateway_bridge_summary": (status.get("operator_control_plane", {}) or {}).get("gateway_bridge_summary", {}),
         "routing_summary": status.get("routing_summary", {}),
+        "execution_contract_summary": status.get("execution_contract_summary", {}),
         "candidate_promotion_summary": status.get("candidate_promotion_summary", {}),
         "provenance_summary": status.get("provenance_summary", {}),
         "replay_summary": status.get("replay_summary", {}),
