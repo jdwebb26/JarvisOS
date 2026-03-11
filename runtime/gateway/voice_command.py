@@ -12,7 +12,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.voice.pipeline import process_voice_transcript
+from runtime.voice.approval_flow import extract_inline_approval_code, handle_voice_confirmation_requirement
 from runtime.voice.policy import evaluate_voice_command_policy
+from runtime.voice.router import maybe_route_voice_command
 from runtime.voice.speaker_guard import SpeakerGuard
 
 
@@ -27,7 +29,6 @@ def handle_voice_command(
     route=False,
     root=None,
 ) -> dict:
-    del route
     resolved_root = Path(root or ROOT).resolve()
     pipeline_result = process_voice_transcript(
         raw_transcript,
@@ -47,10 +48,15 @@ def handle_voice_command(
             "wakeword": pipeline_result["wakeword"],
             "feedback": pipeline_result["feedback"],
             "routed": False,
+            "route_preview": None,
         }
 
+    actionable_command = extract_inline_approval_code(
+        pipeline_result["voice_command"]["normalized_command"]
+    )["normalized_command_without_code"]
+
     policy = evaluate_voice_command_policy(
-        pipeline_result["voice_command"]["normalized_command"],
+        actionable_command,
         speaker_confidence=speaker_confidence,
         input_source="voice",
         root=resolved_root,
@@ -68,6 +74,33 @@ def handle_voice_command(
     if policy["requires_confirmation"]:
         kind = "confirmation_required"
 
+    route_preview = None
+    if route:
+        route_preview = maybe_route_voice_command(
+            actionable_command,
+            actor=actor,
+            lane=lane,
+            task_id=task_id,
+            root=resolved_root,
+            execute=False,
+        )
+
+    approval_flow = None
+    if policy["requires_confirmation"]:
+        approval_flow = handle_voice_confirmation_requirement(
+            voice_command=pipeline_result["voice_command"],
+            route_preview=route_preview,
+            actor=actor,
+            lane=lane,
+            root=resolved_root,
+        )
+        if approval_flow["verification"] and approval_flow["verification"]["status"] == "approved":
+            kind = "approved"
+        elif approval_flow["verification"] and approval_flow["verification"]["status"] != "approved":
+            kind = "approval_rejected"
+        else:
+            kind = "confirmation_required"
+
     return {
         "kind": kind,
         "status": pipeline_result["status"],
@@ -81,6 +114,8 @@ def handle_voice_command(
         },
         "feedback": pipeline_result["feedback"],
         "routed": False,
+        "route_preview": route_preview,
+        "approval_flow": approval_flow,
     }
 
 
