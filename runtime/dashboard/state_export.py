@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from runtime.controls.control_store import build_control_summary
 from runtime.dashboard.status_names import normalize_status_name
 
 
@@ -38,6 +39,16 @@ def _load_flowstate_source_records(folder: Path) -> list[dict]:
             continue
         rows.append(row)
     return rows
+
+
+def _timestamp(row: dict) -> str:
+    return row.get("updated_at") or row.get("created_at") or ""
+
+
+def _latest_row(rows: list[dict]) -> dict | None:
+    if not rows:
+        return None
+    return max(rows, key=_timestamp)
 
 
 def build_state_export(root: Path) -> dict:
@@ -369,25 +380,65 @@ def build_state_export(root: Path) -> dict:
 
     summary["memory_retrieval_count"] = len(memory_retrievals)
 
+    latest_routing_decision = _latest_row(routing_decisions)
+    latest_backend_execution_request = _latest_row(backend_execution_requests)
+    latest_backend_execution_result = _latest_row(backend_execution_results)
+    latest_candidate = _latest_row(candidate_records)
+    latest_candidate_validation = _latest_row(candidate_validations)
+    latest_promotion_decision = _latest_row(promotion_decisions)
+    latest_rejection_decision = _latest_row(rejection_decisions)
+    latest_candidate_revocation = _latest_row(candidate_revocations)
+    latest_task_provenance = _latest_row(task_provenance)
+    latest_artifact_provenance = _latest_row(artifact_provenance)
+    latest_routing_provenance = _latest_row(routing_provenance)
+    latest_decision_provenance = _latest_row(decision_provenance)
+    latest_publish_provenance = _latest_row(publish_provenance)
+    latest_rollback_provenance = _latest_row(rollback_provenance)
+    latest_memory_provenance = _latest_row(memory_provenance)
+    latest_replay_plan = _latest_row(replay_plans)
+    latest_replay_execution = _latest_row(replay_executions)
+    latest_replay_result = _latest_row(replay_results)
+    latest_rollback_plan = _latest_row(rollback_plans)
+    latest_rollback_execution = _latest_row(rollback_executions)
+    latest_revocation_impact = _latest_row(revocation_impacts)
+    latest_approval_session = _latest_row(approval_sessions)
+    latest_resume_token = _latest_row(approval_resume_tokens)
+    latest_subsystem_contract = _latest_row(subsystem_contracts)
+    latest_modality_contract = _latest_row(modality_contracts)
+    latest_memory_candidate = _latest_row(memory_candidates)
+    latest_memory_validation = _latest_row(memory_validations)
+    latest_memory_promotion = _latest_row(memory_promotion_decisions)
+    latest_memory_rejection = _latest_row(memory_rejection_decisions)
+    latest_memory_revocation = _latest_row(memory_revocation_decisions)
+    latest_output_dependency = _latest_row(output_dependencies)
+    latest_blocked_action = _latest_row(control_blocked_actions)
+
     summary["routing_summary"] = {
+        "provider_policy": "qwen_only",
         "active_model_names": [row.get("model_name") for row in model_registry_entries if row.get("active")],
-        "latest_routing_decision_id": (routing_decisions[-1] if routing_decisions else {}).get("routing_decision_id"),
-        "latest_selected_model_name": (routing_decisions[-1] if routing_decisions else {}).get("selected_model_name"),
-        "latest_selected_execution_backend": (routing_decisions[-1] if routing_decisions else {}).get("selected_execution_backend"),
+        "active_model_count": sum(1 for row in model_registry_entries if row.get("active")),
+        "latest_routing_decision": latest_routing_decision,
     }
     summary["execution_contract_summary"] = {
         "backend_execution_request_count": len(backend_execution_requests),
         "backend_execution_result_count": len(backend_execution_results),
-        "latest_backend_execution_request_id": (backend_execution_requests[-1] if backend_execution_requests else {}).get("backend_execution_request_id"),
-        "latest_backend_execution_result_id": (backend_execution_results[-1] if backend_execution_results else {}).get("backend_execution_result_id"),
-        "latest_backend_execution_status": (backend_execution_results[-1] if backend_execution_results else {}).get("status"),
+        "backend_execution_status_counts": dict(summary["backend_execution_status_counts"]),
+        "backend_execution_kind_counts": {
+            key: sum(1 for row in backend_execution_results if row.get("request_kind") == key)
+            for key in sorted({row.get("request_kind", "unknown") for row in backend_execution_results})
+        },
+        "latest_backend_execution_request": latest_backend_execution_request,
+        "latest_backend_execution_result": latest_backend_execution_result,
     }
     summary["candidate_promotion_summary"] = {
-        "latest_candidate_id": (candidate_records[-1] if candidate_records else {}).get("candidate_id"),
-        "latest_validation_id": (candidate_validations[-1] if candidate_validations else {}).get("validation_id"),
-        "latest_promotion_decision_id": (promotion_decisions[-1] if promotion_decisions else {}).get("promotion_decision_id"),
-        "latest_rejection_decision_id": (rejection_decisions[-1] if rejection_decisions else {}).get("rejection_decision_id"),
-        "latest_revocation_id": (candidate_revocations[-1] if candidate_revocations else {}).get("revocation_id"),
+        "candidate_count": len(candidate_records),
+        "promotable_candidate_count": sum(1 for row in candidate_records if row.get("lifecycle_state") == "candidate"),
+        "promoted_candidate_count": sum(1 for row in candidate_records if row.get("lifecycle_state") == "promoted"),
+        "latest_candidate": latest_candidate,
+        "latest_validation": latest_candidate_validation,
+        "latest_promotion_decision": latest_promotion_decision,
+        "latest_rejection_decision": latest_rejection_decision,
+        "latest_revocation": latest_candidate_revocation,
     }
     summary["provenance_summary"] = {
         "task_provenance_count": len(task_provenance),
@@ -397,21 +448,30 @@ def build_state_export(root: Path) -> dict:
         "publish_provenance_count": len(publish_provenance),
         "rollback_provenance_count": len(rollback_provenance),
         "memory_provenance_count": len(memory_provenance),
-        "latest_task_provenance_id": (task_provenance[-1] if task_provenance else {}).get("task_provenance_id"),
-        "latest_publish_provenance_id": (publish_provenance[-1] if publish_provenance else {}).get("publish_provenance_id"),
+        "latest_task_provenance": latest_task_provenance,
+        "latest_artifact_provenance": latest_artifact_provenance,
+        "latest_routing_provenance": latest_routing_provenance,
+        "latest_decision_provenance": latest_decision_provenance,
+        "latest_publish_provenance": latest_publish_provenance,
+        "latest_rollback_provenance": latest_rollback_provenance,
+        "latest_memory_provenance": latest_memory_provenance,
     }
     summary["replay_summary"] = {
         "replay_plan_count": len(replay_plans),
         "replay_execution_count": len(replay_executions),
         "replay_result_count": len(replay_results),
         "replay_drift_count": sum(1 for row in replay_results if row.get("result_kind") == "drift"),
-        "latest_replay_plan_id": (replay_plans[-1] if replay_plans else {}).get("replay_plan_id"),
-        "latest_replay_execution_id": (replay_executions[-1] if replay_executions else {}).get("replay_execution_id"),
-        "latest_replay_result_kind": (replay_results[-1] if replay_results else {}).get("result_kind"),
+        "latest_replay_plan": latest_replay_plan,
+        "latest_replay_execution": latest_replay_execution,
+        "latest_replay_result": latest_replay_result,
     }
     summary["rollback_summary"] = {
-        "latest_rollback_execution_id": (rollback_executions[-1] if rollback_executions else {}).get("rollback_execution_id"),
-        "latest_revocation_impact_id": (revocation_impacts[-1] if revocation_impacts else {}).get("revocation_impact_id"),
+        "rollback_plan_count": len(rollback_plans),
+        "rollback_execution_count": len(rollback_executions),
+        "revocation_impact_count": len(revocation_impacts),
+        "latest_rollback_plan": latest_rollback_plan,
+        "latest_rollback_execution": latest_rollback_execution,
+        "latest_revocation_impact": latest_revocation_impact,
         "output_dependency_count": len(output_dependencies),
     }
     summary["control_summary"] = {
@@ -425,34 +485,60 @@ def build_state_export(root: Path) -> dict:
         "disabled_execution_backend_count": sum(len(row.get("disabled_execution_backends", [])) for row in controls),
     }
     summary["approval_session_summary"] = {
-        "latest_approval_session_id": (approval_sessions[-1] if approval_sessions else {}).get("approval_session_id"),
-        "latest_resume_token_id": (approval_resume_tokens[-1] if approval_resume_tokens else {}).get("resume_token_id"),
+        "approval_session_count": len(approval_sessions),
+        "approval_context_count": len(approval_decision_contexts),
+        "approval_resume_token_count": len(approval_resume_tokens),
+        "latest_approval_session": latest_approval_session,
+        "latest_resume_token": latest_resume_token,
         "resumable_session_count": sum(1 for row in approval_sessions if row.get("resumable") and not row.get("terminal")),
+        "terminal_session_count": sum(1 for row in approval_sessions if row.get("terminal")),
     }
     summary["subsystem_contract_summary"] = {
-        "latest_subsystem_contract_id": (subsystem_contracts[-1] if subsystem_contracts else {}).get("subsystem_contract_id"),
+        "latest_subsystem_contract": latest_subsystem_contract,
         "subsystem_contract_count": len(subsystem_contracts),
     }
+    enabled_input_modalities = sorted(
+        {mod for row in modality_contracts if row.get("enabled") for mod in row.get("input_modalities", [])}
+    )
     summary["multimodal_summary"] = {
         "modality_contract_count": len(modality_contracts),
         "enabled_modality_contract_count": sum(1 for row in modality_contracts if row.get("enabled")),
-        "latest_modality_contract_id": (modality_contracts[-1] if modality_contracts else {}).get("modality_contract_id"),
+        "enabled_input_modalities": enabled_input_modalities,
         "runtime_modality_mode": "text_only_qwen",
-        "multimodal_runtime_enabled": any(row.get("enabled") and any(mod in {"image_ref", "audio_ref", "file_ref"} for mod in row.get("input_modalities", [])) for row in modality_contracts),
+        "multimodal_runtime_enabled": any(mod in {"image_ref", "audio_ref", "file_ref"} for mod in enabled_input_modalities),
+        "latest_modality_contract": latest_modality_contract,
+        "policy_tags": sorted({tag for row in modality_contracts for tag in row.get("policy_tags", [])}),
     }
+    latest_memory_event = None
+    for kind, rows in (
+        ("promotion", memory_promotion_decisions),
+        ("rejection", memory_rejection_decisions),
+        ("revocation", memory_revocation_decisions),
+    ):
+        latest = _latest_row(rows)
+        if latest and (latest_memory_event is None or _timestamp(latest) > latest_memory_event.get("updated_at", "")):
+            latest_memory_event = {"event_kind": kind, **latest}
     summary["memory_discipline_summary"] = {
-        "latest_memory_candidate_id": (memory_candidates[-1] if memory_candidates else {}).get("memory_candidate_id"),
-        "latest_memory_validation_id": (memory_validations[-1] if memory_validations else {}).get("memory_validation_id"),
-        "latest_memory_promotion_decision_id": (memory_promotion_decisions[-1] if memory_promotion_decisions else {}).get("memory_promotion_decision_id"),
-        "latest_memory_rejection_decision_id": (memory_rejection_decisions[-1] if memory_rejection_decisions else {}).get("memory_rejection_decision_id"),
-        "latest_memory_revocation_decision_id": (memory_revocation_decisions[-1] if memory_revocation_decisions else {}).get("memory_revocation_decision_id"),
+        "memory_candidate_count": len(memory_candidates),
+        "memory_validation_count": len(memory_validations),
+        "memory_promotion_count": len(memory_promotion_decisions),
+        "memory_rejection_count": len(memory_rejection_decisions),
+        "memory_revocation_count": len(memory_revocation_decisions),
+        "latest_memory_candidate": latest_memory_candidate,
+        "latest_memory_validation": latest_memory_validation,
+        "latest_memory_event": latest_memory_event,
     }
+    control_summary = build_control_summary(root=root)
     summary["promotion_governance_summary"] = {
-        "promotion_freeze_active": sum(1 for row in controls if row.get("promotion_freeze")) > 0,
-        "memory_freeze_active": sum(1 for row in controls if row.get("memory_freeze")) > 0,
-        "latest_candidate_id": (candidate_records[-1] if candidate_records else {}).get("candidate_id"),
-        "latest_output_dependency_id": (output_dependencies[-1] if output_dependencies else {}).get("output_dependency_id"),
-        "latest_blocked_action_id": (control_blocked_actions[-1] if control_blocked_actions else {}).get("blocked_action_id"),
+        "candidate_count": len(candidate_records),
+        "promotable_candidate_count": sum(1 for row in candidate_records if row.get("lifecycle_state") == "candidate"),
+        "promoted_candidate_count": sum(1 for row in candidate_records if row.get("lifecycle_state") == "promoted"),
+        "effective_control_status": (control_summary.get("effective") or {}).get("effective_status"),
+        "promotion_freeze_active": bool(((control_summary.get("effective") or {}).get("emergency_flags") or {}).get("promotion_freeze")),
+        "memory_freeze_active": bool(((control_summary.get("effective") or {}).get("emergency_flags") or {}).get("memory_freeze")),
+        "latest_candidate": latest_candidate,
+        "latest_output_dependency": latest_output_dependency,
+        "latest_blocked_action": latest_blocked_action,
     }
 
     for execution in operator_action_executions:

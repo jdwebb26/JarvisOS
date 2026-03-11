@@ -1,6 +1,6 @@
 # Jarvis / OpenClaw v5
 
-Jarvis/OpenClaw v5 is a chat-first, Qwen-only operator system built around durable events, explicit task creation, approval-aware execution, Flowstate distillation, and artifact-first review.
+Jarvis/OpenClaw v5 is a chat-first operator system built around durable events, explicit task creation, approval-aware execution, Flowstate distillation, and artifact-first review. The runtime architecture is provider-agnostic, but the active deployment policy remains Qwen-only.
 
 ## Core rules
 
@@ -80,7 +80,7 @@ python3 scripts/doctor.py
 
 What these cover:
 
-- `validate.py` checks repo shape, current config presence, Qwen-only model hints, writable operator paths, and key imports.
+- `validate.py` checks repo shape, current config presence, active Qwen-only policy hints, writable operator paths, and key imports.
 - `smoke_test.py` runs the repo-local preflight and then the proven runtime regression pack.
 - `doctor.py` rolls the baseline into one operator-facing verdict with next actions.
 

@@ -256,5 +256,8 @@ def test_multimodal_and_replay_summaries_surface_in_reporting(tmp_path: Path):
     assert snapshot["replay_summary"]["latest_replay_result"]["result_kind"] == "match"
     assert export_payload["counts"]["replay_results"] >= 1
     assert export_payload["counts"]["modality_contracts"] >= 1
+    assert export_payload["provenance_summary"]["latest_task_provenance"]["task_id"] == created["task_id"]
+    assert export_payload["replay_summary"]["latest_replay_result"]["result_kind"] == "match"
+    assert export_payload["multimodal_summary"]["runtime_modality_mode"] == "text_only_qwen"
     assert handoff["replay_summary"]["latest_replay_result"]["result_kind"] == "match"
     assert handoff["multimodal_summary"]["modality_contract_count"] == modality_summary["modality_contract_count"]

@@ -241,6 +241,8 @@ def test_reporting_surfaces_rollback_approval_sessions_and_contracts(tmp_path: P
     assert export_payload["counts"]["approval_sessions"] >= 1
     assert export_payload["counts"]["rollback_executions"] >= 1
     assert export_payload["counts"]["subsystem_contracts"] >= 6
+    assert export_payload["rollback_summary"]["latest_rollback_execution"]["artifact_id"] == artifact["artifact_id"]
+    assert export_payload["approval_session_summary"]["latest_approval_session"]["approval_id"] == approval.approval_id
     assert handoff["rollback_summary"]["latest_rollback_execution"]["artifact_id"] == artifact["artifact_id"]
     assert handoff["approval_session_summary"]["latest_approval_session"]["approval_id"] == approval.approval_id
     assert handoff["subsystem_contract_summary"]["contract_count"] >= 6

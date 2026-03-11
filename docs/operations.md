@@ -841,7 +841,9 @@ Current behavior:
 
 - routing selection remains separate from backend execution outcome
 - bounded backend subsystems now emit durable execution request/result records with provider/model/backend provenance
+- the legacy direct Qwen candidate writer and live-apply path now emit the same shared backend execution request/result records as the bounded subsystem adapters
 - task publish-readiness is recomputed explicitly after promotion, publish, and revocation-bearing invalidation paths
+- demotion or supersession of the last promoted artifact now invalidates `publish_readiness_status`, sets blocked dependency refs, and clears `candidate_ready_for_live_apply` into `candidate_invalidated`
 - deployment remains Qwen-only even though execution contracts are provider-agnostic
 
 ## Operator UX goal
