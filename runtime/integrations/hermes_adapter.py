@@ -24,7 +24,13 @@ from runtime.core.artifact_store import write_text_artifact
 from runtime.core.execution_contracts import (
     record_backend_execution_request,
     record_backend_execution_result,
+    resolve_execution_identity,
     save_backend_execution_request,
+)
+from runtime.core.degradation_policy import (
+    ensure_default_degradation_policies,
+    load_degradation_policy_for_subsystem,
+    record_degradation_event,
 )
 from runtime.core.models import ApprovalStatus, ReviewStatus, TaskStatus, new_id, now_iso
 from runtime.core.review_store import latest_review_for_task, save_review
@@ -270,6 +276,7 @@ def execute_hermes_task(
     transport: Optional[Transport] = None,
 ) -> dict[str, Any]:
     root_path = Path(root or ROOT).resolve()
+    ensure_default_degradation_policies(root=root_path)
     task = load_task(task_id, root=root_path)
     if task is None:
         raise ValueError(f"Task not found: {task_id}")
@@ -301,14 +308,15 @@ def execute_hermes_task(
     save_task(task, root=root_path)
     save_hermes_request(request, root=root_path)
     routing_meta = (task.backend_metadata or {}).get("routing") or {}
+    execution_identity = resolve_execution_identity(task=task, routing_meta=routing_meta)
     execution_request = record_backend_execution_request(
         task_id=task_id,
         actor=actor,
         lane=lane,
         request_kind="hermes_task",
         execution_backend=HERMES_BACKEND_ID,
-        provider_id=str(routing_meta.get("provider_id") or "qwen"),
-        model_name=str(task.assigned_model or "Qwen3.5-35B"),
+        provider_id=execution_identity["provider_id"],
+        model_name=execution_identity["model_name"],
         routing_decision_id=routing_meta.get("routing_decision_id"),
         provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
         input_summary=request.summary,
@@ -453,29 +461,74 @@ def execute_hermes_task(
             root=root_path,
         )
     else:
+        degradation_policy = load_degradation_policy_for_subsystem(HERMES_BACKEND_ID, root=root_path)
+        failure_category = "backend_failure"
+        if result.status == TIMEOUT_STATUS:
+            failure_category = "timeout"
+        elif result.status == UNREACHABLE_STATUS:
+            failure_category = "unreachable_backend"
+        elif result.status == MALFORMED_STATUS:
+            failure_category = "malformed_response"
+        fallback_allowed = bool(
+            degradation_policy
+            and degradation_policy.fallback_action in {"local_fallback_allowed", "local_fallback"}
+        )
+        degradation_reason = (
+            f"Hermes degradation applied: {failure_category}; "
+            f"fallback_action={degradation_policy.fallback_action if degradation_policy else 'none'}; "
+            f"retry_policy={json.dumps((degradation_policy.retry_policy if degradation_policy else {}), sort_keys=True)}; "
+            f"operator_notification_required={bool(degradation_policy.requires_operator_notification) if degradation_policy else False}"
+        )
+        degradation_event = record_degradation_event(
+            subsystem=HERMES_BACKEND_ID,
+            actor=actor,
+            lane=lane,
+            task_id=task_id,
+            failure_category=failure_category,
+            reason=result.error or degradation_reason,
+            source_refs={
+                "hermes_request_id": request.request_id,
+                "hermes_result_id": result.result_id,
+                "fallback_allowed": fallback_allowed,
+            },
+            status="applied",
+            root=root_path,
+        )
         task.checkpoint_summary = f"Hermes {result.status}: {result.error}"
+        task.backend_metadata.setdefault("degradation", {})
+        task.backend_metadata["degradation"] = {
+            "failure_category": failure_category,
+            "degradation_policy_id": degradation_event.degradation_policy_id,
+            "degradation_event_id": degradation_event.degradation_event_id,
+            "fallback_action": degradation_event.fallback_action,
+            "fallback_allowed": fallback_allowed,
+            "retry_policy": dict(degradation_event.retry_policy),
+            "requires_operator_notification": degradation_event.requires_operator_notification,
+        }
         save_task(task, root=root_path)
         transition_task(
             task_id=task_id,
-            to_status=TaskStatus.BLOCKED.value,
+            to_status=TaskStatus.FAILED.value if result.status in {TIMEOUT_STATUS, UNREACHABLE_STATUS} else TaskStatus.BLOCKED.value,
             actor=actor,
             lane=lane,
             summary=f"Hermes backend {result.status}: {request.request_id}",
             root=root_path,
-            details=result.error,
+            details=degradation_reason,
+            error=f"{failure_category}: {result.error}",
         )
         append_event(
             make_event(
                 task_id=task_id,
-                event_type="hermes_result_failed",
+                event_type="hermes_degradation_applied",
                 actor="hermes",
                 lane=lane,
-                summary=f"Hermes result {result.status}: {request.request_id}",
+                summary=f"Hermes degradation applied: {request.request_id}",
                 from_status=original_status,
-                to_status=TaskStatus.BLOCKED.value,
+                to_status=TaskStatus.FAILED.value if result.status in {TIMEOUT_STATUS, UNREACHABLE_STATUS} else TaskStatus.BLOCKED.value,
                 execution_backend=HERMES_BACKEND_ID,
                 backend_run_id=result.run_id,
-                error=result.error,
+                error=f"{failure_category}: {result.error}",
+                details=degradation_reason,
             ),
             root=root_path,
         )
@@ -521,8 +574,8 @@ def execute_hermes_task(
         lane=lane,
         request_kind="hermes_task",
         execution_backend=HERMES_BACKEND_ID,
-        provider_id=str(routing_meta.get("provider_id") or "qwen"),
-        model_name=str(result.model_name or task.assigned_model or "Qwen3.5-35B"),
+        provider_id=execution_identity["provider_id"],
+        model_name=str(result.model_name or execution_identity["model_name"]),
         status=result.status,
         backend_run_id=result.run_id,
         candidate_artifact_id=result.candidate_artifact_id,
@@ -538,6 +591,10 @@ def execute_hermes_task(
         metadata={
             "family": result.family,
             "request_status": execution_request.status,
+            "failure_category": failure_category if result.status != SUCCESS_STATUS else "",
+            "degradation_policy_id": (
+                ((final_task.backend_metadata if final_task else {}) or {}).get("degradation", {})
+            ).get("degradation_policy_id"),
         },
         root=root_path,
     )

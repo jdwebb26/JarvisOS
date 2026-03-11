@@ -61,6 +61,9 @@ REQUIRED_DIRS = [
     "state/provider_adapter_results",
     "state/backend_execution_requests",
     "state/backend_execution_results",
+    "state/token_budgets",
+    "state/degradation_policies",
+    "state/degradation_events",
     "state/candidate_records",
     "state/candidate_validations",
     "state/promotion_decisions",
@@ -677,12 +680,46 @@ def run_smoke(root: Path) -> dict:
             "message": "Smoke stopped at runtime_regression_pack.",
         }
 
+    rebuild_payload: dict = {}
+    rebuild_ok = False
+    rebuild_message = ""
+    try:
+        from runtime.dashboard.rebuild_all import rebuild_all
+
+        rebuild_payload = rebuild_all(root=root)
+        rebuild_ok = bool(rebuild_payload.get("ok"))
+        rebuild_message = (
+            "dashboard/state summaries rebuilt"
+            if rebuild_ok
+            else f"dashboard rebuild reported errors: {rebuild_payload.get('errors', [])}"
+        )
+    except Exception as exc:
+        rebuild_payload = {"ok": False, "errors": [str(exc)]}
+        rebuild_message = f"dashboard rebuild failed: {exc}"
+
+    steps.append(
+        {
+            "step": "dashboard_rebuild",
+            "ok": rebuild_ok,
+            "summary": rebuild_payload,
+            "message": rebuild_message,
+        }
+    )
+    if not rebuild_ok:
+        return {
+            "ok": False,
+            "timestamp_utc": now_iso(),
+            "root": str(root),
+            "steps": steps,
+            "message": "Smoke stopped at dashboard_rebuild.",
+        }
+
     return {
         "ok": True,
         "timestamp_utc": now_iso(),
         "root": str(root),
         "steps": steps,
-        "message": "Repo-local deployment smoke is green. Next operator move: work candidate-ready or shipped tasks through apply/publish-complete.",
+        "message": "Repo-local deployment smoke is green and dashboard/operator summaries were rebuilt. Next operator move: inspect operator_snapshot/state_export and work candidate-ready or shipped tasks through apply/publish-complete.",
     }
 
 

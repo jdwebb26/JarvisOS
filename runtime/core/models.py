@@ -172,6 +172,12 @@ class ReplayResultKind(StrEnum):
     INVALID_REPLAY = "invalid_replay"
 
 
+class DegradationEventStatus(StrEnum):
+    RECORDED = "recorded"
+    APPLIED = "applied"
+    BLOCKED = "blocked"
+
+
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -218,7 +224,7 @@ class TaskRecord:
     status: str = TaskStatus.QUEUED.value
     lifecycle_state: str = RecordLifecycleState.WORKING.value
     assigned_role: str = "executor"
-    assigned_model: str = "Qwen3.5-35B"
+    assigned_model: str = "unassigned"
     execution_backend: str = "unassigned"
     backend_run_id: Optional[str] = None
     backend_metadata: dict[str, Any] = field(default_factory=dict)
@@ -255,7 +261,7 @@ class TaskRecord:
         data.setdefault("status", TaskStatus.QUEUED.value)
         data.setdefault("lifecycle_state", RecordLifecycleState.WORKING.value)
         data.setdefault("assigned_role", "executor")
-        data.setdefault("assigned_model", "Qwen3.5-35B")
+        data.setdefault("assigned_model", "unassigned")
         data.setdefault("execution_backend", "unassigned")
         data.setdefault("backend_run_id", None)
         data.setdefault("backend_metadata", {})
@@ -676,6 +682,74 @@ class ControlBlockedActionRecord:
         data.setdefault("reason", "")
         data.setdefault("control_scope_refs", [])
         data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class DegradationPolicyRecord:
+    degradation_policy_id: str
+    subsystem: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    degradation_mode: str
+    fallback_action: str
+    requires_operator_notification: bool
+    auto_recover: bool
+    retry_policy: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "DegradationPolicyRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("retry_policy", {})
+        return cls(**data)
+
+
+@dataclass
+class DegradationEventRecord:
+    degradation_event_id: str
+    subsystem: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    degradation_policy_id: Optional[str] = None
+    task_id: Optional[str] = None
+    failure_category: str = ""
+    degradation_mode: str = ""
+    fallback_action: str = ""
+    requires_operator_notification: bool = False
+    auto_recover: bool = False
+    retry_policy: dict[str, Any] = field(default_factory=dict)
+    status: str = DegradationEventStatus.RECORDED.value
+    reason: str = ""
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "DegradationEventRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("degradation_policy_id", None)
+        data.setdefault("task_id", None)
+        data.setdefault("failure_category", "")
+        data.setdefault("degradation_mode", "")
+        data.setdefault("fallback_action", "")
+        data.setdefault("requires_operator_notification", False)
+        data.setdefault("auto_recover", False)
+        data.setdefault("retry_policy", {})
+        data.setdefault("status", DegradationEventStatus.RECORDED.value)
+        data.setdefault("reason", "")
+        data.setdefault("source_refs", {})
         return cls(**data)
 
 
@@ -1250,7 +1324,7 @@ class CapabilityProfileRecord:
     capabilities: list[str] = field(default_factory=list)
     supported_task_types: list[str] = field(default_factory=list)
     supported_risk_levels: list[str] = field(default_factory=list)
-    preferred_execution_backend: str = "qwen_executor"
+    preferred_execution_backend: str = "unassigned"
     active: bool = True
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
@@ -1264,7 +1338,7 @@ class CapabilityProfileRecord:
         data.setdefault("capabilities", [])
         data.setdefault("supported_task_types", [])
         data.setdefault("supported_risk_levels", [])
-        data.setdefault("preferred_execution_backend", "qwen_executor")
+        data.setdefault("preferred_execution_backend", "unassigned")
         data.setdefault("active", True)
         return cls(**data)
 
@@ -1282,7 +1356,7 @@ class ModelRegistryEntryRecord:
     capability_profile_ids: list[str] = field(default_factory=list)
     policy_tags: list[str] = field(default_factory=list)
     priority_rank: int = 100
-    default_execution_backend: str = "qwen_executor"
+    default_execution_backend: str = "unassigned"
     active: bool = True
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
@@ -1296,7 +1370,7 @@ class ModelRegistryEntryRecord:
         data.setdefault("capability_profile_ids", [])
         data.setdefault("policy_tags", [])
         data.setdefault("priority_rank", 100)
-        data.setdefault("default_execution_backend", "qwen_executor")
+        data.setdefault("default_execution_backend", "unassigned")
         data.setdefault("active", True)
         return cls(**data)
 
@@ -1471,6 +1545,40 @@ class BackendExecutionResultRecord:
         data.setdefault("error", "")
         data.setdefault("source_refs", {})
         data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class TokenBudgetRecord:
+    token_budget_id: str
+    scope: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    scope_ref: Optional[str] = None
+    max_tokens_per_task: int = 0
+    max_tokens_per_cycle: int = 0
+    max_cost_usd_per_cycle: float = 0.0
+    current_usage: dict[str, Any] = field(default_factory=dict)
+    alert_threshold: dict[str, Any] = field(default_factory=dict)
+    hard_stop_threshold: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "TokenBudgetRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("scope_ref", None)
+        data.setdefault("max_tokens_per_task", 0)
+        data.setdefault("max_tokens_per_cycle", 0)
+        data.setdefault("max_cost_usd_per_cycle", 0.0)
+        data.setdefault("current_usage", {})
+        data.setdefault("alert_threshold", {})
+        data.setdefault("hard_stop_threshold", {})
         return cls(**data)
 
 

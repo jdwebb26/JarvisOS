@@ -866,6 +866,8 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "generated_at": snapshot["status"].get("generated_at"),
         "model_registry_summary": snapshot.get("routing_summary", {}),
         "execution_contract_summary": snapshot.get("execution_contract_summary", {}),
+        "token_budget_summary": snapshot.get("token_budget_summary", {}),
+        "degradation_summary": snapshot.get("degradation_summary", {}),
         "candidate_promotion_summary": snapshot.get("candidate_promotion_summary", {}),
         "provenance_summary": snapshot.get("provenance_summary", {}),
         "replay_summary": snapshot.get("replay_summary", {}),

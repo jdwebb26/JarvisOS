@@ -11,6 +11,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.controls.control_store import build_control_summary
+from runtime.core.degradation_policy import build_degradation_summary
+from runtime.core.token_budget import build_token_budget_summary
 from runtime.dashboard.status_names import normalize_status_name
 
 
@@ -79,6 +81,9 @@ def build_state_export(root: Path) -> dict:
     provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
     backend_execution_requests = _load_jsons(root / "state" / "backend_execution_requests")
     backend_execution_results = _load_jsons(root / "state" / "backend_execution_results")
+    token_budgets = _load_jsons(root / "state" / "token_budgets")
+    degradation_policies = _load_jsons(root / "state" / "degradation_policies")
+    degradation_events = _load_jsons(root / "state" / "degradation_events")
     candidate_records = _load_jsons(root / "state" / "candidate_records")
     candidate_validations = _load_jsons(root / "state" / "candidate_validations")
     promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
@@ -168,6 +173,9 @@ def build_state_export(root: Path) -> dict:
             "provider_adapter_results": len(provider_adapter_results),
             "backend_execution_requests": len(backend_execution_requests),
             "backend_execution_results": len(backend_execution_results),
+            "token_budgets": len(token_budgets),
+            "degradation_policies": len(degradation_policies),
+            "degradation_events": len(degradation_events),
             "candidate_records": len(candidate_records),
             "candidate_validations": len(candidate_validations),
             "promotion_decisions": len(promotion_decisions),
@@ -430,6 +438,8 @@ def build_state_export(root: Path) -> dict:
         "latest_backend_execution_request": latest_backend_execution_request,
         "latest_backend_execution_result": latest_backend_execution_result,
     }
+    summary["token_budget_summary"] = build_token_budget_summary(root=root)
+    summary["degradation_summary"] = build_degradation_summary(root=root)
     summary["candidate_promotion_summary"] = {
         "candidate_count": len(candidate_records),
         "promotable_candidate_count": sum(1 for row in candidate_records if row.get("lifecycle_state") == "candidate"),

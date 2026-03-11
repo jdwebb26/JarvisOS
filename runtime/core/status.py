@@ -12,8 +12,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.candidate_store import build_candidate_summary
+from runtime.core.degradation_policy import build_degradation_summary
 from runtime.core.execution_contracts import build_execution_contract_summary
 from runtime.core.models import OutputStatus, RecordLifecycleState, TaskRecord, TaskStatus
+from runtime.core.token_budget import build_token_budget_summary
 from runtime.core.approval_sessions import build_approval_session_summary
 from runtime.core.provenance_store import build_provenance_summary
 from runtime.core.promotion_governance import build_promotion_governance_summary
@@ -266,6 +268,8 @@ def build_status(root: Path) -> dict[str, Any]:
     replay_summary = build_replay_summary(root)
     multimodal_summary = build_modality_summary(root)
     execution_contract_summary = build_execution_contract_summary(root)
+    token_budget_summary = build_token_budget_summary(root)
+    degradation_summary = build_degradation_summary(root)
     approval_session_summary = build_approval_session_summary(root)
     subsystem_contract_summary = build_subsystem_contract_summary(root)
     control_summary = build_control_summary(root=root)
@@ -431,6 +435,8 @@ def build_status(root: Path) -> dict[str, Any]:
         "provider_adapter_results": len(provider_adapter_results),
         "backend_execution_requests": len(backend_execution_requests),
         "backend_execution_results": len(backend_execution_results),
+        "degradation_policies": degradation_summary.get("degradation_policy_count", 0),
+        "degradation_events": degradation_summary.get("degradation_event_count", 0),
         "candidate_records": len(candidate_records),
         "candidate_validations": len(candidate_validations),
         "promotion_decisions": len(promotion_decisions),
@@ -576,6 +582,8 @@ def build_status(root: Path) -> dict[str, Any]:
         "candidate_artifacts": candidate_artifacts,
         "routing_summary": routing_summary,
         "execution_contract_summary": execution_contract_summary,
+        "token_budget_summary": token_budget_summary,
+        "degradation_summary": degradation_summary,
         "candidate_promotion_summary": candidate_promotion_summary,
         "provenance_summary": provenance_summary,
         "replay_summary": replay_summary,
@@ -694,6 +702,7 @@ def build_status(root: Path) -> dict[str, Any]:
             "rollback_summary": rollback_summary,
             "approval_session_summary": approval_session_summary,
             "subsystem_contract_summary": subsystem_contract_summary,
+            "degradation_summary": degradation_summary,
             "reply_ingress_summary": {
                 "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
                 "reply_transport_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
