@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
+import json
+import sys
+from pathlib import Path
 from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 SUPPORTED_CHANNELS = {
@@ -61,3 +70,29 @@ class NotificationAdapter:
             "lane": lane,
             "priority": priority,
         }
+
+
+def build_notification_summary(root=None) -> dict[str, Any]:
+    del root
+    return {
+        "notification_capability_present": True,
+        "supported_channels": sorted(SUPPORTED_CHANNELS),
+        "stubbed_only": True,
+        "voice_route_supported": True,
+        "notes": [
+            "Notification delivery remains stubbed in this slice.",
+            "Voice commands can preview or explicitly route into the bounded notification gateway.",
+        ],
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Show the notification adapter summary.")
+    parser.add_argument("--root", default=str(ROOT), help="Project root path")
+    args = parser.parse_args()
+    print(json.dumps(build_notification_summary(Path(args.root).resolve()), indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

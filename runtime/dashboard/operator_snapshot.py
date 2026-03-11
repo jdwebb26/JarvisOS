@@ -176,6 +176,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "plugin_policy_summary": status.get("plugin_policy_summary", {}),
         "a2a_policy_summary": status.get("a2a_policy_summary", {}),
         "voice_route_capability_summary": status.get("voice_route_capability_summary", {}),
+        "notification_summary": status.get("notification_summary", {}),
         "latest_reply_ingress": (status.get("operator_control_plane", {}) or {}).get("latest_reply_ingress"),
         "latest_reply_ingress_run": (status.get("operator_control_plane", {}) or {}).get("latest_reply_ingress_run"),
         "latest_reply_transport_cycle": (status.get("operator_control_plane", {}) or {}).get("latest_reply_transport_cycle"),

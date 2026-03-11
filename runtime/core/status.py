@@ -35,6 +35,7 @@ from runtime.core.trajectory_profiles import build_operator_profile_summary, bui
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.core.a2a_policy import build_a2a_policy_summary
 from runtime.controls.control_store import build_control_summary, get_effective_control_state, list_blocked_actions, list_control_events, list_control_records
+from runtime.integrations.notification_adapter import build_notification_summary
 from runtime.voice.router import build_voice_route_capability_summary
 
 
@@ -321,6 +322,7 @@ def build_status(root: Path) -> dict[str, Any]:
     plugin_policy_summary = build_plugin_policy_summary(root=root)
     a2a_policy_summary = build_a2a_policy_summary(root=root)
     voice_route_capability_summary = build_voice_route_capability_summary()
+    notification_summary = build_notification_summary(root=root)
     control_summary = build_control_summary(root=root)
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
@@ -679,6 +681,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "plugin_policy_summary": plugin_policy_summary,
         "a2a_policy_summary": a2a_policy_summary,
         "voice_route_capability_summary": voice_route_capability_summary,
+        "notification_summary": notification_summary,
         "impacted_artifacts": impacted_artifacts,
         "revoked_artifacts": revoked_artifacts,
         "impacted_outputs": impacted_outputs,

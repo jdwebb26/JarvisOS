@@ -24,6 +24,7 @@ from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.token_budget import build_token_budget_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
+from runtime.integrations.notification_adapter import build_notification_summary
 from runtime.voice.router import build_voice_route_capability_summary
 from runtime.dashboard.status_names import normalize_status_name
 
@@ -510,6 +511,7 @@ def build_state_export(root: Path) -> dict:
     summary["plugin_policy_summary"] = build_plugin_policy_summary(root=root)
     summary["a2a_policy_summary"] = build_a2a_policy_summary(root=root)
     summary["voice_route_capability_summary"] = build_voice_route_capability_summary()
+    summary["notification_summary"] = build_notification_summary(root=root)
     summary["task_envelope_summary"] = {
         "task_envelope_task_count": sum(1 for row in tasks if row.get("task_envelope")),
         "autonomy_mode_counts": dict(summary.get("autonomy_mode_counts", {})),
