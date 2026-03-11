@@ -18,6 +18,7 @@ from runtime.core.models import OutputStatus, RecordLifecycleState, TaskRecord, 
 from runtime.core.token_budget import build_token_budget_summary
 from runtime.core.approval_sessions import build_approval_session_summary
 from runtime.core.browser_control_allowlist import build_browser_control_allowlist_summary
+from runtime.core.backend_assignments import build_backend_assignment_summary
 from runtime.core.eval_profiles import build_eval_profile_summary
 from runtime.core.heartbeat_reports import build_heartbeat_report_summary
 from runtime.core.provenance_store import build_provenance_summary
@@ -91,6 +92,7 @@ def _task_summary(task: TaskRecord, events_by_task: dict[str, list[dict[str, Any
         "priority": task.priority,
         "task_type": task.task_type,
         "execution_backend": task.execution_backend,
+        "backend_assignment_id": task.backend_assignment_id,
         "review_required": task.review_required,
         "approval_required": task.approval_required,
         "autonomy_mode": task.autonomy_mode,
@@ -163,6 +165,7 @@ def build_status(root: Path) -> dict[str, Any]:
             "priority": task.priority,
             "task_type": task.task_type,
             "execution_backend": task.execution_backend,
+            "backend_assignment_id": task.backend_assignment_id,
             "review_required": task.review_required,
             "approval_required": task.approval_required,
             "autonomy_mode": task.autonomy_mode,
@@ -229,6 +232,7 @@ def build_status(root: Path) -> dict[str, Any]:
     routing_requests = _load_jsons(root / "state" / "routing_requests")
     routing_decisions = _load_jsons(root / "state" / "routing_decisions")
     provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
+    backend_assignments = _load_jsons(root / "state" / "backend_assignments")
     backend_execution_requests = _load_jsons(root / "state" / "backend_execution_requests")
     backend_execution_results = _load_jsons(root / "state" / "backend_execution_results")
     candidate_records = _load_jsons(root / "state" / "candidate_records")
@@ -271,6 +275,7 @@ def build_status(root: Path) -> dict[str, Any]:
     control_events = [record.to_dict() for record in list_control_events(root=root)]
     blocked_control_actions = [record.to_dict() for record in list_blocked_actions(root=root)]
     routing_summary = build_model_registry_summary(root)
+    backend_assignment_summary = build_backend_assignment_summary(root=root)
     candidate_promotion_summary = build_candidate_summary(root)
     from runtime.memory.governance import build_memory_governance_summary
 
@@ -289,6 +294,9 @@ def build_status(root: Path) -> dict[str, Any]:
     browser_control_allowlist_summary = build_browser_control_allowlist_summary(root=root)
     voice_session_summary = build_voice_session_summary(root=root)
     heartbeat_summary = build_heartbeat_report_summary(root=root)
+    from runtime.integrations.hermes_adapter import build_hermes_summary
+
+    hermes_summary = build_hermes_summary(root=root)
     approval_session_summary = build_approval_session_summary(root)
     subsystem_contract_summary = build_subsystem_contract_summary(root)
     control_summary = build_control_summary(root=root)
@@ -454,6 +462,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "routing_requests": len(routing_requests),
         "routing_decisions": len(routing_decisions),
         "provider_adapter_results": len(provider_adapter_results),
+        "backend_assignments": len(backend_assignments),
         "backend_execution_requests": len(backend_execution_requests),
         "backend_execution_results": len(backend_execution_results),
         "degradation_policies": degradation_summary.get("degradation_policy_count", 0),
@@ -613,10 +622,12 @@ def build_status(root: Path) -> dict[str, Any]:
         "finished_recently": finished_recently,
         "candidate_artifacts": candidate_artifacts,
         "routing_summary": routing_summary,
+        "backend_assignment_summary": backend_assignment_summary,
         "execution_contract_summary": execution_contract_summary,
         "token_budget_summary": token_budget_summary,
         "degradation_summary": degradation_summary,
         "heartbeat_summary": heartbeat_summary,
+        "hermes_summary": hermes_summary,
         "eval_profile_summary": eval_profile_summary,
         "browser_control_allowlist_summary": browser_control_allowlist_summary,
         "voice_session_summary": voice_session_summary,
@@ -738,6 +749,7 @@ def build_status(root: Path) -> dict[str, Any]:
                 "operator_incident_snapshot_count": len(operator_incident_snapshots),
             },
             "model_registry_summary": routing_summary,
+            "backend_assignment_summary": backend_assignment_summary,
             "candidate_promotion_summary": candidate_promotion_summary,
             "memory_discipline_summary": memory_discipline_summary,
             "promotion_governance_summary": promotion_governance_summary,
@@ -746,6 +758,7 @@ def build_status(root: Path) -> dict[str, Any]:
             "subsystem_contract_summary": subsystem_contract_summary,
             "degradation_summary": degradation_summary,
             "heartbeat_summary": heartbeat_summary,
+            "hermes_summary": hermes_summary,
             "eval_profile_summary": eval_profile_summary,
             "browser_control_allowlist_summary": browser_control_allowlist_summary,
             "voice_session_summary": voice_session_summary,

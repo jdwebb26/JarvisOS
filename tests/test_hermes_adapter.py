@@ -6,13 +6,18 @@ from runtime.controls.control_store import apply_control_action
 from runtime.core.approval_store import load_approval_checkpoint, load_approval, request_approval
 from runtime.core.artifact_store import load_artifact
 from runtime.core.models import ControlScopeType, RecordLifecycleState, TaskRecord, TaskStatus, now_iso
+from runtime.core.status import build_status
 from runtime.core.review_store import load_review, request_review
 from runtime.core.task_store import create_task, load_task
+from runtime.dashboard.operator_snapshot import build_operator_snapshot
+from runtime.dashboard.state_export import build_state_export
 from runtime.integrations.hermes_adapter import (
     HERMES_BACKEND_ID,
     execute_hermes_task,
+    load_hermes_request,
     load_hermes_result,
 )
+from scripts.operator_handoff_pack import build_operator_handoff_pack
 
 
 def _make_task(
@@ -83,6 +88,7 @@ def test_hermes_success_updates_pending_review_and_writes_candidate(tmp_path: Pa
     stored_task = load_task(task.task_id, root=tmp_path)
     stored_review = load_review(review.review_id, root=tmp_path)
     stored_artifact = load_artifact(result["candidate_artifact_id"], root=tmp_path)
+    stored_request = load_hermes_request(result["request"]["request_id"], root=tmp_path)
     stored_result = load_hermes_result(result["result"]["result_id"], root=tmp_path)
 
     assert stored_task is not None
@@ -93,7 +99,14 @@ def test_hermes_success_updates_pending_review_and_writes_candidate(tmp_path: Pa
     assert stored_review.linked_artifact_ids == [result["candidate_artifact_id"]]
     assert stored_artifact.lifecycle_state == RecordLifecycleState.CANDIDATE.value
     assert stored_artifact.execution_backend == HERMES_BACKEND_ID
+    assert stored_request["objective"] == task.normalized_request
+    assert stored_request["allowed_tools"] == ["candidate_artifact_write", "bounded_research_synthesis"]
+    assert stored_request["return_format"] == "candidate_artifact"
+    assert stored_request["capability_declaration"]["task_type"] == task.task_type
     assert stored_result["status"] == "completed"
+    assert stored_result["checkpoint_summary"] == f"Hermes candidate stored: {result['candidate_artifact_id']}"
+    assert stored_result["artifacts"][0]["artifact_id"] == result["candidate_artifact_id"]
+    assert stored_result["error_summary"] == ""
 
 
 def test_hermes_success_updates_pending_approval_checkpoint(tmp_path: Path):
@@ -147,6 +160,40 @@ def test_hermes_malformed_response_blocks_task(tmp_path: Path):
     assert stored_task.status == TaskStatus.BLOCKED.value
     assert result["candidate_artifact_id"] is None
     assert result["result"]["status"] == "malformed"
+    assert result["result"]["error_summary"]
+
+
+def test_hermes_summary_surfaces_contract_fields(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_hermes_summary", status=TaskStatus.RUNNING.value)
+
+    execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: {
+            "run_id": "hermes_summary_run",
+            "family": "qwen3.5",
+            "model_name": "Qwen3.5-35B-A3B",
+            "title": "Hermes summary candidate",
+            "summary": "candidate summary",
+            "content": "candidate body",
+            "citations": [{"kind": "web", "ref": "doc:123"}],
+            "proposed_next_actions": [{"kind": "review", "label": "Request review"}],
+            "token_usage": {"input_tokens": 10, "output_tokens": 20, "total_tokens": 30},
+        },
+    )
+
+    status = build_status(tmp_path)
+    snapshot = build_operator_snapshot(tmp_path)
+    export_payload = build_state_export(tmp_path)
+    handoff = build_operator_handoff_pack(tmp_path)["pack"]
+
+    assert status["hermes_summary"]["hermes_request_count"] == 1
+    assert status["hermes_summary"]["latest_hermes_result"]["citations"][0]["kind"] == "web"
+    assert snapshot["hermes_summary"]["latest_hermes_result"]["proposed_next_actions"][0]["kind"] == "review"
+    assert export_payload["hermes_summary"]["latest_hermes_request"]["return_format"] == "candidate_artifact"
+    assert handoff["hermes_summary"]["latest_hermes_result"]["token_usage"]["total_tokens"] == 30
 
 
 def test_hermes_respects_control_state(tmp_path: Path):

@@ -87,6 +87,7 @@ def build_state_export(root: Path) -> dict:
     routing_requests = _load_jsons(root / "state" / "routing_requests")
     routing_decisions = _load_jsons(root / "state" / "routing_decisions")
     provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
+    backend_assignments = _load_jsons(root / "state" / "backend_assignments")
     backend_execution_requests = _load_jsons(root / "state" / "backend_execution_requests")
     backend_execution_results = _load_jsons(root / "state" / "backend_execution_results")
     token_budgets = _load_jsons(root / "state" / "token_budgets")
@@ -185,6 +186,7 @@ def build_state_export(root: Path) -> dict:
             "routing_requests": len(routing_requests),
             "routing_decisions": len(routing_decisions),
             "provider_adapter_results": len(provider_adapter_results),
+            "backend_assignments": len(backend_assignments),
             "backend_execution_requests": len(backend_execution_requests),
             "backend_execution_results": len(backend_execution_results),
             "token_budgets": len(token_budgets),
@@ -410,6 +412,7 @@ def build_state_export(root: Path) -> dict:
     summary["memory_retrieval_count"] = len(memory_retrievals)
 
     latest_routing_decision = _latest_row(routing_decisions)
+    latest_backend_assignment = _latest_row(backend_assignments)
     latest_backend_execution_request = _latest_row(backend_execution_requests)
     latest_backend_execution_result = _latest_row(backend_execution_results)
     latest_candidate = _latest_row(candidate_records)
@@ -445,6 +448,10 @@ def build_state_export(root: Path) -> dict:
     routing_summary = build_model_registry_summary(root=root)
     routing_summary["latest_routing_decision"] = latest_routing_decision
     summary["routing_summary"] = routing_summary
+    summary["backend_assignment_summary"] = {
+        "backend_assignment_count": len(backend_assignments),
+        "latest_backend_assignment": latest_backend_assignment,
+    }
     summary["execution_contract_summary"] = {
         "backend_execution_request_count": len(backend_execution_requests),
         "backend_execution_result_count": len(backend_execution_results),
@@ -459,6 +466,9 @@ def build_state_export(root: Path) -> dict:
     summary["token_budget_summary"] = build_token_budget_summary(root=root)
     summary["degradation_summary"] = build_degradation_summary(root=root)
     summary["heartbeat_summary"] = build_heartbeat_report_summary(root=root)
+    from runtime.integrations.hermes_adapter import build_hermes_summary
+
+    summary["hermes_summary"] = build_hermes_summary(root=root)
     summary["eval_profile_summary"] = build_eval_profile_summary(root=root)
     summary["browser_control_allowlist_summary"] = build_browser_control_allowlist_summary(root=root)
     summary["voice_session_summary"] = build_voice_session_summary(root=root)

@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -33,6 +33,8 @@ from runtime.core.degradation_policy import (
     record_degradation_event,
 )
 from runtime.core.models import ApprovalStatus, ReviewStatus, TaskStatus, new_id, now_iso
+from runtime.core.models import HermesTaskRequestRecord as HermesTaskRequest
+from runtime.core.models import HermesTaskResultRecord as HermesTaskResult
 from runtime.core.review_store import latest_review_for_task, save_review
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_store import load_task, save_task, transition_task
@@ -60,50 +62,6 @@ class HermesResponseMalformedError(ValueError):
 
 def _serialize(instance: Any) -> dict[str, Any]:
     return asdict(instance)
-
-
-@dataclass
-class HermesTaskRequest:
-    request_id: str
-    task_id: str
-    created_at: str
-    requested_by: str
-    lane: str
-    summary: str
-    task_type: str
-    timeout_seconds: int
-    execution_backend: str = HERMES_BACKEND_ID
-    allowed_families: list[str] = field(default_factory=lambda: list(HERMES_ALLOWED_FAMILIES))
-    sandbox_class: str = "bounded"
-    metadata: dict[str, Any] = field(default_factory=dict)
-    schema_version: str = "v5.1"
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
-
-
-@dataclass
-class HermesTaskResult:
-    result_id: str
-    request_id: str
-    task_id: str
-    run_id: str
-    received_at: str
-    status: str
-    execution_backend: str = HERMES_BACKEND_ID
-    family: str = "qwen3.5"
-    model_name: str = ""
-    title: str = ""
-    summary: str = ""
-    content: str = ""
-    error: str = ""
-    candidate_artifact_id: Optional[str] = None
-    trace_id: Optional[str] = None
-    raw_response: dict[str, Any] = field(default_factory=dict)
-    schema_version: str = "v5.1"
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
 
 
 def hermes_requests_dir(root: Optional[Path] = None) -> Path:
@@ -150,6 +108,44 @@ def load_hermes_result(result_id: str, *, root: Optional[Path] = None) -> dict[s
     return json.loads(result_path(result_id, root=root).read_text(encoding="utf-8"))
 
 
+def list_hermes_requests(root: Optional[Path] = None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in sorted(hermes_requests_dir(root).glob("*.json")):
+        try:
+            rows.append(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+    rows.sort(key=lambda row: row.get("created_at", ""), reverse=True)
+    return rows
+
+
+def list_hermes_results(root: Optional[Path] = None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in sorted(hermes_results_dir(root).glob("*.json")):
+        try:
+            rows.append(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:
+            continue
+    rows.sort(key=lambda row: row.get("received_at", ""), reverse=True)
+    return rows
+
+
+def build_hermes_summary(root: Optional[Path] = None) -> dict[str, Any]:
+    requests = list_hermes_requests(root=root)
+    results = list_hermes_results(root=root)
+    status_counts: dict[str, int] = {}
+    for row in results:
+        status = row.get("status", "unknown")
+        status_counts[status] = status_counts.get(status, 0) + 1
+    return {
+        "hermes_request_count": len(requests),
+        "hermes_result_count": len(results),
+        "hermes_result_status_counts": status_counts,
+        "latest_hermes_request": requests[0] if requests else None,
+        "latest_hermes_result": results[0] if results else None,
+    }
+
+
 def build_hermes_task_request(
     *,
     task,
@@ -158,15 +154,33 @@ def build_hermes_task_request(
     timeout_seconds: int,
     metadata: Optional[dict[str, Any]] = None,
 ) -> HermesTaskRequest:
+    routing_meta = (task.backend_metadata or {}).get("routing") or {}
     return HermesTaskRequest(
         request_id=new_id("hermesreq"),
         task_id=task.task_id,
         created_at=now_iso(),
         requested_by=actor,
         lane=lane,
-        summary=task.normalized_request,
-        task_type=task.task_type,
+        objective=task.normalized_request,
         timeout_seconds=timeout_seconds,
+        execution_backend=HERMES_BACKEND_ID,
+        sandbox_class="bounded",
+        allowed_tools=["candidate_artifact_write", "bounded_research_synthesis"],
+        model_override_policy={
+            "allowed_families": list(HERMES_ALLOWED_FAMILIES),
+            "provider_policy": "qwen_only",
+        },
+        max_tokens=(metadata or {}).get("max_tokens"),
+        return_format="candidate_artifact",
+        capability_declaration={
+            "task_type": task.task_type,
+            "required_capabilities": list(routing_meta.get("required_capabilities", [])),
+        },
+        callback_contract={
+            "kind": "task_event",
+            "task_id": task.task_id,
+            "lane": lane,
+        },
         metadata=dict(metadata or {}),
     )
 
@@ -179,11 +193,15 @@ def _parse_hermes_response(*, request: HermesTaskRequest, payload: dict[str, Any
     summary = str(payload.get("summary") or "").strip()
     content = str(payload.get("content") or "").strip()
     family = str(payload.get("family") or "qwen3.5").strip().lower()
+    citations = list(payload.get("citations") or [])
+    proposed_next_actions = list(payload.get("proposed_next_actions") or [])
+    token_usage = dict(payload.get("token_usage") or {})
     if not title or not summary or not content:
         raise HermesResponseMalformedError("Hermes response must include non-empty `title`, `summary`, and `content`.")
-    if not any(family.startswith(allowed) for allowed in request.allowed_families):
+    allowed_families = list((request.model_override_policy or {}).get("allowed_families") or HERMES_ALLOWED_FAMILIES)
+    if not any(family.startswith(allowed) for allowed in allowed_families):
         raise HermesResponseMalformedError(
-            f"Hermes response family `{family}` violates Qwen-first policy ({', '.join(request.allowed_families)})."
+            f"Hermes response family `{family}` violates Qwen-first policy ({', '.join(allowed_families)})."
         )
 
     return HermesTaskResult(
@@ -193,8 +211,15 @@ def _parse_hermes_response(*, request: HermesTaskRequest, payload: dict[str, Any
         run_id=str(payload.get("run_id") or new_id("hrun")),
         received_at=now_iso(),
         status=SUCCESS_STATUS,
+        execution_backend=HERMES_BACKEND_ID,
         family=family,
         model_name=str(payload.get("model_name") or ""),
+        artifacts=[],
+        checkpoint_summary=summary,
+        citations=citations,
+        proposed_next_actions=proposed_next_actions,
+        token_usage=token_usage,
+        error_summary="",
         title=title,
         summary=summary,
         content=content,
@@ -258,6 +283,9 @@ def _record_failed_result(
         run_id=new_id("hrun"),
         received_at=now_iso(),
         status=status,
+        execution_backend=HERMES_BACKEND_ID,
+        checkpoint_summary="",
+        error_summary=error,
         error=error,
         raw_response=dict(raw_response or {}),
     )
@@ -319,7 +347,7 @@ def execute_hermes_task(
         model_name=execution_identity["model_name"],
         routing_decision_id=routing_meta.get("routing_decision_id"),
         provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
-        input_summary=request.summary,
+        input_summary=request.objective,
         input_refs={"hermes_request_id": request.request_id},
         source_refs={
             "routing_request_id": routing_meta.get("routing_request_id"),
@@ -349,7 +377,7 @@ def execute_hermes_task(
             from_status=original_status,
             to_status=TaskStatus.RUNNING.value if original_status == TaskStatus.QUEUED.value else original_status,
             execution_backend=HERMES_BACKEND_ID,
-            details=request.summary,
+            details=request.objective,
         ),
         root=root_path,
     )
@@ -423,6 +451,14 @@ def execute_hermes_task(
             provenance_ref=f"hermes:{result.run_id}",
         )
         result.candidate_artifact_id = artifact["artifact_id"]
+        result.artifacts = [
+            {
+                "artifact_id": artifact["artifact_id"],
+                "artifact_type": artifact["artifact_type"],
+                "lifecycle_state": artifact["lifecycle_state"],
+            }
+        ]
+        result.checkpoint_summary = f"Hermes candidate stored: {artifact['artifact_id']}"
         save_hermes_result(result, root=root_path)
         _update_task_for_hermes(task, request=request, result=result)
         task.checkpoint_summary = f"Hermes candidate stored: {artifact['artifact_id']}"
@@ -542,8 +578,8 @@ def execute_hermes_task(
         execution_backend=HERMES_BACKEND_ID,
         backend_run_id=result.run_id,
         status=result.status,
-        request_summary=request.summary,
-        response_summary=result.summary or result.error,
+        request_summary=request.objective,
+        response_summary=result.summary or result.error_summary or result.error,
         decision_summary=(
             f"Hermes candidate artifact stored: {result.candidate_artifact_id}"
             if result.candidate_artifact_id
@@ -595,6 +631,7 @@ def execute_hermes_task(
             "degradation_policy_id": (
                 ((final_task.backend_metadata if final_task else {}) or {}).get("degradation", {})
             ).get("degradation_policy_id"),
+            "token_usage": dict(result.token_usage),
         },
         root=root_path,
     )

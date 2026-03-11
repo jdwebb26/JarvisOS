@@ -247,6 +247,7 @@ class TaskRecord:
     lifecycle_state: str = RecordLifecycleState.WORKING.value
     assigned_role: str = "executor"
     assigned_model: str = "unassigned"
+    backend_assignment_id: Optional[str] = None
     execution_backend: str = "unassigned"
     backend_run_id: Optional[str] = None
     backend_metadata: dict[str, Any] = field(default_factory=dict)
@@ -288,6 +289,7 @@ class TaskRecord:
         data.setdefault("lifecycle_state", RecordLifecycleState.WORKING.value)
         data.setdefault("assigned_role", "executor")
         data.setdefault("assigned_model", "unassigned")
+        data.setdefault("backend_assignment_id", None)
         data.setdefault("execution_backend", "unassigned")
         data.setdefault("backend_run_id", None)
         data.setdefault("backend_metadata", {})
@@ -1668,6 +1670,43 @@ class RoutingDecisionRecord:
 
 
 @dataclass
+class BackendAssignmentRecord:
+    backend_assignment_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    routing_request_id: str
+    routing_decision_id: str
+    provider_adapter_result_id: Optional[str]
+    provider_id: str
+    model_name: str
+    execution_backend: str
+    model_registry_entry_id: Optional[str] = None
+    capability_profile_id: Optional[str] = None
+    assignment_reason: str = ""
+    status: str = "assigned"
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BackendAssignmentRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("provider_adapter_result_id", None)
+        data.setdefault("model_registry_entry_id", None)
+        data.setdefault("capability_profile_id", None)
+        data.setdefault("assignment_reason", "")
+        data.setdefault("status", "assigned")
+        data.setdefault("source_refs", {})
+        return cls(**data)
+
+
+@dataclass
 class ProviderAdapterResultRecord:
     provider_adapter_result_id: str
     routing_decision_id: str
@@ -1696,6 +1735,94 @@ class ProviderAdapterResultRecord:
         data.setdefault("status", "ready")
         data.setdefault("summary", "")
         data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class HermesTaskRequestRecord:
+    request_id: str
+    task_id: str
+    created_at: str
+    requested_by: str
+    lane: str
+    objective: str
+    timeout_seconds: int
+    execution_backend: str
+    sandbox_class: str
+    allowed_tools: list[str] = field(default_factory=list)
+    model_override_policy: dict[str, Any] = field(default_factory=dict)
+    max_tokens: Optional[int] = None
+    return_format: str = "candidate_artifact"
+    capability_declaration: dict[str, Any] = field(default_factory=dict)
+    callback_contract: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "HermesTaskRequestRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("allowed_tools", [])
+        data.setdefault("model_override_policy", {})
+        data.setdefault("max_tokens", None)
+        data.setdefault("return_format", "candidate_artifact")
+        data.setdefault("capability_declaration", {})
+        data.setdefault("callback_contract", {})
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class HermesTaskResultRecord:
+    result_id: str
+    request_id: str
+    task_id: str
+    run_id: str
+    received_at: str
+    status: str
+    execution_backend: str
+    family: str = ""
+    model_name: str = ""
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
+    checkpoint_summary: str = ""
+    citations: list[dict[str, Any]] = field(default_factory=list)
+    proposed_next_actions: list[dict[str, Any]] = field(default_factory=list)
+    token_usage: dict[str, Any] = field(default_factory=dict)
+    error_summary: str = ""
+    title: str = ""
+    summary: str = ""
+    content: str = ""
+    error: str = ""
+    candidate_artifact_id: Optional[str] = None
+    trace_id: Optional[str] = None
+    raw_response: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "HermesTaskResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("family", "")
+        data.setdefault("model_name", "")
+        data.setdefault("artifacts", [])
+        data.setdefault("checkpoint_summary", "")
+        data.setdefault("citations", [])
+        data.setdefault("proposed_next_actions", [])
+        data.setdefault("token_usage", {})
+        data.setdefault("error_summary", "")
+        data.setdefault("title", "")
+        data.setdefault("summary", "")
+        data.setdefault("content", "")
+        data.setdefault("error", "")
+        data.setdefault("candidate_artifact_id", None)
+        data.setdefault("trace_id", None)
+        data.setdefault("raw_response", {})
         return cls(**data)
 
 
