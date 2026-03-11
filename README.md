@@ -16,6 +16,17 @@ It contains:
 
 It is not a fresh rebuild or a sidecar demo repo. It is the working in-place v5.1 system.
 
+## Source vs runtime state
+
+The repo keeps source and live runtime artifacts separate on purpose.
+
+- Source code lives under `runtime/`, `scripts/`, `config/`, and `tests/`.
+- Managed runtime state lives under `state/`.
+- Operator/demo outputs live under `workspace/out/`.
+- Scratch work products live under `workspace/work/`.
+
+If you see stateful artifacts at repo root, treat them as legacy residue unless they are clearly documented source files.
+
 ## Current status
 
 The repo is currently green for the intended Qwen-default deployment target.

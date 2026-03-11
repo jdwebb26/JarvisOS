@@ -19,6 +19,8 @@ htmlcov/
 
 .env
 events.db
+/enrich_worker
+/router
 
 state/
 workspace/out/
