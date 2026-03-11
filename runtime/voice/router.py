@@ -7,6 +7,7 @@ from pathlib import Path
 from runtime.gateway.browser_action import handle_browser_action
 from runtime.gateway.discord_command import handle_discord_command
 from runtime.gateway.desktop_action import handle_desktop_action
+from runtime.gateway.notify_operator import handle_operator_notification
 from runtime.gateway.tradingview_command import handle_tradingview_command
 from runtime.voice.spotify_router import maybe_route_voice_to_spotify, parse_spotify_voice_command
 
@@ -35,6 +36,7 @@ def build_voice_route_capability_summary() -> dict:
             "desktop",
             "discord",
             "tradingview",
+            "notification",
             "system",
             "memory",
         ],
@@ -206,6 +208,25 @@ def classify_voice_route(normalized_command: str) -> dict:
             "target": "logs",
             "reason": "matched_read_logs",
         }
+
+    notification_patterns = (
+        ("notify dashboard ", "dashboard", "matched_notify_dashboard"),
+        ("notify voice ", "voice", "matched_notify_voice"),
+        ("notify mobile ", "mobile_stub", "matched_notify_mobile"),
+        ("notify discord ", "discord_stub", "matched_notify_discord"),
+    )
+    for prefix, target, reason in notification_patterns:
+        if lowered.startswith(prefix):
+            query = command[len(prefix) :].strip()
+            if query:
+                return {
+                    "matched": True,
+                    "subsystem": "notification",
+                    "intent": "notify_operator",
+                    "query": query,
+                    "target": target,
+                    "reason": reason,
+                }
 
     if lowered == "recall memory":
         return {
@@ -396,6 +417,24 @@ def maybe_route_voice_command(
             "execute": True,
             "route": route,
             "route_reason": "desktop_gateway_invoked",
+            "gateway_result": gateway_result,
+        }
+
+    if route["subsystem"] == "notification":
+        gateway_result = handle_operator_notification(
+            route["target"],
+            route["query"],
+            actor=actor,
+            lane=lane,
+            priority="normal",
+            root=resolved_root,
+        )
+        return {
+            "matched": True,
+            "routed": True,
+            "execute": True,
+            "route": route,
+            "route_reason": "notification_gateway_invoked",
             "gateway_result": gateway_result,
         }
 
