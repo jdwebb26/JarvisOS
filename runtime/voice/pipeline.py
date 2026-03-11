@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from runtime.core.models import VoiceCommandRecord, new_id, now_iso
+from runtime.core.voice_sessions import update_voice_session_from_command
 from runtime.core.risk_tier import evaluate_risk_tier
 from runtime.controls.control_store import assert_control_allows
 from runtime.voice.feedback import play_voice_cue
@@ -115,6 +116,22 @@ def process_voice_transcript(
             feedback_events.append(play_voice_cue("confirmation_required", actor=actor, lane=lane, root=resolved_root))
     else:
         feedback_events.append(play_voice_cue("command_rejected", actor=actor, lane=lane, root=resolved_root))
+
+    update_voice_session_from_command(
+        voice_session_id=voice_session_id,
+        actor=actor,
+        lane=lane,
+        command_id=record.command_id,
+        raw_transcript=record.raw_transcript,
+        normalized_command=record.normalized_command,
+        task_id=record.task_id,
+        command_status=status,
+        risk_tier=record.risk_tier,
+        confirmation_required=False,
+        confirmation_state="not_required",
+        verification_status="none",
+        root=resolved_root,
+    )
 
     return {
         "status": status,

@@ -70,7 +70,7 @@ def test_unsupported_phrase_stays_no_route() -> None:
     assert result["route"]["reason"] == "no_voice_route_match"
 
 
-def test_voice_gateway_route_preview_and_route_execute_remain_explicit() -> None:
+def test_voice_gateway_notification_route_preview_stays_explicit() -> None:
     preview = handle_voice_command(
         "Jarvis notify dashboard build finished",
         voice_session_id="voice_notify_preview",
@@ -80,22 +80,9 @@ def test_voice_gateway_route_preview_and_route_execute_remain_explicit() -> None
     )
     assert preview["kind"] == "accepted"
     assert preview["route_preview"]["matched"] is True
+    assert preview["route_preview"]["route_reason"] == "route_preview_only"
     assert preview["route_result"] is None
     assert preview["routed"] is False
-
-    executed = handle_voice_command(
-        "Jarvis notify dashboard build finished",
-        voice_session_id="voice_notify_execute",
-        actor="tester",
-        lane="voice",
-        route=True,
-        route_execute=True,
-    )
-    assert executed["kind"] == "accepted"
-    assert executed["route_preview"]["matched"] is True
-    assert executed["route_result"]["route_reason"] == "notification_gateway_invoked"
-    assert executed["route_result"]["gateway_result"]["kind"] == "accepted"
-    assert executed["routed"] is True
 
 
 if __name__ == "__main__":
@@ -104,4 +91,4 @@ if __name__ == "__main__":
     test_preview_only_behavior_when_execute_false()
     test_execute_true_returns_notification_gateway_result()
     test_unsupported_phrase_stays_no_route()
-    test_voice_gateway_route_preview_and_route_execute_remain_explicit()
+    test_voice_gateway_notification_route_preview_stays_explicit()

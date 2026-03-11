@@ -14,7 +14,9 @@ if str(ROOT) not in sys.path:
 
 from runtime.browser.backends.pinchtab import PinchTabBackend
 from runtime.browser.protocol import complete_browser_action, request_browser_action
+from runtime.browser.reporting import build_browser_action_summary
 from runtime.browser.tracing import save_browser_snapshot, save_browser_trace
+from runtime.evals.trace_store import record_run_trace
 from runtime.core.task_events import append_event, make_event
 
 
@@ -83,6 +85,7 @@ def handle_browser_action(
             "kind": "pending_review",
             "request": request,
             "policy": policy,
+            "browser_action_summary": build_browser_action_summary(root=resolved_root),
             "executed": False,
         }
 
@@ -91,6 +94,7 @@ def handle_browser_action(
             "kind": "accepted",
             "request": request,
             "policy": policy,
+            "browser_action_summary": build_browser_action_summary(root=resolved_root),
             "executed": False,
         }
 
@@ -125,6 +129,21 @@ def handle_browser_action(
         request_id=request["request_id"],
         root=resolved_root,
     )
+    evidence_snapshot = save_browser_snapshot(
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        snapshot_kind="browser_evidence_placeholder",
+        payload={
+            "target_url": target_url,
+            "action_type": action_type,
+            "backend": backend,
+            "status": backend_result.status,
+            "placeholder_kind": "screenshot_ref",
+        },
+        request_id=request["request_id"],
+        root=resolved_root,
+    )
     trace = save_browser_trace(
         task_id=task_id,
         actor=actor,
@@ -148,14 +167,57 @@ def handle_browser_action(
         snapshot_refs={"after": snapshot["snapshot_id"]},
         root=resolved_root,
     )
+    run_trace = record_run_trace(
+        task_id=task_id,
+        trace_kind="browser_action_stub_trace",
+        actor=actor,
+        lane=lane,
+        execution_backend=backend,
+        status=backend_result.status,
+        request_summary=f"Browser action request: {action_type} -> {target_url}",
+        response_summary=backend_result.outcome_summary,
+        decision_summary=(
+            "Browser action executed via stub backend with placeholder evidence."
+            if not request["confirmation_required"]
+            else "Browser action held behind confirmation policy and executed only after explicit allow."
+        ),
+        request_payload={
+            "request_id": request["request_id"],
+            "action_type": action_type,
+            "target_url": target_url,
+            "target_selector": target_selector,
+            "risk_tier": request["risk_tier"],
+            "confirmation_required": request["confirmation_required"],
+            "confirmation_state": request["confirmation_state"],
+        },
+        response_payload={
+            "result_status": backend_result.status,
+            "outcome_summary": backend_result.outcome_summary,
+            "snapshot_id": snapshot["snapshot_id"],
+            "evidence_snapshot_id": evidence_snapshot["snapshot_id"],
+            "browser_trace_id": trace["trace_id"],
+        },
+        source_refs={
+            "browser_request_id": request["request_id"],
+            "browser_snapshot_id": snapshot["snapshot_id"],
+            "browser_evidence_snapshot_id": evidence_snapshot["snapshot_id"],
+            "browser_trace_id": trace["trace_id"],
+            "browser_allowlist_ref": request.get("allowlist_ref"),
+        },
+        backend_run_id=request["request_id"],
+        error=backend_result.error or "",
+        root=resolved_root,
+    )
     completion = complete_browser_action(
         request_id=request["request_id"],
         actor=actor,
         lane=lane,
         status=backend_result.status,
         outcome_summary=backend_result.outcome_summary,
+        confirmation_state=request.get("confirmation_state", "not_required"),
         snapshot_refs={"after": snapshot["snapshot_id"]},
-        trace_refs={"trace_id": trace["trace_id"]},
+        trace_refs={"trace_id": trace["trace_id"], "run_trace_id": run_trace.trace_id},
+        evidence_refs={"after_screenshot_ref": evidence_snapshot["snapshot_id"]},
         error=backend_result.error,
         root=resolved_root,
     )
@@ -180,7 +242,10 @@ def handle_browser_action(
         "policy": policy,
         "result": completion["result"],
         "trace": trace,
+        "run_trace": run_trace.to_dict(),
         "snapshot": snapshot,
+        "evidence_snapshot": evidence_snapshot,
+        "browser_action_summary": build_browser_action_summary(root=resolved_root),
         "executed": True,
     }
 

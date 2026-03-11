@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.mcp_policy import (
     build_mcp_policy_summary,
+    enforce_mcp_runtime_request,
     validate_mcp_server_config,
     validate_mcp_tool_request,
 )
@@ -99,6 +100,24 @@ def test_suspicious_tool_request_is_flagged() -> None:
     assert "dangerous_tool_name" in result["findings"]
 
 
+def test_runtime_request_is_fail_closed_when_auth_scope_or_declarations_are_missing() -> None:
+    result = enforce_mcp_runtime_request(
+        server_name="voice_runtime",
+        transport="voice_gateway",
+        auth_mode="",
+        tool_name="open_authenticated_tool",
+        requested_scope="",
+        auth_present=False,
+        declared_tools=[],
+        declared_scopes=[],
+        localhost_only=True,
+    )
+    assert result["allowed"] is False
+    assert "missing_auth" in result["findings"]
+    assert "unauthenticated_tool_request" in result["findings"]
+    assert result["reason"] == "mcp_runtime_request_blocked"
+
+
 def test_summary_builds_cleanly() -> None:
     result = build_mcp_policy_summary(root=ROOT)
     assert result["mcp_policy_present"] is True
@@ -114,4 +133,5 @@ if __name__ == "__main__":
     test_unauthenticated_tool_request_is_flagged()
     test_empty_requested_scope_is_flagged()
     test_suspicious_tool_request_is_flagged()
+    test_runtime_request_is_fail_closed_when_auth_scope_or_declarations_are_missing()
     test_summary_builds_cleanly()

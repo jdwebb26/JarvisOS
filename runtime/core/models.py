@@ -1230,6 +1230,9 @@ class BrowserActionRequestRecord:
     action_params: dict[str, Any] = field(default_factory=dict)
     risk_tier: str = "medium"
     review_required: bool = False
+    confirmation_required: bool = False
+    confirmation_state: str = "not_required"
+    confirmation_reason: str = "none"
     status: str = "pending"
     allowlist_ref: Optional[str] = None
     schema_version: str = CORE_SCHEMA_VERSION
@@ -1244,6 +1247,9 @@ class BrowserActionRequestRecord:
         data.setdefault("action_params", {})
         data.setdefault("risk_tier", "medium")
         data.setdefault("review_required", False)
+        data.setdefault("confirmation_required", False)
+        data.setdefault("confirmation_state", "not_required")
+        data.setdefault("confirmation_reason", "none")
         data.setdefault("status", "pending")
         data.setdefault("allowlist_ref", None)
         return cls(**data)
@@ -1260,8 +1266,10 @@ class BrowserActionResultRecord:
     lane: str
     status: str
     outcome_summary: str
+    confirmation_state: str = "not_required"
     snapshot_refs: dict[str, Any] = field(default_factory=dict)
     trace_refs: dict[str, Any] = field(default_factory=dict)
+    evidence_refs: dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
@@ -1272,8 +1280,10 @@ class BrowserActionResultRecord:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "BrowserActionResultRecord":
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("confirmation_state", "not_required")
         data.setdefault("snapshot_refs", {})
         data.setdefault("trace_refs", {})
+        data.setdefault("evidence_refs", {})
         data.setdefault("error", None)
         return cls(**data)
 
@@ -1288,10 +1298,17 @@ class VoiceSessionRecord:
     channel_type: str
     caller_identity: str
     transcript_ref: str
+    summary_ref: str = ""
     active_task_id: Optional[str] = None
     barge_in_supported: bool = False
     escalation_state: str = "none"
     consent_state: str = "unknown"
+    confirmation_required: bool = False
+    confirmation_state: str = "not_required"
+    latest_command_id: Optional[str] = None
+    latest_challenge_id: Optional[str] = None
+    latest_action_id: Optional[str] = None
+    latest_verification_status: str = "none"
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
 
@@ -1301,10 +1318,17 @@ class VoiceSessionRecord:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "VoiceSessionRecord":
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("summary_ref", "")
         data.setdefault("active_task_id", None)
         data.setdefault("barge_in_supported", False)
         data.setdefault("escalation_state", "none")
         data.setdefault("consent_state", "unknown")
+        data.setdefault("confirmation_required", False)
+        data.setdefault("confirmation_state", "not_required")
+        data.setdefault("latest_command_id", None)
+        data.setdefault("latest_challenge_id", None)
+        data.setdefault("latest_action_id", None)
+        data.setdefault("latest_verification_status", "none")
         return cls(**data)
 
 

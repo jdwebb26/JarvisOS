@@ -61,9 +61,29 @@ def test_high_risk_action_requiring_review() -> None:
         assert result["allowed"] is True
         assert result["risk_tier"] == "high"
         assert result["review_required"] is True
+        assert result["confirmation_required"] is True
+        assert result["confirmation_state"] == "pending_confirmation"
+        assert result["confirmation_reason"] == "destructive_action_requires_confirmation"
+
+
+def test_secret_entry_action_requires_confirmation_when_allowlist_demands_manual_control() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_allowlist(root)
+        result = evaluate_browser_action(
+            "type_into_field",
+            "https://example.com/login",
+            action_params={"secret_entry": True},
+            root=root,
+        )
+        assert result["allowed"] is True
+        assert result["confirmation_required"] is True
+        assert result["review_required"] is True
+        assert result["confirmation_reason"] == "secret_entry_requires_manual_control"
 
 
 if __name__ == "__main__":
     test_allowlisted_low_risk_navigation_action()
     test_blocked_non_allowlisted_target_url()
     test_high_risk_action_requiring_review()
+    test_secret_entry_action_requires_confirmation_when_allowlist_demands_manual_control()

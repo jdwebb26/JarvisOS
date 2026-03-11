@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.plugin_policy import (
     build_plugin_policy_summary,
+    enforce_plugin_runtime_request,
     validate_plugin_activation_request,
     validate_plugin_descriptor,
 )
@@ -129,6 +130,25 @@ def test_suspicious_capability_name_is_flagged() -> None:
     assert "suspicious_capability_name" in result["findings"]
 
 
+def test_runtime_request_is_fail_closed_without_approval_scope_and_descriptor() -> None:
+    result = enforce_plugin_runtime_request(
+        plugin_id="voice_runtime_plugin",
+        plugin_kind="plugin",
+        requested_capability="plugin install secret bundle",
+        requested_scope="",
+        operator_approved=False,
+        reversible=True,
+        portability_mode="runtime_local",
+        declared_capabilities=[],
+        declared_scopes=[],
+        approval_required=True,
+    )
+    assert result["allowed"] is False
+    assert "missing_declared_capabilities" in result["findings"]
+    assert "missing_operator_approval" in result["findings"]
+    assert result["reason"] == "plugin_runtime_request_blocked"
+
+
 def test_summary_builds_cleanly() -> None:
     result = build_plugin_policy_summary(root=ROOT)
     assert result["plugin_policy_present"] is True
@@ -146,4 +166,5 @@ if __name__ == "__main__":
     test_activation_without_operator_approval_is_flagged()
     test_activation_with_empty_scope_is_flagged()
     test_suspicious_capability_name_is_flagged()
+    test_runtime_request_is_fail_closed_without_approval_scope_and_descriptor()
     test_summary_builds_cleanly()

@@ -61,6 +61,22 @@ def build_voice_route_capability_summary() -> dict:
     }
 
 
+def build_voice_route_safety_summary() -> dict:
+    return {
+        "route_safety_present": True,
+        "preview_includes_route_safety": True,
+        "execute_blocks_unsafe_routes": True,
+        "known_flagged_route_classes": [
+            "tradingview_trade_execution",
+            "discord_message_like_routes",
+        ],
+        "notes": [
+            "Matched route previews surface route_safety without changing preview-first behavior.",
+            "Unsafe matched routes are blocked before gateway dispatch when execute=True.",
+        ],
+    }
+
+
 def classify_voice_route(normalized_command: str) -> dict:
     command = (normalized_command or "").strip()
     lowered = command.lower()

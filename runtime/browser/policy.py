@@ -72,10 +72,28 @@ def evaluate_browser_action(
         }
 
     risk = evaluate_risk_tier(action_type, "browser_backend", params)
+    destructive = bool(params.get("destructive")) or action_type in {
+        "send_external_message",
+        "change_credentials",
+        "irreversible_change",
+    }
+    secret_entry = bool(params.get("secret_entry")) or "secret" in action_type
+    confirmation_required = False
+    confirmation_reason = "none"
+    if destructive and allowlist.destructive_actions_require_confirmation:
+        confirmation_required = True
+        confirmation_reason = "destructive_action_requires_confirmation"
+    elif secret_entry and allowlist.secret_entry_requires_manual_control:
+        confirmation_required = True
+        confirmation_reason = "secret_entry_requires_manual_control"
     return {
         "allowed": True,
         "risk_tier": risk["tier"],
-        "review_required": risk["tier"] == "high",
+        "review_required": risk["tier"] == "high" or confirmation_required,
+        "confirmation_required": confirmation_required,
+        "confirmation_state": "pending_confirmation" if confirmation_required else "not_required",
+        "confirmation_reason": confirmation_reason,
+        "sensitive_action": destructive or secret_entry,
         "allowlist_ref": allowlist.browser_control_allowlist_id,
         "reason": risk["reason"],
     }

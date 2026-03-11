@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -300,6 +301,8 @@ EXAMPLE_CONFIG_FILES = [
 
 QWEN_HINTS = ["family: qwen3.5", "qwen_only: true", "Qwen3.5-"]
 EXPECTED_CHANNEL_KEYS = ["jarvis", "tasks", "outputs", "review", "audit", "code_review", "flowstate"]
+_LOCALHOST_HOSTS = {"127.0.0.1", "localhost", "::1"}
+_URL_RE = re.compile(r"https?://([^/\s:]+)")
 
 
 @dataclass
@@ -351,6 +354,15 @@ def _config_text(root: Path, rel: str) -> str:
     if not path.exists():
         return ""
     return _read_text(path)
+
+
+def _non_localhost_urls(text: str) -> list[str]:
+    hosts: list[str] = []
+    for match in _URL_RE.findall(text or ""):
+        host = (match or "").strip().lower()
+        if host and host not in _LOCALHOST_HOSTS:
+            hosts.append(host)
+    return sorted(set(hosts))
 
 
 def run_validate(root: Path, *, strict: bool = False) -> dict:
@@ -442,6 +454,29 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             _add(findings, "fail", "config", "config/models.yaml is not clearly pinned to Qwen 3.5.", "Keep model config on the Qwen 3.5 family only.")
         elif rel.endswith("models.yaml"):
             _add(findings, "pass", "config", "config/models.yaml is pinned to Qwen 3.5.")
+            remote_hosts = _non_localhost_urls(text)
+            if remote_hosts:
+                _add(
+                    findings,
+                    "fail",
+                    "config",
+                    "config/models.yaml includes non-localhost model endpoints.",
+                    "Keep default runtime endpoints on localhost/127.0.0.1 unless a reviewed exception is explicitly intended.",
+                    ", ".join(remote_hosts),
+                )
+            else:
+                _add(findings, "pass", "config", "config/models.yaml keeps model endpoints on localhost.")
+        if rel.endswith("app.yaml"):
+            if "0.0.0.0" in text:
+                _add(
+                    findings,
+                    "fail",
+                    "config",
+                    "config/app.yaml contains a wildcard bind posture.",
+                    "Use localhost-only defaults for v5.1 unless a reviewed deployment override is explicitly required.",
+                )
+            else:
+                _add(findings, "pass", "config", "config/app.yaml has no wildcard bind posture.")
         if rel.endswith("channels.yaml"):
             missing = [key for key in EXPECTED_CHANNEL_KEYS if key not in text]
             if missing:

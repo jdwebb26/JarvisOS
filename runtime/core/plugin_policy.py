@@ -129,6 +129,53 @@ def validate_plugin_activation_request(
     }
 
 
+def enforce_plugin_runtime_request(
+    *,
+    plugin_id: str,
+    plugin_kind: str,
+    requested_capability: str,
+    requested_scope: str = "",
+    operator_approved: bool = False,
+    reversible: bool = True,
+    portability_mode: str = "",
+    declared_capabilities: list[str] | None = None,
+    declared_scopes: list[str] | None = None,
+    approval_required: bool = True,
+    root=None,
+) -> dict:
+    descriptor_result = validate_plugin_descriptor(
+        plugin_id=plugin_id,
+        plugin_kind=plugin_kind,
+        declared_capabilities=declared_capabilities,
+        declared_scopes=declared_scopes,
+        approval_required=approval_required,
+        reversible=reversible,
+        portability_mode=portability_mode,
+        root=root,
+    )
+    activation_result = validate_plugin_activation_request(
+        plugin_id=plugin_id,
+        requested_capability=requested_capability,
+        requested_scope=requested_scope,
+        operator_approved=operator_approved,
+        reversible=reversible,
+        root=root,
+    )
+    findings = list(dict.fromkeys(descriptor_result["findings"] + activation_result["findings"]))
+    allowed = bool(descriptor_result["allowed"] and activation_result["allowed"])
+    return {
+        "allowed": allowed,
+        "findings": findings,
+        "severity": _severity_from_findings(findings),
+        "reason": "plugin_runtime_request_allowed" if allowed else "plugin_runtime_request_blocked",
+        "descriptor_validation": descriptor_result,
+        "activation_validation": activation_result,
+        "plugin_id": plugin_id,
+        "requested_capability": requested_capability,
+        "requested_scope": requested_scope,
+    }
+
+
 def build_plugin_policy_summary(root: Optional[Path] = None) -> dict:
     del root
     return {
@@ -142,6 +189,7 @@ def build_plugin_policy_summary(root: Optional[Path] = None) -> dict:
             "activation_operator_approval",
             "activation_requested_scope",
             "activation_suspicious_capability_name",
+            "runtime_request_fail_closed",
         ],
         "safe_defaults": {
             "approval_required": True,

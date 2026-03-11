@@ -128,6 +128,57 @@ def validate_a2a_request(
     }
 
 
+def enforce_a2a_runtime_request(
+    *,
+    daemon_name: str,
+    transport: str,
+    auth_mode: str,
+    source_daemon: str,
+    target_daemon: str,
+    action_name: str,
+    requested_scope: str = "",
+    auth_present: bool = False,
+    session_bound: bool = True,
+    declared_actions: list[str] | None = None,
+    declared_scopes: list[str] | None = None,
+    localhost_only: bool = True,
+    reversible_sessions: bool = True,
+    root=None,
+) -> dict:
+    descriptor_result = validate_daemon_descriptor(
+        daemon_name=daemon_name,
+        transport=transport,
+        auth_mode=auth_mode,
+        declared_actions=declared_actions,
+        declared_scopes=declared_scopes,
+        localhost_only=localhost_only,
+        reversible_sessions=reversible_sessions,
+        root=root,
+    )
+    request_result = validate_a2a_request(
+        source_daemon=source_daemon,
+        target_daemon=target_daemon,
+        action_name=action_name,
+        requested_scope=requested_scope,
+        auth_present=auth_present,
+        session_bound=session_bound,
+        root=root,
+    )
+    findings = list(dict.fromkeys(descriptor_result["findings"] + request_result["findings"]))
+    allowed = bool(descriptor_result["allowed"] and request_result["allowed"])
+    return {
+        "allowed": allowed,
+        "findings": findings,
+        "severity": _severity_from_findings(findings),
+        "reason": "a2a_runtime_request_allowed" if allowed else "a2a_runtime_request_blocked",
+        "descriptor_validation": descriptor_result,
+        "request_validation": request_result,
+        "daemon_name": daemon_name,
+        "action_name": action_name,
+        "requested_scope": requested_scope,
+    }
+
+
 def build_a2a_policy_summary(root: Optional[Path] = None) -> dict:
     del root
     return {
@@ -142,6 +193,7 @@ def build_a2a_policy_summary(root: Optional[Path] = None) -> dict:
             "a2a_request_scope",
             "a2a_request_session_binding",
             "a2a_request_dangerous_action_name",
+            "runtime_request_fail_closed",
         ],
         "safe_defaults": {
             "localhost_only": True,

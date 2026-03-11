@@ -87,6 +87,9 @@ def request_browser_action(
             action_params=dict(action_params or {}),
             risk_tier=policy["risk_tier"],
             review_required=bool(policy["review_required"]),
+            confirmation_required=bool(policy.get("confirmation_required")),
+            confirmation_state=str(policy.get("confirmation_state") or "not_required"),
+            confirmation_reason=str(policy.get("confirmation_reason") or "none"),
             status=status,
             allowlist_ref=policy["allowlist_ref"],
         ),
@@ -102,8 +105,10 @@ def complete_browser_action(
     lane: str,
     status: str,
     outcome_summary: str,
+    confirmation_state: str = "not_required",
     snapshot_refs: Optional[dict[str, Any]] = None,
     trace_refs: Optional[dict[str, Any]] = None,
+    evidence_refs: Optional[dict[str, Any]] = None,
     error: Optional[str] = None,
     root: Optional[Path] = None,
 ) -> dict[str, Any]:
@@ -121,12 +126,15 @@ def complete_browser_action(
             lane=lane,
             status=status,
             outcome_summary=outcome_summary,
+            confirmation_state=confirmation_state,
             snapshot_refs=dict(snapshot_refs or {}),
             trace_refs=dict(trace_refs or {}),
+            evidence_refs=dict(evidence_refs or {}),
             error=error,
         ),
         root=root,
     )
     request.status = status
+    request.confirmation_state = confirmation_state
     save_browser_action_request(request, root=root)
     return {"request": request.to_dict(), "result": result.to_dict()}

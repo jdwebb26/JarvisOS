@@ -18,14 +18,16 @@ from runtime.core.eval_profiles import build_eval_profile_summary
 from runtime.core.heartbeat_reports import build_heartbeat_report_summary
 from runtime.core.mcp_policy import build_mcp_policy_summary
 from runtime.core.plugin_policy import build_plugin_policy_summary
+from runtime.core.policy_surface_summary import build_policy_surface_summary
 from runtime.core.prompt_caching_policy import build_prompt_caching_policy_summary
 from runtime.core.routing import build_model_registry_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.token_budget import build_token_budget_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
+from runtime.browser.reporting import build_browser_action_summary
 from runtime.integrations.notification_adapter import build_notification_summary
-from runtime.voice.router import build_voice_route_capability_summary
+from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
 from runtime.dashboard.status_names import normalize_status_name
 
 
@@ -502,6 +504,7 @@ def build_state_export(root: Path) -> dict:
     summary["eval_outcome_summary"] = build_eval_outcome_summary(root=root)
     summary["eval_profile_summary"] = build_eval_profile_summary(root=root)
     summary["browser_control_allowlist_summary"] = build_browser_control_allowlist_summary(root=root)
+    summary["browser_action_summary"] = build_browser_action_summary(root=root)
     summary["voice_session_summary"] = build_voice_session_summary(root=root)
     summary["trajectory_summary"] = build_trajectory_summary(root=root)
     summary["operator_profile_summary"] = build_operator_profile_summary(root=root)
@@ -511,7 +514,18 @@ def build_state_export(root: Path) -> dict:
     summary["plugin_policy_summary"] = build_plugin_policy_summary(root=root)
     summary["a2a_policy_summary"] = build_a2a_policy_summary(root=root)
     summary["voice_route_capability_summary"] = build_voice_route_capability_summary()
+    summary["voice_route_safety_summary"] = build_voice_route_safety_summary()
     summary["notification_summary"] = build_notification_summary(root=root)
+    summary["policy_surface_summary"] = build_policy_surface_summary(
+        security_validation_summary=summary["security_validation_summary"],
+        prompt_caching_policy_summary=summary["prompt_caching_policy_summary"],
+        mcp_policy_summary=summary["mcp_policy_summary"],
+        plugin_policy_summary=summary["plugin_policy_summary"],
+        a2a_policy_summary=summary["a2a_policy_summary"],
+        notification_summary=summary["notification_summary"],
+        voice_route_capability_summary=summary["voice_route_capability_summary"],
+        voice_route_safety_summary=summary["voice_route_safety_summary"],
+    )
     summary["task_envelope_summary"] = {
         "task_envelope_task_count": sum(1 for row in tasks if row.get("task_envelope")),
         "autonomy_mode_counts": dict(summary.get("autonomy_mode_counts", {})),

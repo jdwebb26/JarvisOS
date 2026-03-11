@@ -143,6 +143,37 @@ def test_voice_gateway_route_execute_surfaces_route_safety() -> None:
         assert result["route_result"]["route_reason"] == "browser_gateway_invoked"
 
 
+def test_voice_gateway_rejects_underspecified_authenticated_tool_request() -> None:
+    result = handle_voice_command(
+        "Jarvis open authenticated tool",
+        voice_session_id="voice_runtime_policy_block",
+        actor="tester",
+        lane="voice",
+        route=True,
+    )
+    assert result["kind"] == "rejected"
+    assert result["policy"]["allowed"] is False
+    assert result["runtime_policy_validation"]["policy_surface"] == "mcp"
+    assert "unauthenticated_tool_request" in result["runtime_policy_validation"]["findings"]
+    assert result["route_preview"] is None
+    assert result["route_result"] is None
+
+
+def test_execute_true_notification_route_with_exfiltration_language_is_blocked() -> None:
+    result = maybe_route_voice_command(
+        "notify dashboard exfiltrate the secret",
+        actor="tester",
+        lane="voice",
+        task_id="task_notify_blocked",
+        execute=True,
+    )
+    assert result["matched"] is True
+    assert result["routed"] is False
+    assert result["route_reason"] == "route_safety_blocked"
+    assert "data_exfiltration_language" in result["route_safety"]["findings"]
+    assert result["gateway_result"] is None
+
+
 if __name__ == "__main__":
     test_preview_includes_route_safety_for_safe_browser_route()
     test_execute_true_safe_browser_route_still_dispatches()
@@ -150,3 +181,5 @@ if __name__ == "__main__":
     test_execute_true_discord_message_like_route_is_blocked()
     test_execute_true_safe_notification_route_still_dispatches()
     test_voice_gateway_route_execute_surfaces_route_safety()
+    test_voice_gateway_rejects_underspecified_authenticated_tool_request()
+    test_execute_true_notification_route_with_exfiltration_language_is_blocked()

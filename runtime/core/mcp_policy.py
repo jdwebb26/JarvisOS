@@ -117,6 +117,50 @@ def validate_mcp_tool_request(
     }
 
 
+def enforce_mcp_runtime_request(
+    *,
+    server_name: str,
+    transport: str,
+    auth_mode: str,
+    tool_name: str,
+    requested_scope: str = "",
+    auth_present: bool = False,
+    declared_tools: list[str] | None = None,
+    declared_scopes: list[str] | None = None,
+    localhost_only: bool = True,
+    root=None,
+) -> dict:
+    server_result = validate_mcp_server_config(
+        server_name=server_name,
+        transport=transport,
+        auth_mode=auth_mode,
+        declared_tools=declared_tools,
+        declared_scopes=declared_scopes,
+        localhost_only=localhost_only,
+        root=root,
+    )
+    request_result = validate_mcp_tool_request(
+        server_name=server_name,
+        tool_name=tool_name,
+        requested_scope=requested_scope,
+        auth_present=auth_present,
+        root=root,
+    )
+    findings = list(dict.fromkeys(server_result["findings"] + request_result["findings"]))
+    allowed = bool(server_result["allowed"] and request_result["allowed"])
+    return {
+        "allowed": allowed,
+        "findings": findings,
+        "severity": _severity_from_findings(findings),
+        "reason": "mcp_runtime_request_allowed" if allowed else "mcp_runtime_request_blocked",
+        "server_validation": server_result,
+        "request_validation": request_result,
+        "server_name": server_name,
+        "tool_name": tool_name,
+        "requested_scope": requested_scope,
+    }
+
+
 def build_mcp_policy_summary(root: Optional[Path] = None) -> dict:
     del root
     return {
@@ -129,6 +173,7 @@ def build_mcp_policy_summary(root: Optional[Path] = None) -> dict:
             "tool_request_auth",
             "tool_request_scope",
             "tool_request_dangerous_name",
+            "runtime_request_fail_closed",
         ],
         "safe_defaults": {
             "localhost_only": True,

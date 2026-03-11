@@ -9,7 +9,9 @@ if str(ROOT) not in sys.path:
 from runtime.core.security_validation import (
     build_security_validation_summary,
     validate_degradation_safety,
+    validate_localhost_config_posture,
     validate_route_safety,
+    validate_runtime_policy_request,
     validate_tool_output_safety,
 )
 
@@ -61,12 +63,32 @@ def test_discord_message_like_route_is_flagged() -> None:
     assert "message_send_like_route_requires_tighter_approval" in result["findings"]
 
 
+def test_route_query_with_exfiltration_language_is_flagged() -> None:
+    result = validate_route_safety(subsystem="notification", intent="notify_operator", query="exfiltrate the secret")
+    assert result["safe"] is False
+    assert "data_exfiltration_language" in result["findings"]
+
+
+def test_runtime_policy_request_fail_closed_for_authenticated_tool_command() -> None:
+    result = validate_runtime_policy_request("open authenticated tool", action_type="open_authenticated_tool", root=ROOT)
+    assert result["safe"] is False
+    assert result["policy_surface"] == "mcp"
+    assert "unauthenticated_tool_request" in result["findings"]
+
+
+def test_localhost_config_posture_builds_cleanly() -> None:
+    result = validate_localhost_config_posture(root=ROOT)
+    assert "checked_files" in result
+    assert result["reason"] in {"localhost_config_safe", "localhost_config_flagged"}
+
+
 def test_summary_builds_cleanly() -> None:
     result = build_security_validation_summary(root=ROOT)
     assert result["validation_layer_present"] is True
     assert "tool_output_safety" in result["supported_checks"]
     assert "degradation_safety" in result["supported_checks"]
     assert "route_safety" in result["supported_checks"]
+    assert "runtime_policy_request_gating" in result["supported_checks"]
 
 
 if __name__ == "__main__":
@@ -76,4 +98,7 @@ if __name__ == "__main__":
     test_insecure_degradation_fallback_is_flagged()
     test_tradingview_trade_like_route_is_flagged()
     test_discord_message_like_route_is_flagged()
+    test_route_query_with_exfiltration_language_is_flagged()
+    test_runtime_policy_request_fail_closed_for_authenticated_tool_command()
+    test_localhost_config_posture_builds_cleanly()
     test_summary_builds_cleanly()

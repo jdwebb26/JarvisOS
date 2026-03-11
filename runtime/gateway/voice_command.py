@@ -16,6 +16,8 @@ from runtime.voice.approval_flow import extract_inline_approval_code, handle_voi
 from runtime.voice.policy import evaluate_voice_command_policy
 from runtime.voice.router import maybe_route_voice_command
 from runtime.voice.speaker_guard import SpeakerGuard
+from runtime.core.security_validation import validate_runtime_policy_request
+from runtime.core.voice_sessions import update_voice_session_from_command
 
 
 def handle_voice_command(
@@ -42,6 +44,21 @@ def handle_voice_command(
     )
 
     if pipeline_result["status"] != "accepted":
+        update_voice_session_from_command(
+            voice_session_id=voice_session_id,
+            actor=actor,
+            lane=lane,
+            command_id=pipeline_result["voice_command"]["command_id"],
+            raw_transcript=pipeline_result["voice_command"]["raw_transcript"],
+            normalized_command=pipeline_result["voice_command"]["normalized_command"],
+            task_id=task_id,
+            command_status="rejected",
+            risk_tier=pipeline_result["voice_command"]["risk_tier"],
+            confirmation_required=False,
+            confirmation_state="not_required",
+            verification_status="none",
+            root=resolved_root,
+        )
         return {
             "kind": "rejected",
             "status": pipeline_result["status"],
@@ -62,6 +79,11 @@ def handle_voice_command(
         input_source="voice",
         root=resolved_root,
     )
+    runtime_policy_validation = validate_runtime_policy_request(
+        actionable_command,
+        action_type=policy["action_type"],
+        root=resolved_root,
+    )
     speaker_guard = SpeakerGuard()
     speaker_score = speaker_guard.score_speaker({"speaker_confidence": speaker_confidence})
     speaker_gate = {
@@ -70,6 +92,46 @@ def handle_voice_command(
             speaker_score, policy["risk_tier"]
         ),
     }
+
+    if not runtime_policy_validation["safe"]:
+        update_voice_session_from_command(
+            voice_session_id=voice_session_id,
+            actor=actor,
+            lane=lane,
+            command_id=pipeline_result["voice_command"]["command_id"],
+            raw_transcript=pipeline_result["voice_command"]["raw_transcript"],
+            normalized_command=actionable_command,
+            task_id=task_id,
+            command_status="rejected",
+            risk_tier=policy["risk_tier"],
+            confirmation_required=False,
+            confirmation_state="not_required",
+            verification_status="blocked_by_runtime_policy",
+            root=resolved_root,
+        )
+        return {
+            "kind": "rejected",
+            "status": pipeline_result["status"],
+            "voice_command": pipeline_result["voice_command"],
+            "wakeword": pipeline_result["wakeword"],
+            "risk": pipeline_result["risk"],
+            "policy": {
+                **policy,
+                "allowed": False,
+                "reason": runtime_policy_validation["reason"],
+                "findings": runtime_policy_validation["findings"],
+            },
+            "runtime_policy_validation": runtime_policy_validation,
+            "speaker_guard": {
+                "score": speaker_score,
+                "gate": speaker_gate,
+            },
+            "feedback": pipeline_result["feedback"],
+            "routed": False,
+            "route_preview": None,
+            "route_result": None,
+            "approval_flow": None,
+        }
 
     kind = "accepted"
     if policy["requires_confirmation"]:
@@ -113,6 +175,45 @@ def handle_voice_command(
             execute=True,
         )
 
+    confirmation_state = "not_required"
+    confirmation_required = False
+    latest_challenge_id = None
+    latest_action_id = None
+    latest_verification_status = "none"
+    if policy["requires_confirmation"]:
+        confirmation_required = True
+        confirmation_state = "pending_confirmation"
+        if approval_flow is not None:
+            latest_challenge_id = (approval_flow.get("challenge") or {}).get("challenge_id")
+            latest_action_id = approval_flow.get("action_id")
+            verification = approval_flow.get("verification")
+            if verification is not None:
+                latest_verification_status = verification.get("status", "none")
+                if verification.get("status") == "approved":
+                    confirmation_state = "confirmed"
+                elif verification.get("status") != "pending":
+                    confirmation_state = "rejected"
+            elif approval_flow.get("prompt") is not None:
+                latest_verification_status = "pending"
+
+    update_voice_session_from_command(
+        voice_session_id=voice_session_id,
+        actor=actor,
+        lane=lane,
+        command_id=pipeline_result["voice_command"]["command_id"],
+        raw_transcript=pipeline_result["voice_command"]["raw_transcript"],
+        normalized_command=actionable_command,
+        task_id=task_id,
+        command_status=kind,
+        risk_tier=policy["risk_tier"],
+        confirmation_required=confirmation_required,
+        confirmation_state=confirmation_state,
+        challenge_id=latest_challenge_id,
+        action_id=latest_action_id,
+        verification_status=latest_verification_status,
+        root=resolved_root,
+    )
+
     return {
         "kind": kind,
         "status": pipeline_result["status"],
@@ -120,6 +221,7 @@ def handle_voice_command(
         "wakeword": pipeline_result["wakeword"],
         "risk": pipeline_result["risk"],
         "policy": policy,
+        "runtime_policy_validation": runtime_policy_validation,
         "speaker_guard": {
             "score": speaker_score,
             "gate": speaker_gate,

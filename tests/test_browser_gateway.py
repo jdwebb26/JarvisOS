@@ -8,7 +8,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.browser_control_allowlist import save_browser_control_allowlist
+from runtime.core.status import summarize_status
 from runtime.core.models import BrowserControlAllowlistRecord, new_id, now_iso
+from runtime.dashboard.operator_snapshot import build_operator_snapshot
+from runtime.dashboard.state_export import build_state_export
 from runtime.gateway.browser_action import handle_browser_action
 
 
@@ -65,6 +68,8 @@ def test_high_risk_action_returns_pending_review_without_execution() -> None:
         assert result["kind"] == "pending_review"
         assert result["executed"] is False
         assert result["request"]["status"] == "pending_review"
+        assert result["request"]["confirmation_required"] is True
+        assert result["request"]["confirmation_state"] == "pending_confirmation"
 
 
 def test_accepted_low_risk_action_with_execute_false_returns_request_only() -> None:
@@ -103,6 +108,43 @@ def test_accepted_low_risk_action_with_execute_true_returns_stubbed_result_and_t
         assert result["result"]["status"] == "stubbed"
         assert result["trace"]["trace_id"]
         assert result["result"]["trace_refs"]["trace_id"] == result["trace"]["trace_id"]
+        assert result["result"]["trace_refs"]["run_trace_id"] == result["run_trace"]["trace_id"]
+        assert result["result"]["evidence_refs"]["after_screenshot_ref"] == result["evidence_snapshot"]["snapshot_id"]
+
+
+def test_browser_reporting_surfaces_confirmation_and_evidence_summary_consistently() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _seed_allowlist(root)
+        handle_browser_action(
+            task_id="task_browser_gateway_5",
+            actor="tester",
+            lane="tests",
+            action_type="send_external_message",
+            target_url="https://example.com/compose",
+            root=root,
+        )
+        handle_browser_action(
+            task_id="task_browser_gateway_6",
+            actor="tester",
+            lane="tests",
+            action_type="navigate_allowlisted_page",
+            target_url="https://example.com/home",
+            execute=True,
+            root=root,
+        )
+
+        status = summarize_status(root=root)
+        state_export = build_state_export(root)
+        snapshot = build_operator_snapshot(root)
+
+        status_summary = status["browser_action_summary"]
+        assert status_summary["confirmation_required_count"] >= 1
+        assert status_summary["pending_confirmation_count"] >= 1
+        assert status_summary["evidence_present_count"] >= 1
+        assert status_summary["shared_run_trace_link_count"] >= 1
+        assert state_export["browser_action_summary"] == status_summary
+        assert snapshot["browser_action_summary"] == status_summary
 
 
 if __name__ == "__main__":
@@ -110,3 +152,4 @@ if __name__ == "__main__":
     test_high_risk_action_returns_pending_review_without_execution()
     test_accepted_low_risk_action_with_execute_false_returns_request_only()
     test_accepted_low_risk_action_with_execute_true_returns_stubbed_result_and_trace()
+    test_browser_reporting_surfaces_confirmation_and_evidence_summary_consistently()

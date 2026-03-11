@@ -23,6 +23,7 @@ from runtime.core.eval_profiles import build_eval_profile_summary
 from runtime.core.heartbeat_reports import build_heartbeat_report_summary
 from runtime.core.mcp_policy import build_mcp_policy_summary
 from runtime.core.plugin_policy import build_plugin_policy_summary
+from runtime.core.policy_surface_summary import build_policy_surface_summary
 from runtime.core.prompt_caching_policy import build_prompt_caching_policy_summary
 from runtime.core.provenance_store import build_provenance_summary
 from runtime.core.promotion_governance import build_promotion_governance_summary
@@ -34,9 +35,10 @@ from runtime.core.subsystem_contracts import build_subsystem_contract_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.core.a2a_policy import build_a2a_policy_summary
+from runtime.browser.reporting import build_browser_action_summary
 from runtime.controls.control_store import build_control_summary, get_effective_control_state, list_blocked_actions, list_control_events, list_control_records
 from runtime.integrations.notification_adapter import build_notification_summary
-from runtime.voice.router import build_voice_route_capability_summary
+from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
 
 
 def _load_jsons(folder: Path) -> list[dict[str, Any]]:
@@ -304,6 +306,7 @@ def build_status(root: Path) -> dict[str, Any]:
     degradation_summary = build_degradation_summary(root)
     eval_profile_summary = build_eval_profile_summary(root=root)
     browser_control_allowlist_summary = build_browser_control_allowlist_summary(root=root)
+    browser_action_summary = build_browser_action_summary(root=root)
     voice_session_summary = build_voice_session_summary(root=root)
     heartbeat_summary = build_heartbeat_report_summary(root=root)
     from runtime.integrations.hermes_adapter import build_hermes_summary
@@ -322,7 +325,18 @@ def build_status(root: Path) -> dict[str, Any]:
     plugin_policy_summary = build_plugin_policy_summary(root=root)
     a2a_policy_summary = build_a2a_policy_summary(root=root)
     voice_route_capability_summary = build_voice_route_capability_summary()
+    voice_route_safety_summary = build_voice_route_safety_summary()
     notification_summary = build_notification_summary(root=root)
+    policy_surface_summary = build_policy_surface_summary(
+        security_validation_summary=security_validation_summary,
+        prompt_caching_policy_summary=prompt_caching_policy_summary,
+        mcp_policy_summary=mcp_policy_summary,
+        plugin_policy_summary=plugin_policy_summary,
+        a2a_policy_summary=a2a_policy_summary,
+        notification_summary=notification_summary,
+        voice_route_capability_summary=voice_route_capability_summary,
+        voice_route_safety_summary=voice_route_safety_summary,
+    )
     control_summary = build_control_summary(root=root)
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
@@ -656,6 +670,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "autoresearch_summary": autoresearch_summary,
         "eval_profile_summary": eval_profile_summary,
         "browser_control_allowlist_summary": browser_control_allowlist_summary,
+        "browser_action_summary": browser_action_summary,
         "voice_session_summary": voice_session_summary,
         "task_envelope_summary": {
             "task_envelope_task_count": task_envelope_task_count,
@@ -681,7 +696,9 @@ def build_status(root: Path) -> dict[str, Any]:
         "plugin_policy_summary": plugin_policy_summary,
         "a2a_policy_summary": a2a_policy_summary,
         "voice_route_capability_summary": voice_route_capability_summary,
+        "voice_route_safety_summary": voice_route_safety_summary,
         "notification_summary": notification_summary,
+        "policy_surface_summary": policy_surface_summary,
         "impacted_artifacts": impacted_artifacts,
         "revoked_artifacts": revoked_artifacts,
         "impacted_outputs": impacted_outputs,
@@ -801,6 +818,7 @@ def build_status(root: Path) -> dict[str, Any]:
             "autoresearch_summary": autoresearch_summary,
             "eval_profile_summary": eval_profile_summary,
             "browser_control_allowlist_summary": browser_control_allowlist_summary,
+            "browser_action_summary": browser_action_summary,
             "voice_session_summary": voice_session_summary,
             "reply_ingress_summary": {
                 "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
