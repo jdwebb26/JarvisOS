@@ -521,9 +521,14 @@ def recompute_task_readiness(
         except Exception:
             published_output_exists = False
 
-    if record.impacted_output_ids or record.revoked_artifact_ids:
+    has_demoted_dependency = bool(record.demoted_artifact_ids) and record.promoted_artifact_id is None
+
+    if record.impacted_output_ids or record.revoked_artifact_ids or has_demoted_dependency:
         readiness_status = "invalidated"
-        readiness_reason = "Downstream impacts or revoked artifacts require recomputation before publish."
+        if record.impacted_output_ids or record.revoked_artifact_ids:
+            readiness_reason = "Downstream impacts or revoked artifacts require recomputation before publish."
+        else:
+            readiness_reason = "Demoted or superseded promoted artifacts require recomputation before publish."
     elif published_output_exists:
         readiness_status = "published"
         readiness_reason = "Promoted artifact already has a published output record."
