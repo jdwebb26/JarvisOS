@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from runtime.gateway.browser_action import handle_browser_action
 from runtime.gateway.discord_command import handle_discord_command
 from runtime.gateway.desktop_action import handle_desktop_action
 from runtime.gateway.tradingview_command import handle_tradingview_command
@@ -374,6 +375,25 @@ def maybe_route_voice_command(
             "execute": True,
             "route": route,
             "route_reason": "desktop_gateway_invoked",
+            "gateway_result": gateway_result,
+        }
+
+    if route["subsystem"] == "browser":
+        gateway_result = handle_browser_action(
+            task_id=task_id,
+            actor=actor,
+            lane=lane,
+            action_type=route["intent"],
+            target_url=route["target"],
+            execute=True,
+            root=resolved_root,
+        )
+        return {
+            "matched": True,
+            "routed": True,
+            "execute": True,
+            "route": route,
+            "route_reason": "browser_gateway_invoked",
             "gateway_result": gateway_result,
         }
 

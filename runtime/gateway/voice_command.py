@@ -27,6 +27,7 @@ def handle_voice_command(
     task_id="",
     speaker_confidence=0.0,
     route=False,
+    route_execute=False,
     root=None,
 ) -> dict:
     resolved_root = Path(root or ROOT).resolve()
@@ -75,6 +76,7 @@ def handle_voice_command(
         kind = "confirmation_required"
 
     route_preview = None
+    route_result = None
     if route:
         route_preview = maybe_route_voice_command(
             actionable_command,
@@ -101,6 +103,16 @@ def handle_voice_command(
         else:
             kind = "confirmation_required"
 
+    if route and route_execute and kind in {"accepted", "approved"}:
+        route_result = maybe_route_voice_command(
+            actionable_command,
+            actor=actor,
+            lane=lane,
+            task_id=task_id,
+            root=resolved_root,
+            execute=True,
+        )
+
     return {
         "kind": kind,
         "status": pipeline_result["status"],
@@ -113,8 +125,9 @@ def handle_voice_command(
             "gate": speaker_gate,
         },
         "feedback": pipeline_result["feedback"],
-        "routed": False,
+        "routed": bool(route_result and route_result.get("routed")),
         "route_preview": route_preview,
+        "route_result": route_result,
         "approval_flow": approval_flow,
     }
 
@@ -129,6 +142,7 @@ def main() -> int:
     parser.add_argument("--task-id", default="", help="Task id")
     parser.add_argument("--speaker-confidence", type=float, default=0.0, help="Speaker confidence")
     parser.add_argument("--route", action="store_true", help="Reserved routing flag")
+    parser.add_argument("--route-execute", action="store_true", help="Dispatch matched routes through bounded gateways")
     args = parser.parse_args()
 
     result = handle_voice_command(
@@ -139,6 +153,7 @@ def main() -> int:
         task_id=args.task_id,
         speaker_confidence=args.speaker_confidence,
         route=args.route,
+        route_execute=args.route_execute,
         root=Path(args.root).resolve(),
     )
     print(json.dumps(result, indent=2))
