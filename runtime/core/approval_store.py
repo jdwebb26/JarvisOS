@@ -12,7 +12,15 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from runtime.core.approval_sessions import (
+    create_resume_token,
+    ensure_approval_session,
+    mark_approval_session_resumed,
+    record_pending_decision_context,
+    update_approval_session_decision,
+)
 from runtime.core.artifact_store import demote_artifact, promote_artifact, revoke_artifact, select_task_artifact
+from runtime.core.candidate_store import record_candidate_rejection
 from runtime.core.models import (
     ApprovalCheckpointRecord,
     ApprovalRecord,
@@ -25,6 +33,7 @@ from runtime.core.models import (
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_runtime import ready_to_ship_task, save_task
 from runtime.core.task_store import add_approval_link, load_task, transition_task
+from runtime.core.rollback_store import execute_artifact_revocation
 from runtime.controls.control_store import assert_control_allows, control_blocks_action
 from runtime.dashboard.rebuild_helpers import rebuild_all_outputs
 
@@ -139,6 +148,15 @@ def ensure_approval_checkpoint(
     details: str,
     root: Optional[Path] = None,
 ) -> ApprovalCheckpointRecord:
+    session = ensure_approval_session(
+        approval_id=approval.approval_id,
+        task_id=approval.task_id,
+        approval_type=approval.approval_type,
+        actor=actor,
+        lane=lane,
+        linked_artifact_ids=list(approval.linked_artifact_ids),
+        root=root,
+    )
     if approval.resumable_checkpoint_id:
         existing = load_approval_checkpoint(approval.resumable_checkpoint_id, root=root)
         if existing is not None:
@@ -156,6 +174,27 @@ def ensure_approval_checkpoint(
     save_approval_checkpoint(checkpoint, root=root)
     approval.resumable_checkpoint_id = checkpoint.checkpoint_id
     save_approval(approval, root=root)
+    record_pending_decision_context(
+        approval_session_id=session.approval_session_id,
+        approval_id=approval.approval_id,
+        task_id=approval.task_id,
+        actor=actor,
+        lane=lane,
+        task_snapshot=dict(checkpoint.task_snapshot),
+        linked_artifact_ids=list(checkpoint.linked_artifact_ids),
+        checkpoint_summary=checkpoint.checkpoint_summary,
+        pending_reason=details or summary,
+        root=root,
+    )
+    create_resume_token(
+        approval_session_id=session.approval_session_id,
+        approval_id=approval.approval_id,
+        checkpoint_id=checkpoint.checkpoint_id,
+        task_id=approval.task_id,
+        actor=actor,
+        lane=lane,
+        root=root,
+    )
 
     append_event(
         make_event(
@@ -249,6 +288,15 @@ def request_approval(
     )
 
     save_approval(record, root=root)
+    ensure_approval_session(
+        approval_id=record.approval_id,
+        task_id=record.task_id,
+        approval_type=record.approval_type,
+        actor=requested_by,
+        lane=lane,
+        linked_artifact_ids=list(record.linked_artifact_ids),
+        root=root,
+    )
     checkpoint = ensure_approval_checkpoint(
         approval=record,
         task=task,
@@ -326,6 +374,9 @@ def resume_approval_from_checkpoint(
         root=root,
         task_id=approval.task_id,
         subsystem=subsystem,
+        provider_id=((task.backend_metadata if task else {}) or {}).get("routing", {}).get("provider_id"),
+        actor=actor,
+        lane=lane,
     )
 
     artifact = select_task_artifact(
@@ -400,6 +451,11 @@ def resume_approval_from_checkpoint(
     checkpoint.resume_count += 1
     checkpoint.resumed_at = now_iso()
     save_approval_checkpoint(checkpoint, root=root)
+    mark_approval_session_resumed(
+        approval_id=approval_id,
+        actor=actor,
+        root=root,
+    )
 
     append_event(
         make_event(
@@ -459,6 +515,15 @@ def record_approval_decision(
     task = load_task(record.task_id, root=root)
     if task is None:
         raise ValueError(f"Task not found for approval: {record.task_id}")
+    assert_control_allows(
+        action="approval_decision",
+        root=root,
+        task_id=record.task_id,
+        subsystem=task.execution_backend if task.execution_backend != "unassigned" else lane,
+        provider_id=((task.backend_metadata if task else {}) or {}).get("routing", {}).get("provider_id"),
+        actor=actor,
+        lane=lane,
+    )
 
     artifact = select_task_artifact(
         task_id=record.task_id,
@@ -480,9 +545,21 @@ def record_approval_decision(
             root=root,
             task_id=record.task_id,
             subsystem=subsystem,
+            provider_id=((task.backend_metadata if task else {}) or {}).get("routing", {}).get("provider_id"),
+            actor=actor,
+            lane=lane,
         )
         if blocked:
             control_hold_reason = message
+            update_approval_session_decision(
+                approval_id=approval_id,
+                decision_status=decision,
+                decision_reason=message,
+                resumable=True,
+                terminal=False,
+                session_state="resumable_pending",
+                root=root,
+            )
             transition_task(
                 task_id=record.task_id,
                 to_status=TaskStatus.BLOCKED.value,
@@ -521,6 +598,15 @@ def record_approval_decision(
                     root=root,
                     reason=reason or f"Approval granted: {approval_id}",
                 )
+                update_approval_session_decision(
+                    approval_id=approval_id,
+                    decision_status=decision,
+                    decision_reason=reason,
+                    resumable=False,
+                    terminal=False,
+                    session_state="resumed",
+                    root=root,
+                )
             except Exception as exc:
                 transition_task(
                     task_id=record.task_id,
@@ -550,14 +636,32 @@ def record_approval_decision(
                     lane=lane,
                     root=root,
                 )
-            elif artifact.lifecycle_state == RecordLifecycleState.PROMOTED.value:
-                revoke_artifact(
+                record_candidate_rejection(
                     artifact_id=artifact.artifact_id,
+                    actor=actor,
+                    lane=lane,
+                    reason=reason or f"Approval decision {decision} rejected the candidate.",
+                    trigger_event=f"approval:{approval_id}",
+                    root=root,
+                )
+            elif artifact.lifecycle_state == RecordLifecycleState.PROMOTED.value:
+                execute_artifact_revocation(
+                    artifact_id=artifact.artifact_id,
+                    task_id=record.task_id,
                     actor=actor,
                     lane=lane,
                     root=root,
                     reason=reason or f"Approval decision {decision} revoked promoted artifact.",
                 )
+        update_approval_session_decision(
+            approval_id=approval_id,
+            decision_status=decision,
+            decision_reason=reason,
+            resumable=False,
+            terminal=True,
+            session_state="terminal",
+            root=root,
+        )
         transition_task(
             task_id=record.task_id,
             to_status=TaskStatus.BLOCKED.value,

@@ -14,9 +14,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import ArtifactRecord, OutputRecord, OutputStatus, RecordLifecycleState, now_iso
+from runtime.core.promotion_governance import assert_artifact_publish_allowed
 from runtime.core.task_events import make_event
 from runtime.core.task_runtime import append_task_event
-from runtime.controls.control_store import assert_control_allows
 
 
 def new_output_id() -> str:
@@ -133,11 +133,12 @@ def publish_artifact(
     allow_duplicate: bool = False,
 ) -> dict:
     root_path = Path(root or ROOT).resolve()
-    assert_control_allows(
-        action="publish_output",
-        root=root_path,
+    assert_artifact_publish_allowed(
         task_id=task_id,
-        subsystem=lane,
+        artifact_id=artifact_id,
+        actor=actor,
+        lane=lane,
+        root=root_path,
     )
 
     task = load_task(task_id, root=root_path)
@@ -242,6 +243,18 @@ def publish_artifact(
         build_output_board(root=root_path)
     except Exception:
         pass
+
+    from runtime.core.rollback_store import record_output_dependency
+
+    record_output_dependency(
+        output_id=out_id,
+        task_id=task_id,
+        artifact_id=artifact_id,
+        actor=actor,
+        lane=lane,
+        output_status=OutputStatus.PUBLISHED.value,
+        root=root_path,
+    )
 
     return {
         "output_id": out_id,

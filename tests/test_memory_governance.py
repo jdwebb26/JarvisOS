@@ -220,7 +220,7 @@ def test_superseded_memory_is_hidden_from_default_retrieval_and_control_blocks_p
         reason="operator degrade",
         root=tmp_path,
     )
-    with pytest.raises(ValueError, match="Control state forbids artifact promotion"):
+    with pytest.raises(ValueError, match="Control state forbids memory promotion"):
         promote_memory_candidate(
             memory_candidate_id=control_candidate.memory_candidate_id,
             actor="operator",

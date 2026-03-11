@@ -155,6 +155,15 @@ class ControlAction(StrEnum):
     DEGRADE = "degrade"
 
 
+class MemoryEligibilityStatus(StrEnum):
+    ELIGIBLE = "eligible"
+    REVIEW_REQUIRED = "review_required"
+    APPROVAL_REQUIRED = "approval_required"
+    BLOCKED_BY_CONTROL = "blocked_by_control"
+    REVOKED_UPSTREAM = "revoked_upstream"
+    INELIGIBLE = "ineligible"
+
+
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -517,6 +526,15 @@ class ControlRecord:
     last_actor: str = "system"
     lane: str = "controls"
     reason: str = ""
+    execution_freeze: bool = False
+    promotion_freeze: bool = False
+    approval_freeze: bool = False
+    memory_freeze: bool = False
+    recovery_only_mode: bool = False
+    operator_only_mode: bool = False
+    disabled_provider_ids: list[str] = field(default_factory=list)
+    disabled_execution_backends: list[str] = field(default_factory=list)
+    latest_control_event_id: Optional[str] = None
     metadata: dict[str, Any] = field(default_factory=dict)
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
@@ -533,6 +551,15 @@ class ControlRecord:
         data.setdefault("last_actor", "system")
         data.setdefault("lane", "controls")
         data.setdefault("reason", "")
+        data.setdefault("execution_freeze", False)
+        data.setdefault("promotion_freeze", False)
+        data.setdefault("approval_freeze", False)
+        data.setdefault("memory_freeze", False)
+        data.setdefault("recovery_only_mode", False)
+        data.setdefault("operator_only_mode", False)
+        data.setdefault("disabled_provider_ids", [])
+        data.setdefault("disabled_execution_backends", [])
+        data.setdefault("latest_control_event_id", None)
         data.setdefault("metadata", {})
         return cls(**data)
 
@@ -567,6 +594,73 @@ class ControlActionRecord:
         data.setdefault("previous_safety_mode", ControlSafetyMode.NORMAL.value)
         data.setdefault("new_run_state", ControlRunState.ACTIVE.value)
         data.setdefault("new_safety_mode", ControlSafetyMode.NORMAL.value)
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class ControlEventRecord:
+    control_event_id: str
+    control_id: str
+    scope_type: str
+    scope_id: str
+    created_at: str
+    actor: str
+    lane: str
+    control_kind: str
+    enabled: bool = True
+    reason: str = ""
+    target_provider_id: Optional[str] = None
+    target_execution_backend: Optional[str] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ControlEventRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("enabled", True)
+        data.setdefault("reason", "")
+        data.setdefault("target_provider_id", None)
+        data.setdefault("target_execution_backend", None)
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class ControlBlockedActionRecord:
+    blocked_action_id: str
+    created_at: str
+    action: str
+    task_id: Optional[str] = None
+    subsystem: Optional[str] = None
+    provider_id: Optional[str] = None
+    actor: str = "system"
+    lane: str = "controls"
+    effective_status: str = ControlRunState.ACTIVE.value
+    reason: str = ""
+    control_scope_refs: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ControlBlockedActionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("task_id", None)
+        data.setdefault("subsystem", None)
+        data.setdefault("provider_id", None)
+        data.setdefault("actor", "system")
+        data.setdefault("lane", "controls")
+        data.setdefault("effective_status", ControlRunState.ACTIVE.value)
+        data.setdefault("reason", "")
+        data.setdefault("control_scope_refs", [])
         data.setdefault("metadata", {})
         return cls(**data)
 
@@ -933,6 +1027,17 @@ class MemoryCandidateRecord:
     source_artifact_ids: list[str] = field(default_factory=list)
     source_trace_ids: list[str] = field(default_factory=list)
     source_eval_result_ids: list[str] = field(default_factory=list)
+    source_candidate_ids: list[str] = field(default_factory=list)
+    source_output_ids: list[str] = field(default_factory=list)
+    source_task_event_ids: list[str] = field(default_factory=list)
+    source_provenance_refs: dict[str, Any] = field(default_factory=dict)
+    eligibility_status: str = MemoryEligibilityStatus.ELIGIBLE.value
+    eligibility_reason: str = ""
+    validation_record_ids: list[str] = field(default_factory=list)
+    latest_validation_id: Optional[str] = None
+    latest_promotion_decision_id: Optional[str] = None
+    latest_rejection_decision_id: Optional[str] = None
+    latest_revocation_decision_id: Optional[str] = None
     lifecycle_state: str = RecordLifecycleState.CANDIDATE.value
     execution_backend: str = "ralph_adapter"
     schema_version: str = CORE_SCHEMA_VERSION
@@ -959,6 +1064,17 @@ class MemoryCandidateRecord:
         data.setdefault("source_artifact_ids", [])
         data.setdefault("source_trace_ids", [])
         data.setdefault("source_eval_result_ids", [])
+        data.setdefault("source_candidate_ids", [])
+        data.setdefault("source_output_ids", [])
+        data.setdefault("source_task_event_ids", [])
+        data.setdefault("source_provenance_refs", {})
+        data.setdefault("eligibility_status", MemoryEligibilityStatus.ELIGIBLE.value)
+        data.setdefault("eligibility_reason", "")
+        data.setdefault("validation_record_ids", [])
+        data.setdefault("latest_validation_id", None)
+        data.setdefault("latest_promotion_decision_id", None)
+        data.setdefault("latest_rejection_decision_id", None)
+        data.setdefault("latest_revocation_decision_id", None)
         data.setdefault("lifecycle_state", RecordLifecycleState.CANDIDATE.value)
         data.setdefault("execution_backend", "ralph_adapter")
         return cls(**data)
@@ -997,6 +1113,692 @@ class MemoryRetrievalRecord:
         data.setdefault("include_contradicted", False)
         data.setdefault("returned_memory_candidate_ids", [])
         data.setdefault("result_count", 0)
+        return cls(**data)
+
+
+@dataclass
+class MemoryValidationRecord:
+    memory_validation_id: str
+    memory_candidate_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    validator_kind: str
+    status: str = "passed"
+    summary: str = ""
+    details: str = ""
+    evidence_refs: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryValidationRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("status", "passed")
+        data.setdefault("summary", "")
+        data.setdefault("details", "")
+        data.setdefault("evidence_refs", {})
+        return cls(**data)
+
+
+@dataclass
+class MemoryPromotionDecisionRecord:
+    memory_promotion_decision_id: str
+    memory_candidate_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    decision: str = "promoted"
+    reason: str = ""
+    validation_record_ids: list[str] = field(default_factory=list)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryPromotionDecisionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("decision", "promoted")
+        data.setdefault("reason", "")
+        data.setdefault("validation_record_ids", [])
+        return cls(**data)
+
+
+@dataclass
+class MemoryRejectionDecisionRecord:
+    memory_rejection_decision_id: str
+    memory_candidate_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    decision: str = "rejected"
+    reason: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryRejectionDecisionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("decision", "rejected")
+        data.setdefault("reason", "")
+        return cls(**data)
+
+
+@dataclass
+class MemoryRevocationDecisionRecord:
+    memory_revocation_decision_id: str
+    memory_candidate_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    decision: str = "revoked"
+    reason: str = ""
+    trigger_ref: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MemoryRevocationDecisionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("decision", "revoked")
+        data.setdefault("reason", "")
+        data.setdefault("trigger_ref", "")
+        return cls(**data)
+
+
+@dataclass
+class CapabilityProfileRecord:
+    capability_profile_id: str
+    created_at: str
+    updated_at: str
+    profile_name: str
+    provider_id: str
+    model_family: str
+    capabilities: list[str] = field(default_factory=list)
+    supported_task_types: list[str] = field(default_factory=list)
+    supported_risk_levels: list[str] = field(default_factory=list)
+    preferred_execution_backend: str = "qwen_executor"
+    active: bool = True
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "CapabilityProfileRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("capabilities", [])
+        data.setdefault("supported_task_types", [])
+        data.setdefault("supported_risk_levels", [])
+        data.setdefault("preferred_execution_backend", "qwen_executor")
+        data.setdefault("active", True)
+        return cls(**data)
+
+
+@dataclass
+class ModelRegistryEntryRecord:
+    model_registry_entry_id: str
+    created_at: str
+    updated_at: str
+    provider_id: str
+    provider_kind: str
+    model_family: str
+    model_name: str
+    display_name: str
+    capability_profile_ids: list[str] = field(default_factory=list)
+    policy_tags: list[str] = field(default_factory=list)
+    priority_rank: int = 100
+    default_execution_backend: str = "qwen_executor"
+    active: bool = True
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ModelRegistryEntryRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("capability_profile_ids", [])
+        data.setdefault("policy_tags", [])
+        data.setdefault("priority_rank", 100)
+        data.setdefault("default_execution_backend", "qwen_executor")
+        data.setdefault("active", True)
+        return cls(**data)
+
+
+@dataclass
+class RoutingRequestRecord:
+    routing_request_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    normalized_request: str
+    task_type: str
+    risk_level: str
+    priority: str
+    required_capabilities: list[str] = field(default_factory=list)
+    policy_constraints: dict[str, Any] = field(default_factory=dict)
+    status: str = "pending"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RoutingRequestRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("required_capabilities", [])
+        data.setdefault("policy_constraints", {})
+        data.setdefault("status", "pending")
+        return cls(**data)
+
+
+@dataclass
+class RoutingDecisionRecord:
+    routing_decision_id: str
+    routing_request_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    selected_model_registry_entry_id: str
+    selected_capability_profile_id: str
+    selected_provider_id: str
+    selected_model_name: str
+    selected_execution_backend: str
+    selection_reason: str
+    candidate_model_names: list[str] = field(default_factory=list)
+    policy_constraints: dict[str, Any] = field(default_factory=dict)
+    status: str = "selected"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RoutingDecisionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("candidate_model_names", [])
+        data.setdefault("policy_constraints", {})
+        data.setdefault("status", "selected")
+        return cls(**data)
+
+
+@dataclass
+class ProviderAdapterResultRecord:
+    provider_adapter_result_id: str
+    routing_decision_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    provider_id: str
+    model_name: str
+    execution_backend: str
+    adapter_kind: str = "routing_binding"
+    status: str = "ready"
+    summary: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ProviderAdapterResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("adapter_kind", "routing_binding")
+        data.setdefault("status", "ready")
+        data.setdefault("summary", "")
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class CandidateRecord:
+    candidate_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    candidate_kind: str
+    source_record_type: str
+    source_record_id: str
+    artifact_id: Optional[str] = None
+    execution_backend: Optional[str] = None
+    provider_id: Optional[str] = None
+    model_name: Optional[str] = None
+    routing_decision_id: Optional[str] = None
+    lifecycle_state: str = RecordLifecycleState.CANDIDATE.value
+    validation_record_ids: list[str] = field(default_factory=list)
+    latest_validation_id: Optional[str] = None
+    latest_promotion_decision_id: Optional[str] = None
+    latest_rejection_decision_id: Optional[str] = None
+    latest_revocation_id: Optional[str] = None
+    revoked_at: Optional[str] = None
+    revoked_by: Optional[str] = None
+    revocation_reason: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "CandidateRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("artifact_id", None)
+        data.setdefault("execution_backend", None)
+        data.setdefault("provider_id", None)
+        data.setdefault("model_name", None)
+        data.setdefault("routing_decision_id", None)
+        data.setdefault("lifecycle_state", RecordLifecycleState.CANDIDATE.value)
+        data.setdefault("validation_record_ids", [])
+        data.setdefault("latest_validation_id", None)
+        data.setdefault("latest_promotion_decision_id", None)
+        data.setdefault("latest_rejection_decision_id", None)
+        data.setdefault("latest_revocation_id", None)
+        data.setdefault("revoked_at", None)
+        data.setdefault("revoked_by", None)
+        data.setdefault("revocation_reason", "")
+        return cls(**data)
+
+
+@dataclass
+class ValidationRecord:
+    validation_id: str
+    candidate_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    validator_kind: str
+    status: str = "passed"
+    summary: str = ""
+    details: str = ""
+    evidence_refs: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ValidationRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("status", "passed")
+        data.setdefault("summary", "")
+        data.setdefault("details", "")
+        data.setdefault("evidence_refs", {})
+        return cls(**data)
+
+
+@dataclass
+class PromotionDecisionRecord:
+    promotion_decision_id: str
+    candidate_id: str
+    task_id: str
+    artifact_id: Optional[str]
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    decision: str = "promoted"
+    reason: str = ""
+    provenance_ref: Optional[str] = None
+    validation_record_ids: list[str] = field(default_factory=list)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PromotionDecisionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("decision", "promoted")
+        data.setdefault("reason", "")
+        data.setdefault("provenance_ref", None)
+        data.setdefault("validation_record_ids", [])
+        return cls(**data)
+
+
+@dataclass
+class RejectionDecisionRecord:
+    rejection_decision_id: str
+    candidate_id: str
+    task_id: str
+    artifact_id: Optional[str]
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    decision: str = "rejected"
+    reason: str = ""
+    trigger_event: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RejectionDecisionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("decision", "rejected")
+        data.setdefault("reason", "")
+        data.setdefault("trigger_event", "")
+        return cls(**data)
+
+
+@dataclass
+class CandidateRevocationRecord:
+    revocation_id: str
+    candidate_id: str
+    task_id: str
+    artifact_id: Optional[str]
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    reason: str = ""
+    impacted_output_ids: list[str] = field(default_factory=list)
+    hook_status: str = "recorded"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "CandidateRevocationRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("reason", "")
+        data.setdefault("impacted_output_ids", [])
+        data.setdefault("hook_status", "recorded")
+        return cls(**data)
+
+
+@dataclass
+class OutputDependencyRecord:
+    output_dependency_id: str
+    output_id: str
+    task_id: str
+    artifact_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    dependency_kind: str = "promoted_artifact_output"
+    output_status: str = OutputStatus.PUBLISHED.value
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "OutputDependencyRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("dependency_kind", "promoted_artifact_output")
+        data.setdefault("output_status", OutputStatus.PUBLISHED.value)
+        return cls(**data)
+
+
+@dataclass
+class RevocationImpactRecord:
+    revocation_impact_id: str
+    rollback_execution_id: str
+    artifact_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    output_id: Optional[str] = None
+    impacted_task_id: Optional[str] = None
+    impact_kind: str = "output_invalidated"
+    impact_status: str = "recorded"
+    reason: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RevocationImpactRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("output_id", None)
+        data.setdefault("impacted_task_id", None)
+        data.setdefault("impact_kind", "output_invalidated")
+        data.setdefault("impact_status", "recorded")
+        data.setdefault("reason", "")
+        return cls(**data)
+
+
+@dataclass
+class RollbackPlanRecord:
+    rollback_plan_id: str
+    task_id: str
+    artifact_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    action_kind: str
+    reason: str = ""
+    affected_output_ids: list[str] = field(default_factory=list)
+    affected_task_ids: list[str] = field(default_factory=list)
+    source_event_ids: list[str] = field(default_factory=list)
+    status: str = "planned"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RollbackPlanRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("reason", "")
+        data.setdefault("affected_output_ids", [])
+        data.setdefault("affected_task_ids", [])
+        data.setdefault("source_event_ids", [])
+        data.setdefault("status", "planned")
+        return cls(**data)
+
+
+@dataclass
+class RollbackExecutionRecord:
+    rollback_execution_id: str
+    rollback_plan_id: str
+    task_id: str
+    artifact_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    action_kind: str
+    status: str = "completed"
+    ok: bool = True
+    reason: str = ""
+    affected_output_ids: list[str] = field(default_factory=list)
+    revocation_impact_ids: list[str] = field(default_factory=list)
+    result_summary: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RollbackExecutionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("status", "completed")
+        data.setdefault("ok", True)
+        data.setdefault("reason", "")
+        data.setdefault("affected_output_ids", [])
+        data.setdefault("revocation_impact_ids", [])
+        data.setdefault("result_summary", "")
+        return cls(**data)
+
+
+@dataclass
+class ApprovalSessionRecord:
+    approval_session_id: str
+    approval_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    approval_type: str
+    session_state: str = "pending"
+    resumable: bool = True
+    terminal: bool = False
+    latest_checkpoint_id: Optional[str] = None
+    latest_context_snapshot_id: Optional[str] = None
+    latest_resume_token_id: Optional[str] = None
+    linked_artifact_ids: list[str] = field(default_factory=list)
+    decision_status: str = ApprovalStatus.PENDING.value
+    decision_reason: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ApprovalSessionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("session_state", "pending")
+        data.setdefault("resumable", True)
+        data.setdefault("terminal", False)
+        data.setdefault("latest_checkpoint_id", None)
+        data.setdefault("latest_context_snapshot_id", None)
+        data.setdefault("latest_resume_token_id", None)
+        data.setdefault("linked_artifact_ids", [])
+        data.setdefault("decision_status", ApprovalStatus.PENDING.value)
+        data.setdefault("decision_reason", "")
+        return cls(**data)
+
+
+@dataclass
+class ApprovalDecisionContextRecord:
+    context_snapshot_id: str
+    approval_session_id: str
+    approval_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    task_snapshot: dict[str, Any] = field(default_factory=dict)
+    linked_artifact_ids: list[str] = field(default_factory=list)
+    checkpoint_summary: str = ""
+    pending_reason: str = ""
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ApprovalDecisionContextRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("task_snapshot", {})
+        data.setdefault("linked_artifact_ids", [])
+        data.setdefault("checkpoint_summary", "")
+        data.setdefault("pending_reason", "")
+        return cls(**data)
+
+
+@dataclass
+class ApprovalResumeTokenRecord:
+    resume_token_id: str
+    approval_session_id: str
+    approval_id: str
+    checkpoint_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    token_ref: str
+    status: str = "active"
+    consumed_at: Optional[str] = None
+    consumed_by: Optional[str] = None
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ApprovalResumeTokenRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("status", "active")
+        data.setdefault("consumed_at", None)
+        data.setdefault("consumed_by", None)
+        return cls(**data)
+
+
+@dataclass
+class SubsystemContractRecord:
+    subsystem_contract_id: str
+    subsystem_kind: str
+    contract_name: str
+    created_at: str
+    updated_at: str
+    version_tag: str
+    input_contract: dict[str, Any] = field(default_factory=dict)
+    output_contract: dict[str, Any] = field(default_factory=dict)
+    state_refs: list[str] = field(default_factory=list)
+    active: bool = True
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "SubsystemContractRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("input_contract", {})
+        data.setdefault("output_contract", {})
+        data.setdefault("state_refs", [])
+        data.setdefault("active", True)
         return cls(**data)
 
 

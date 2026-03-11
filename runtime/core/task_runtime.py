@@ -77,6 +77,8 @@ def set_task_status(
             root=root,
             task_id=task_id,
             subsystem=subsystem,
+            actor=actor,
+            lane=lane,
         )
     elif new_status == TaskStatus.READY_TO_SHIP.value:
         assert_control_allows(
@@ -84,6 +86,8 @@ def set_task_status(
             root=root,
             task_id=task_id,
             subsystem=subsystem,
+            actor=actor,
+            lane=lane,
         )
     elif new_status == TaskStatus.SHIPPED.value:
         assert_control_allows(
@@ -91,6 +95,8 @@ def set_task_status(
             root=root,
             task_id=task_id,
             subsystem=subsystem,
+            actor=actor,
+            lane=lane,
         )
 
     if previous_status == new_status:

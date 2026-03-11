@@ -666,6 +666,123 @@ When rebuild-first is appropriate:
 - use `B#` or rebuild the pack directly when the inbox item says pack refresh is required first
 - rebuild-first is appropriate for expired, fingerprint-invalid, or missing-current-pack situations
 
+## Routing And Candidate Spine
+
+The live deployment remains Qwen-only, but the routing spine is now provider-agnostic and ledger-backed.
+
+To inspect the active routing registry and latest routing decision:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/routing.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+To inspect the latest candidate-first promotion scaffolding state:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/candidate_store.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Routing and promotion ledgers:
+
+- `state/model_registry_entries/*.json`
+- `state/capability_profiles/*.json`
+- `state/routing_requests/*.json`
+- `state/routing_decisions/*.json`
+- `state/provider_adapter_results/*.json`
+- `state/candidate_records/*.json`
+- `state/candidate_validations/*.json`
+- `state/promotion_decisions/*.json`
+- `state/rejection_decisions/*.json`
+- `state/candidate_revocations/*.json`
+
+Current behavior:
+
+- active configured models remain `Qwen3.5-9B`, `Qwen3.5-35B`, and `Qwen3.5-122B`
+- routing chooses from the active registry by task intent, required capabilities, and policy constraints
+- backend artifacts still land as candidates first
+- promotion, rejection, and revocation are explicit durable records layered onto the existing artifact/review/approval spine
+
+## Reversibility And Approval Sessions
+
+To inspect the latest rollback / revocation execution state:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/rollback_store.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+To inspect resumable approval session state:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/approval_sessions.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+To inspect subsystem contract scaffolding:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/subsystem_contracts.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Reversibility / approval / contract ledgers:
+
+- `state/output_dependencies/*.json`
+- `state/rollback_plans/*.json`
+- `state/rollback_executions/*.json`
+- `state/revocation_impacts/*.json`
+- `state/approval_sessions/*.json`
+- `state/approval_decision_contexts/*.json`
+- `state/approval_resume_tokens/*.json`
+- `state/subsystem_contracts/*.json`
+
+Current behavior:
+
+- promoted output publishing now records a dependency edge back to the promoted artifact
+- explicit rollback execution uses the existing demote/revoke lifecycle path and records durable plans, executions, and impact records
+- approval requests now create a resumable approval session, pending decision context snapshot, and operator resume token/reference
+- approval sessions move through explicit resumable vs terminal states instead of re-deriving hidden context
+- subsystem contracts are durable architecture scaffolding only; they do not replace the live task/artifact/review/approval stores
+
+## Emergency Controls And Memory Discipline
+
+To inspect the current effective emergency-control summary:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/controls/control_store.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+To inspect current memory discipline state:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/memory/governance.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+To inspect current promotion governance state:
+
+```bash
+python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/promotion_governance.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+```
+
+Emergency-control and memory-governance ledgers:
+
+- `state/controls/*.json`
+- `state/control_actions/*.json`
+- `state/control_events/*.json`
+- `state/control_blocked_actions/*.json`
+- `state/memory_candidates/*.json`
+- `state/memory_validations/*.json`
+- `state/memory_promotion_decisions/*.json`
+- `state/memory_rejection_decisions/*.json`
+- `state/memory_revocation_decisions/*.json`
+
+Current behavior:
+
+- deployment remains Qwen-only, but providers and execution backends can now be durably disabled by control state
+- emergency controls are enforced centrally across intake, routing, promotion, publish, approval decision/resume, memory writes, and rollback execution
+- `recovery_only_mode` blocks normal execution-bearing work while still allowing rollback/revocation execution
+- memory is now governed as candidate-first state, not direct truth writes
+- promoted or candidate memory keeps validation, decision, eligibility, and source provenance refs
+- upstream artifact revocation can revoke dependent memory candidates durably
+- promotion and publish transitions now use explicit governance checks layered on top of the existing review/approval/control spine
+
 ## Operator UX goal
 
 The operator should be able to understand what the system is doing without having to dive through raw logs unless something is broken.

@@ -180,6 +180,8 @@ def transition_task(
             root=root,
             task_id=record.task_id,
             subsystem=subsystem,
+            actor=actor,
+            lane=lane,
         )
     elif to_status == TaskStatus.READY_TO_SHIP.value:
         assert_control_allows(
@@ -187,6 +189,8 @@ def transition_task(
             root=root,
             task_id=record.task_id,
             subsystem=subsystem,
+            actor=actor,
+            lane=lane,
         )
     elif to_status == TaskStatus.SHIPPED.value:
         assert_control_allows(
@@ -194,6 +198,8 @@ def transition_task(
             root=root,
             task_id=record.task_id,
             subsystem=subsystem,
+            actor=actor,
+            lane=lane,
         )
 
     record.status = to_status

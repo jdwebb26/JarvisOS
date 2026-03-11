@@ -11,8 +11,14 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from runtime.core.candidate_store import build_candidate_summary
 from runtime.core.models import OutputStatus, RecordLifecycleState, TaskRecord, TaskStatus
-from runtime.controls.control_store import get_effective_control_state, list_control_records
+from runtime.core.approval_sessions import build_approval_session_summary
+from runtime.core.promotion_governance import build_promotion_governance_summary
+from runtime.core.rollback_store import build_rollback_summary
+from runtime.core.routing import build_model_registry_summary
+from runtime.core.subsystem_contracts import build_subsystem_contract_summary
+from runtime.controls.control_store import build_control_summary, get_effective_control_state, list_blocked_actions, list_control_events, list_control_records
 
 
 def _load_jsons(folder: Path) -> list[dict[str, Any]]:
@@ -163,6 +169,10 @@ def build_status(root: Path) -> dict[str, Any]:
     approvals = _load_jsons(root / "state" / "approvals")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
     memory_retrievals = _load_jsons(root / "state" / "memory_retrievals")
+    memory_validations = _load_jsons(root / "state" / "memory_validations")
+    memory_promotion_decisions = _load_jsons(root / "state" / "memory_promotion_decisions")
+    memory_rejection_decisions = _load_jsons(root / "state" / "memory_rejection_decisions")
+    memory_revocation_decisions = _load_jsons(root / "state" / "memory_revocation_decisions")
     operator_action_executions = _load_jsons(root / "state" / "operator_action_executions")
     operator_queue_runs = _load_jsons(root / "state" / "operator_queue_runs")
     operator_bulk_runs = _load_jsons(root / "state" / "operator_bulk_runs")
@@ -189,6 +199,24 @@ def build_status(root: Path) -> dict[str, Any]:
     operator_control_plane_checkpoints = _load_jsons(root / "state" / "operator_control_plane_checkpoints")
     operator_incident_reports = _load_jsons(root / "state" / "operator_incident_reports")
     operator_incident_snapshots = _load_jsons(root / "state" / "operator_incident_snapshots")
+    model_registry_entries = _load_jsons(root / "state" / "model_registry_entries")
+    capability_profiles = _load_jsons(root / "state" / "capability_profiles")
+    routing_requests = _load_jsons(root / "state" / "routing_requests")
+    routing_decisions = _load_jsons(root / "state" / "routing_decisions")
+    provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
+    candidate_records = _load_jsons(root / "state" / "candidate_records")
+    candidate_validations = _load_jsons(root / "state" / "candidate_validations")
+    promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
+    rejection_decisions = _load_jsons(root / "state" / "rejection_decisions")
+    candidate_revocations = _load_jsons(root / "state" / "candidate_revocations")
+    output_dependencies = _load_jsons(root / "state" / "output_dependencies")
+    rollback_plans = _load_jsons(root / "state" / "rollback_plans")
+    rollback_executions = _load_jsons(root / "state" / "rollback_executions")
+    revocation_impacts = _load_jsons(root / "state" / "revocation_impacts")
+    approval_sessions = _load_jsons(root / "state" / "approval_sessions")
+    approval_decision_contexts = _load_jsons(root / "state" / "approval_decision_contexts")
+    approval_resume_tokens = _load_jsons(root / "state" / "approval_resume_tokens")
+    subsystem_contracts = _load_jsons(root / "state" / "subsystem_contracts")
     from scripts.operator_checkpoint_action_pack import classify_action_pack
     from scripts.operator_triage_support import (
         build_decision_inbox_data,
@@ -201,6 +229,18 @@ def build_status(root: Path) -> dict[str, Any]:
         load_reply_transport_cycle,
     )
     control_records = [record.to_dict() for record in list_control_records(root=root)]
+    control_events = [record.to_dict() for record in list_control_events(root=root)]
+    blocked_control_actions = [record.to_dict() for record in list_blocked_actions(root=root)]
+    routing_summary = build_model_registry_summary(root)
+    candidate_promotion_summary = build_candidate_summary(root)
+    from runtime.memory.governance import build_memory_governance_summary
+
+    memory_discipline_summary = build_memory_governance_summary(root=root)
+    promotion_governance_summary = build_promotion_governance_summary(root=root)
+    rollback_summary = build_rollback_summary(root)
+    approval_session_summary = build_approval_session_summary(root)
+    subsystem_contract_summary = build_subsystem_contract_summary(root)
+    control_summary = build_control_summary(root=root)
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
     if current_action_pack_path.exists():
@@ -238,7 +278,10 @@ def build_status(root: Path) -> dict[str, Any]:
         "effective_safety_mode": effective_safety_mode,
         "records": global_control.get("records", []),
         "active_reasons": global_control.get("active_reasons", []),
-        "has_active_controls": bool(control_records),
+        "has_active_controls": bool(global_control.get("has_active_controls")),
+        "emergency_flags": dict(global_control.get("emergency_flags", {})),
+        "disabled_provider_ids": list(global_control.get("disabled_provider_ids", [])),
+        "disabled_execution_backends": list(global_control.get("disabled_execution_backends", [])),
     }
 
     queued_now = [row for row in task_rows if row["status"] == TaskStatus.QUEUED.value]
@@ -316,7 +359,13 @@ def build_status(root: Path) -> dict[str, Any]:
         "candidate_memories": len(candidate_memories),
         "contradicted_memories": len(contradicted_memories),
         "memory_retrievals": len(memory_retrievals),
+        "memory_validations": len(memory_validations),
+        "memory_promotion_decisions": len(memory_promotion_decisions),
+        "memory_rejection_decisions": len(memory_rejection_decisions),
+        "memory_revocation_decisions": len(memory_revocation_decisions),
         "controls": len(control_records),
+        "control_events": len(control_events),
+        "control_blocked_actions": len(blocked_control_actions),
         "paused_controls": len(paused_controls),
         "stopped_controls": len(stopped_controls),
         "degraded_controls": len(degraded_controls),
@@ -347,6 +396,24 @@ def build_status(root: Path) -> dict[str, Any]:
         "operator_control_plane_checkpoints": len(operator_control_plane_checkpoints),
         "operator_incident_reports": len(operator_incident_reports),
         "operator_incident_snapshots": len(operator_incident_snapshots),
+        "model_registry_entries": len(model_registry_entries),
+        "capability_profiles": len(capability_profiles),
+        "routing_requests": len(routing_requests),
+        "routing_decisions": len(routing_decisions),
+        "provider_adapter_results": len(provider_adapter_results),
+        "candidate_records": len(candidate_records),
+        "candidate_validations": len(candidate_validations),
+        "promotion_decisions": len(promotion_decisions),
+        "rejection_decisions": len(rejection_decisions),
+        "candidate_revocations": len(candidate_revocations),
+        "output_dependencies": len(output_dependencies),
+        "rollback_plans": len(rollback_plans),
+        "rollback_executions": len(rollback_executions),
+        "revocation_impacts": len(revocation_impacts),
+        "approval_sessions": len(approval_sessions),
+        "approval_decision_contexts": len(approval_decision_contexts),
+        "approval_resume_tokens": len(approval_resume_tokens),
+        "subsystem_contracts": len(subsystem_contracts),
     }
     triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
     decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
@@ -466,6 +533,13 @@ def build_status(root: Path) -> dict[str, Any]:
         "shipped": shipped,
         "finished_recently": finished_recently,
         "candidate_artifacts": candidate_artifacts,
+        "routing_summary": routing_summary,
+        "candidate_promotion_summary": candidate_promotion_summary,
+        "memory_discipline_summary": memory_discipline_summary,
+        "promotion_governance_summary": promotion_governance_summary,
+        "rollback_summary": rollback_summary,
+        "approval_session_summary": approval_session_summary,
+        "subsystem_contract_summary": subsystem_contract_summary,
         "impacted_artifacts": impacted_artifacts,
         "revoked_artifacts": revoked_artifacts,
         "impacted_outputs": impacted_outputs,
@@ -473,6 +547,8 @@ def build_status(root: Path) -> dict[str, Any]:
         "control_state": {
             "effective": effective_control,
             "records": control_records,
+            "events": control_events,
+            "latest_blocked_action": control_summary.get("latest_blocked_action"),
             "paused": paused_controls,
             "stopped": stopped_controls,
             "degraded": degraded_controls,
@@ -566,6 +642,13 @@ def build_status(root: Path) -> dict[str, Any]:
                 "operator_incident_report_count": len(operator_incident_reports),
                 "operator_incident_snapshot_count": len(operator_incident_snapshots),
             },
+            "model_registry_summary": routing_summary,
+            "candidate_promotion_summary": candidate_promotion_summary,
+            "memory_discipline_summary": memory_discipline_summary,
+            "promotion_governance_summary": promotion_governance_summary,
+            "rollback_summary": rollback_summary,
+            "approval_session_summary": approval_session_summary,
+            "subsystem_contract_summary": subsystem_contract_summary,
             "reply_ingress_summary": {
                 "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
                 "reply_transport_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",

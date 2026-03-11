@@ -22,8 +22,10 @@ from runtime.core.models import (
     new_id,
     now_iso,
 )
+from runtime.core.routing import route_task_intent
 from runtime.core.task_dedupe import find_active_duplicate_task
 from runtime.core.task_store import create_task, load_task
+from runtime.controls.control_store import assert_control_allows
 
 
 @dataclass
@@ -107,20 +109,6 @@ def approval_required(task_type: str, risk_level: str) -> bool:
     return False
 
 
-def infer_assigned_model(task_type: str, risk_level: str) -> Optional[str]:
-    if task_type == "quant":
-        return "Qwen3.5-122B"
-    if risk_level == RiskLevel.HIGH_STAKES.value:
-        return "Qwen3.5-122B"
-    return "Qwen3.5-35B"
-
-
-def infer_execution_backend(task_type: str, risk_level: str) -> str:
-    if task_type in {"deploy", "quant"} or risk_level == RiskLevel.HIGH_STAKES.value:
-        return "qwen_planner"
-    return "qwen_executor"
-
-
 def create_task_from_message(
     *,
     text: str,
@@ -162,9 +150,29 @@ def create_task_from_message(
     task_type = infer_task_type(parsed.normalized_request)
     priority = infer_priority(parsed.normalized_request)
     risk = infer_risk(task_type, parsed.normalized_request)
+    assert_control_allows(
+        action="task_create",
+        root=root_path,
+        actor=user,
+        lane=lane,
+    )
+
+    task_id = new_id("task")
+    route_contract = route_task_intent(
+        task_id=task_id,
+        normalized_request=parsed.normalized_request,
+        task_type=task_type,
+        risk_level=risk,
+        priority=priority,
+        actor=user,
+        lane=lane,
+        root=root_path,
+    )
+    routing_decision = route_contract["decision"]
+    provider_adapter_result = route_contract["provider_adapter_result"]
 
     record = TaskRecord(
-        task_id=new_id("task"),
+        task_id=task_id,
         created_at=now_iso(),
         updated_at=now_iso(),
         source_lane=lane,
@@ -179,9 +187,22 @@ def create_task_from_message(
         risk_level=risk,
         status=TaskStatus.QUEUED.value,
         assigned_role="executor",
-        assigned_model=infer_assigned_model(task_type, risk),
-        execution_backend=infer_execution_backend(task_type, risk),
-        backend_metadata={"routing_policy": "qwen_first"},
+        assigned_model=routing_decision["selected_model_name"],
+        execution_backend=routing_decision["selected_execution_backend"],
+        backend_metadata={
+            "routing_policy": "provider_agnostic_qwen_first",
+            "routing": {
+                "routing_request_id": route_contract["request"]["routing_request_id"],
+                "routing_decision_id": routing_decision["routing_decision_id"],
+                "provider_adapter_result_id": provider_adapter_result["provider_adapter_result_id"],
+                "provider_id": routing_decision["selected_provider_id"],
+                "model_name": routing_decision["selected_model_name"],
+                "model_registry_entry_id": routing_decision["selected_model_registry_entry_id"],
+                "capability_profile_id": routing_decision["selected_capability_profile_id"],
+                "required_capabilities": list(route_contract["request"]["required_capabilities"]),
+                "policy_constraints": dict(route_contract["request"]["policy_constraints"]),
+            },
+        },
         review_required=review_required(task_type, risk),
         approval_required=approval_required(task_type, risk),
     )
@@ -218,6 +239,7 @@ def create_task_from_message(
         "priority": record.priority,
         "risk_level": record.risk_level,
         "assigned_model": record.assigned_model,
+        "routing_contract": route_contract,
         "route_result": route_result,
         "route_error": route_error,
     }

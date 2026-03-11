@@ -35,6 +35,7 @@ from runtime.core.review_store import latest_review_for_task, request_review, sa
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_store import load_task, save_task, transition_task
 from runtime.evals.trace_store import list_eval_results_for_task, list_run_traces_for_task
+from runtime.memory.governance import register_memory_candidate
 
 
 RALPH_BACKEND_ID = "ralph_adapter"
@@ -264,6 +265,18 @@ def execute_consolidation(
         root=root_path,
         task_id=task_id,
         subsystem=RALPH_BACKEND_ID,
+        provider_id=((task.backend_metadata if task else {}) or {}).get("routing", {}).get("provider_id"),
+        actor=actor,
+        lane=lane,
+    )
+    assert_control_allows(
+        action="memory_write",
+        root=root_path,
+        task_id=task_id,
+        subsystem=RALPH_BACKEND_ID,
+        provider_id=((task.backend_metadata if task else {}) or {}).get("routing", {}).get("provider_id"),
+        actor=actor,
+        lane=lane,
     )
 
     original_status = task.status
@@ -387,9 +400,21 @@ def execute_consolidation(
             )
         )
 
+    registered_memory_candidates: list[MemoryCandidateRecord] = []
     for memory_candidate in memory_candidates:
-        save_memory_candidate(memory_candidate, root=root_path)
-    run.memory_candidate_ids = [item.memory_candidate_id for item in memory_candidates]
+        memory_candidate.source_provenance_refs = {
+            "consolidation_run_id": run.consolidation_run_id,
+            "digest_artifact_id": digest_artifact["artifact_id"],
+        }
+        registered_memory_candidates.append(
+            register_memory_candidate(
+                record=memory_candidate,
+                actor=actor,
+                lane=lane,
+                root=root_path,
+            )
+        )
+    run.memory_candidate_ids = [item.memory_candidate_id for item in registered_memory_candidates]
     run.status = "completed"
     run.summary = f"Ralph produced digest artifact {digest_artifact['artifact_id']} and {len(memory_candidates)} memory candidates."
     save_consolidation_run(run, root=root_path)

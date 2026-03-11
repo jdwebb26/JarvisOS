@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.models import ArtifactRecord, OutputStatus, RecordLifecycleState, TaskStatus
 from runtime.core.output_store import mark_outputs_impacted
+from runtime.core.promotion_governance import assert_artifact_promotion_allowed
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_runtime import load_task
 from runtime.core.task_store import (
@@ -24,7 +25,6 @@ from runtime.core.task_store import (
     set_task_lifecycle_state,
     transition_task,
 )
-from runtime.controls.control_store import assert_control_allows
 
 
 def now_iso() -> str:
@@ -215,6 +215,19 @@ def write_text_artifact(
     result = record.to_dict()
     result["event_id"] = event.event_id
     result["task_lifecycle_state"] = task_after.lifecycle_state
+    if resolved_lifecycle == RecordLifecycleState.CANDIDATE.value:
+        from runtime.core.candidate_store import register_candidate_artifact
+
+        candidate = register_candidate_artifact(
+            task_id=task_id,
+            artifact_id=artifact_id,
+            actor=actor,
+            lane=lane,
+            execution_backend=execution_backend,
+            root=root_path,
+        )
+        result["candidate_id"] = candidate.candidate_id
+        result["latest_validation_id"] = candidate.latest_validation_id
     return result
 
 
@@ -228,12 +241,11 @@ def promote_artifact(
 ) -> ArtifactRecord:
     root_path = Path(root or ROOT).resolve()
     artifact = load_artifact(artifact_id, root=root_path)
-    subsystem = artifact.execution_backend or lane
-    assert_control_allows(
-        action="promote_artifact",
+    assert_artifact_promotion_allowed(
+        artifact=artifact,
+        actor=actor,
+        lane=lane,
         root=root_path,
-        task_id=artifact.task_id,
-        subsystem=subsystem,
     )
     previous_state = artifact.lifecycle_state
 
@@ -279,6 +291,16 @@ def promote_artifact(
             execution_backend=artifact.execution_backend,
             backend_run_id=artifact.backend_run_id,
         ),
+        root=root_path,
+    )
+    from runtime.core.candidate_store import record_candidate_promotion
+
+    record_candidate_promotion(
+        artifact_id=artifact.artifact_id,
+        actor=actor,
+        lane=lane,
+        reason=f"Artifact promoted by {actor}",
+        provenance_ref=artifact.provenance_ref,
         root=root_path,
     )
     return artifact
@@ -439,6 +461,25 @@ def revoke_artifact(
             backend_run_id=artifact.backend_run_id,
             details=reason,
         ),
+        root=root_path,
+    )
+    from runtime.core.candidate_store import record_candidate_revocation_hook
+    from runtime.memory.governance import revoke_memory_candidates_for_artifact
+
+    record_candidate_revocation_hook(
+        artifact_id=artifact.artifact_id,
+        actor=actor,
+        lane=lane,
+        reason=reason,
+        impacted_output_ids=impacted_output_ids,
+        root=root_path,
+    )
+    revoke_memory_candidates_for_artifact(
+        artifact_id=artifact.artifact_id,
+        task_id=artifact.task_id,
+        actor=actor,
+        lane=lane,
+        reason=reason,
         root=root_path,
     )
     return artifact

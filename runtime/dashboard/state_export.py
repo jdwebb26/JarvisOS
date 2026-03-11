@@ -50,6 +50,8 @@ def build_state_export(root: Path) -> dict:
     flowstate_sources = _load_flowstate_source_records(root / "state" / "flowstate_sources")
     controls = _load_jsons(root / "state" / "controls")
     control_actions = _load_jsons(root / "state" / "control_actions")
+    control_events = _load_jsons(root / "state" / "control_events")
+    control_blocked_actions = _load_jsons(root / "state" / "control_blocked_actions")
     hermes_requests = _load_jsons(root / "state" / "hermes_requests")
     hermes_results = _load_jsons(root / "state" / "hermes_results")
     research_campaigns = _load_jsons(root / "state" / "research_campaigns")
@@ -59,10 +61,32 @@ def build_state_export(root: Path) -> dict:
     run_traces = _load_jsons(root / "state" / "run_traces")
     eval_cases = _load_jsons(root / "state" / "eval_cases")
     eval_results = _load_jsons(root / "state" / "eval_results")
+    model_registry_entries = _load_jsons(root / "state" / "model_registry_entries")
+    capability_profiles = _load_jsons(root / "state" / "capability_profiles")
+    routing_requests = _load_jsons(root / "state" / "routing_requests")
+    routing_decisions = _load_jsons(root / "state" / "routing_decisions")
+    provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
+    candidate_records = _load_jsons(root / "state" / "candidate_records")
+    candidate_validations = _load_jsons(root / "state" / "candidate_validations")
+    promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
+    rejection_decisions = _load_jsons(root / "state" / "rejection_decisions")
+    candidate_revocations = _load_jsons(root / "state" / "candidate_revocations")
+    output_dependencies = _load_jsons(root / "state" / "output_dependencies")
+    rollback_plans = _load_jsons(root / "state" / "rollback_plans")
+    rollback_executions = _load_jsons(root / "state" / "rollback_executions")
+    revocation_impacts = _load_jsons(root / "state" / "revocation_impacts")
+    approval_sessions = _load_jsons(root / "state" / "approval_sessions")
+    approval_decision_contexts = _load_jsons(root / "state" / "approval_decision_contexts")
+    approval_resume_tokens = _load_jsons(root / "state" / "approval_resume_tokens")
+    subsystem_contracts = _load_jsons(root / "state" / "subsystem_contracts")
     consolidation_runs = _load_jsons(root / "state" / "consolidation_runs")
     digest_artifact_links = _load_jsons(root / "state" / "digest_artifact_links")
     memory_candidates = _load_jsons(root / "state" / "memory_candidates")
     memory_retrievals = _load_jsons(root / "state" / "memory_retrievals")
+    memory_validations = _load_jsons(root / "state" / "memory_validations")
+    memory_promotion_decisions = _load_jsons(root / "state" / "memory_promotion_decisions")
+    memory_rejection_decisions = _load_jsons(root / "state" / "memory_rejection_decisions")
+    memory_revocation_decisions = _load_jsons(root / "state" / "memory_revocation_decisions")
     operator_action_executions = _load_jsons(root / "state" / "operator_action_executions")
     operator_queue_runs = _load_jsons(root / "state" / "operator_queue_runs")
     operator_bulk_runs = _load_jsons(root / "state" / "operator_bulk_runs")
@@ -102,6 +126,8 @@ def build_state_export(root: Path) -> dict:
             "flowstate_sources": len(flowstate_sources),
             "controls": len(controls),
             "control_actions": len(control_actions),
+            "control_events": len(control_events),
+            "control_blocked_actions": len(control_blocked_actions),
             "hermes_requests": len(hermes_requests),
             "hermes_results": len(hermes_results),
             "research_campaigns": len(research_campaigns),
@@ -111,10 +137,32 @@ def build_state_export(root: Path) -> dict:
             "run_traces": len(run_traces),
             "eval_cases": len(eval_cases),
             "eval_results": len(eval_results),
+            "model_registry_entries": len(model_registry_entries),
+            "capability_profiles": len(capability_profiles),
+            "routing_requests": len(routing_requests),
+            "routing_decisions": len(routing_decisions),
+            "provider_adapter_results": len(provider_adapter_results),
+            "candidate_records": len(candidate_records),
+            "candidate_validations": len(candidate_validations),
+            "promotion_decisions": len(promotion_decisions),
+            "rejection_decisions": len(rejection_decisions),
+            "candidate_revocations": len(candidate_revocations),
+            "output_dependencies": len(output_dependencies),
+            "rollback_plans": len(rollback_plans),
+            "rollback_executions": len(rollback_executions),
+            "revocation_impacts": len(revocation_impacts),
+            "approval_sessions": len(approval_sessions),
+            "approval_decision_contexts": len(approval_decision_contexts),
+            "approval_resume_tokens": len(approval_resume_tokens),
+            "subsystem_contracts": len(subsystem_contracts),
             "consolidation_runs": len(consolidation_runs),
             "digest_artifact_links": len(digest_artifact_links),
             "memory_candidates": len(memory_candidates),
             "memory_retrievals": len(memory_retrievals),
+            "memory_validations": len(memory_validations),
+            "memory_promotion_decisions": len(memory_promotion_decisions),
+            "memory_rejection_decisions": len(memory_rejection_decisions),
+            "memory_revocation_decisions": len(memory_revocation_decisions),
             "operator_action_executions": len(operator_action_executions),
             "operator_queue_runs": len(operator_queue_runs),
             "operator_bulk_runs": len(operator_bulk_runs),
@@ -159,6 +207,13 @@ def build_state_export(root: Path) -> dict:
         "run_trace_kind_counts": {},
         "eval_case_status_counts": {},
         "eval_result_pass_counts": {},
+        "model_family_counts": {},
+        "routing_backend_counts": {},
+        "candidate_record_lifecycle_counts": {},
+        "candidate_validation_status_counts": {},
+        "approval_session_state_counts": {},
+        "rollback_action_kind_counts": {},
+        "subsystem_contract_kind_counts": {},
         "consolidation_run_status_counts": {},
         "memory_candidate_type_counts": {},
         "memory_candidate_decision_counts": {},
@@ -234,6 +289,38 @@ def build_state_export(root: Path) -> dict:
         passed = "passed" if eval_result.get("passed") else "failed"
         summary["eval_result_pass_counts"][passed] = summary["eval_result_pass_counts"].get(passed, 0) + 1
 
+    for entry in model_registry_entries:
+        family = entry.get("model_family", "unknown")
+        summary["model_family_counts"][family] = summary["model_family_counts"].get(family, 0) + 1
+
+    for decision in routing_decisions:
+        backend = decision.get("selected_execution_backend", "unknown")
+        summary["routing_backend_counts"][backend] = summary["routing_backend_counts"].get(backend, 0) + 1
+
+    for candidate in candidate_records:
+        lifecycle_state = candidate.get("lifecycle_state", "unknown")
+        summary["candidate_record_lifecycle_counts"][lifecycle_state] = (
+            summary["candidate_record_lifecycle_counts"].get(lifecycle_state, 0) + 1
+        )
+
+    for validation in candidate_validations:
+        status = validation.get("status", "unknown")
+        summary["candidate_validation_status_counts"][status] = (
+            summary["candidate_validation_status_counts"].get(status, 0) + 1
+        )
+
+    for session in approval_sessions:
+        state = session.get("session_state", "unknown")
+        summary["approval_session_state_counts"][state] = summary["approval_session_state_counts"].get(state, 0) + 1
+
+    for execution in rollback_executions:
+        kind = execution.get("action_kind", "unknown")
+        summary["rollback_action_kind_counts"][kind] = summary["rollback_action_kind_counts"].get(kind, 0) + 1
+
+    for contract in subsystem_contracts:
+        kind = contract.get("subsystem_kind", "unknown")
+        summary["subsystem_contract_kind_counts"][kind] = summary["subsystem_contract_kind_counts"].get(kind, 0) + 1
+
     for consolidation_run in consolidation_runs:
         status = consolidation_run.get("status", "unknown")
         summary["consolidation_run_status_counts"][status] = summary["consolidation_run_status_counts"].get(status, 0) + 1
@@ -247,6 +334,58 @@ def build_state_export(root: Path) -> dict:
         summary["memory_candidate_contradiction_counts"][contradiction_status] = summary["memory_candidate_contradiction_counts"].get(contradiction_status, 0) + 1
 
     summary["memory_retrieval_count"] = len(memory_retrievals)
+
+    summary["routing_summary"] = {
+        "active_model_names": [row.get("model_name") for row in model_registry_entries if row.get("active")],
+        "latest_routing_decision_id": (routing_decisions[-1] if routing_decisions else {}).get("routing_decision_id"),
+        "latest_selected_model_name": (routing_decisions[-1] if routing_decisions else {}).get("selected_model_name"),
+        "latest_selected_execution_backend": (routing_decisions[-1] if routing_decisions else {}).get("selected_execution_backend"),
+    }
+    summary["candidate_promotion_summary"] = {
+        "latest_candidate_id": (candidate_records[-1] if candidate_records else {}).get("candidate_id"),
+        "latest_validation_id": (candidate_validations[-1] if candidate_validations else {}).get("validation_id"),
+        "latest_promotion_decision_id": (promotion_decisions[-1] if promotion_decisions else {}).get("promotion_decision_id"),
+        "latest_rejection_decision_id": (rejection_decisions[-1] if rejection_decisions else {}).get("rejection_decision_id"),
+        "latest_revocation_id": (candidate_revocations[-1] if candidate_revocations else {}).get("revocation_id"),
+    }
+    summary["rollback_summary"] = {
+        "latest_rollback_execution_id": (rollback_executions[-1] if rollback_executions else {}).get("rollback_execution_id"),
+        "latest_revocation_impact_id": (revocation_impacts[-1] if revocation_impacts else {}).get("revocation_impact_id"),
+        "output_dependency_count": len(output_dependencies),
+    }
+    summary["control_summary"] = {
+        "latest_control_event_id": (control_events[-1] if control_events else {}).get("control_event_id"),
+        "latest_blocked_action_id": (control_blocked_actions[-1] if control_blocked_actions else {}).get("blocked_action_id"),
+        "execution_freeze_count": sum(1 for row in controls if row.get("execution_freeze")),
+        "promotion_freeze_count": sum(1 for row in controls if row.get("promotion_freeze")),
+        "approval_freeze_count": sum(1 for row in controls if row.get("approval_freeze")),
+        "memory_freeze_count": sum(1 for row in controls if row.get("memory_freeze")),
+        "disabled_provider_count": sum(len(row.get("disabled_provider_ids", [])) for row in controls),
+        "disabled_execution_backend_count": sum(len(row.get("disabled_execution_backends", [])) for row in controls),
+    }
+    summary["approval_session_summary"] = {
+        "latest_approval_session_id": (approval_sessions[-1] if approval_sessions else {}).get("approval_session_id"),
+        "latest_resume_token_id": (approval_resume_tokens[-1] if approval_resume_tokens else {}).get("resume_token_id"),
+        "resumable_session_count": sum(1 for row in approval_sessions if row.get("resumable") and not row.get("terminal")),
+    }
+    summary["subsystem_contract_summary"] = {
+        "latest_subsystem_contract_id": (subsystem_contracts[-1] if subsystem_contracts else {}).get("subsystem_contract_id"),
+        "subsystem_contract_count": len(subsystem_contracts),
+    }
+    summary["memory_discipline_summary"] = {
+        "latest_memory_candidate_id": (memory_candidates[-1] if memory_candidates else {}).get("memory_candidate_id"),
+        "latest_memory_validation_id": (memory_validations[-1] if memory_validations else {}).get("memory_validation_id"),
+        "latest_memory_promotion_decision_id": (memory_promotion_decisions[-1] if memory_promotion_decisions else {}).get("memory_promotion_decision_id"),
+        "latest_memory_rejection_decision_id": (memory_rejection_decisions[-1] if memory_rejection_decisions else {}).get("memory_rejection_decision_id"),
+        "latest_memory_revocation_decision_id": (memory_revocation_decisions[-1] if memory_revocation_decisions else {}).get("memory_revocation_decision_id"),
+    }
+    summary["promotion_governance_summary"] = {
+        "promotion_freeze_active": sum(1 for row in controls if row.get("promotion_freeze")) > 0,
+        "memory_freeze_active": sum(1 for row in controls if row.get("memory_freeze")) > 0,
+        "latest_candidate_id": (candidate_records[-1] if candidate_records else {}).get("candidate_id"),
+        "latest_output_dependency_id": (output_dependencies[-1] if output_dependencies else {}).get("output_dependency_id"),
+        "latest_blocked_action_id": (control_blocked_actions[-1] if control_blocked_actions else {}).get("blocked_action_id"),
+    }
 
     for execution in operator_action_executions:
         kind = execution.get("failure_kind")
