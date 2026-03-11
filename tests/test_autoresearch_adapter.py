@@ -1,5 +1,11 @@
 import json
 from pathlib import Path
+import shutil
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from runtime.core.approval_store import load_approval, load_approval_checkpoint
 from runtime.core.artifact_store import load_artifact
@@ -49,6 +55,17 @@ def _make_task(
     )
 
 
+def _seed_autoresearch_contract(task: TaskRecord) -> TaskRecord:
+    task.backend_metadata["autoresearch_contract"] = {
+        "target_module": "runtime/core/routing.py",
+        "program_md_path": "docs/spec/strategy/program.md",
+        "eval_command": "python3 -m pytest -q tests/test_routing_candidate_spine.py",
+        "budget_minutes": 15,
+        "sandbox_root": "workspace/work/research_contract",
+    }
+    return task
+
+
 def test_autoresearch_creates_reviewable_candidate_campaign(tmp_path: Path):
     task = _make_task(
         tmp_path,
@@ -56,6 +73,8 @@ def test_autoresearch_creates_reviewable_candidate_campaign(tmp_path: Path):
         status=TaskStatus.QUEUED.value,
         review_required=True,
     )
+    _seed_autoresearch_contract(task)
+    save_task(task, root=tmp_path)
 
     def runner(request):
         return {
@@ -75,6 +94,8 @@ def test_autoresearch_creates_reviewable_candidate_campaign(tmp_path: Path):
         objective_metrics=["sharpe_gain", "drawdown"],
         metric_directions={"sharpe_gain": "maximize", "drawdown": "minimize"},
         primary_metric="sharpe_gain",
+        baseline_ref="baseline:v1",
+        benchmark_slice_ref="slice:smoke",
         max_passes=2,
         max_budget_units=3,
         root=tmp_path,
@@ -112,6 +133,8 @@ def test_autoresearch_links_pending_approval_checkpoint(tmp_path: Path):
         status=TaskStatus.WAITING_APPROVAL.value,
         approval_required=True,
     )
+    _seed_autoresearch_contract(task)
+    save_task(task, root=tmp_path)
 
     from runtime.core.approval_store import request_approval
 
@@ -132,6 +155,8 @@ def test_autoresearch_links_pending_approval_checkpoint(tmp_path: Path):
         objective="Validate code experiment",
         objective_metrics=["win_rate"],
         primary_metric="win_rate",
+        baseline_ref="baseline:v1",
+        benchmark_slice_ref="slice:smoke",
         max_passes=1,
         max_budget_units=1,
         root=tmp_path,
@@ -155,6 +180,8 @@ def test_autoresearch_links_pending_approval_checkpoint(tmp_path: Path):
 
 def test_autoresearch_malformed_run_blocks_task(tmp_path: Path):
     task = _make_task(tmp_path, task_id="task_research_bad", status=TaskStatus.RUNNING.value)
+    _seed_autoresearch_contract(task)
+    save_task(task, root=tmp_path)
 
     result = execute_research_campaign(
         task_id=task.task_id,
@@ -162,10 +189,12 @@ def test_autoresearch_malformed_run_blocks_task(tmp_path: Path):
         lane="research",
         objective="bad payload run",
         objective_metrics=["score"],
+        baseline_ref="baseline:v1",
+        benchmark_slice_ref="slice:smoke",
         max_passes=1,
         max_budget_units=1,
         root=tmp_path,
-        runner=lambda _request: {"summary": "missing metrics"},
+        runner=lambda _request: {"summary": "missing metrics", "hypothesis": "broken payload"},
     )
 
     stored_task = load_task(task.task_id, root=tmp_path)
@@ -179,6 +208,36 @@ def test_autoresearch_malformed_run_blocks_task(tmp_path: Path):
     assert "metrics" in campaign.comparison_summary
 
 
+def test_autoresearch_invalid_request_contract_blocks_before_runner_dispatch(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_research_invalid_contract", status=TaskStatus.RUNNING.value)
+    save_task(task, root=tmp_path)
+
+    result = execute_research_campaign(
+        task_id=task.task_id,
+        actor="tester",
+        lane="research",
+        objective="underspecified run",
+        objective_metrics=["score"],
+        max_passes=1,
+        max_budget_units=1,
+        root=tmp_path,
+        runner=lambda _request: {"summary": "should not dispatch", "hypothesis": "n/a", "metrics": {"score": 1.0}, "budget_used": 1},
+    )
+
+    stored_task = load_task(task.task_id, root=tmp_path)
+    campaign = load_research_campaign(result["campaign"]["campaign_id"], root=tmp_path)
+    result_path = next((tmp_path / "state" / "lab_run_results").glob("*.json"))
+    result_row = json.loads(result_path.read_text(encoding="utf-8"))
+
+    assert stored_task is not None
+    assert stored_task.status == TaskStatus.BLOCKED.value
+    assert result["candidate_artifact_id"] is None
+    assert campaign is not None
+    assert campaign.status == "failed"
+    assert result_row["status"] == "invalid_request"
+    assert result_row["failure_category"] == "invalid_request_contract"
+
+
 def test_autoresearch_persists_spec_fields_and_surfaces_summary(tmp_path: Path):
     task = _make_task(
         tmp_path,
@@ -186,13 +245,7 @@ def test_autoresearch_persists_spec_fields_and_surfaces_summary(tmp_path: Path):
         status=TaskStatus.QUEUED.value,
         review_required=True,
     )
-    task.backend_metadata["autoresearch_contract"] = {
-        "target_module": "runtime/core/routing.py",
-        "program_md_path": "docs/spec/strategy/program.md",
-        "eval_command": "python3 -m pytest -q tests/test_routing_candidate_spine.py",
-        "budget_minutes": 15,
-        "sandbox_root": "workspace/work/research_contract",
-    }
+    _seed_autoresearch_contract(task)
     save_task(task, root=tmp_path)
 
     result = execute_research_campaign(
@@ -269,6 +322,8 @@ def test_autoresearch_persists_strategy_diversity_map(tmp_path: Path):
         status=TaskStatus.QUEUED.value,
         review_required=True,
     )
+    _seed_autoresearch_contract(task)
+    save_task(task, root=tmp_path)
 
     execute_research_campaign(
         task_id=task.task_id,
@@ -277,6 +332,8 @@ def test_autoresearch_persists_strategy_diversity_map(tmp_path: Path):
         objective="Preserve candidate diversity across regimes",
         objective_metrics=["sharpe_gain"],
         primary_metric="sharpe_gain",
+        baseline_ref="baseline:v1",
+        benchmark_slice_ref="slice:smoke",
         max_passes=1,
         max_budget_units=1,
         root=tmp_path,
@@ -322,3 +379,23 @@ def test_autoresearch_persists_strategy_diversity_map(tmp_path: Path):
     assert exported["counts"]["strategy_diversity_maps"] == 1
     assert exported["autoresearch_summary"]["latest_strategy_diversity_map"]["style_niche"] == "opening_imbalance"
     assert handoff["pack"]["autoresearch_summary"]["latest_strategy_diversity_map"]["metric_quality"] == "strong"
+
+
+def _run_tmp(test_fn, name: str) -> None:
+    path = Path(name)
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        test_fn(path)
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    _run_tmp(test_autoresearch_creates_reviewable_candidate_campaign, "tmp_test_autoresearch_review")
+    _run_tmp(test_autoresearch_links_pending_approval_checkpoint, "tmp_test_autoresearch_approval")
+    _run_tmp(test_autoresearch_malformed_run_blocks_task, "tmp_test_autoresearch_malformed")
+    _run_tmp(test_autoresearch_invalid_request_contract_blocks_before_runner_dispatch, "tmp_test_autoresearch_invalid_request")
+    _run_tmp(test_autoresearch_persists_spec_fields_and_surfaces_summary, "tmp_test_autoresearch_contract")
+    _run_tmp(test_autoresearch_persists_strategy_diversity_map, "tmp_test_autoresearch_diversity")

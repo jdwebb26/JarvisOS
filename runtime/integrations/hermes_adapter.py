@@ -48,6 +48,9 @@ TIMEOUT_STATUS = "timeout"
 UNREACHABLE_STATUS = "unreachable"
 MALFORMED_STATUS = "malformed"
 FAILED_STATUS = "failed"
+INVALID_REQUEST_STATUS = "invalid_request"
+_ALLOWED_HERMES_SANDBOX_CLASSES = {"bounded"}
+_ALLOWED_HERMES_TOOLS = {"candidate_artifact_write", "bounded_research_synthesis"}
 
 Transport = Callable[["HermesTaskRequest"], dict[str, Any]]
 
@@ -134,13 +137,18 @@ def build_hermes_summary(root: Optional[Path] = None) -> dict[str, Any]:
     requests = list_hermes_requests(root=root)
     results = list_hermes_results(root=root)
     status_counts: dict[str, int] = {}
+    failure_category_counts: dict[str, int] = {}
     for row in results:
         status = row.get("status", "unknown")
         status_counts[status] = status_counts.get(status, 0) + 1
+        failure_category = row.get("failure_category", "")
+        if failure_category:
+            failure_category_counts[failure_category] = failure_category_counts.get(failure_category, 0) + 1
     return {
         "hermes_request_count": len(requests),
         "hermes_result_count": len(results),
         "hermes_result_status_counts": status_counts,
+        "hermes_failure_category_counts": failure_category_counts,
         "latest_hermes_request": requests[0] if requests else None,
         "latest_hermes_result": results[0] if results else None,
     }
@@ -185,6 +193,56 @@ def build_hermes_task_request(
     )
 
 
+def validate_hermes_task_request(request: HermesTaskRequest) -> dict[str, Any]:
+    findings: list[str] = []
+    if not str(request.objective or "").strip():
+        findings.append("missing_objective")
+    if int(request.timeout_seconds or 0) < 1:
+        findings.append("invalid_timeout_seconds")
+    if str(request.sandbox_class or "").strip().lower() not in _ALLOWED_HERMES_SANDBOX_CLASSES:
+        findings.append("unsupported_sandbox_class")
+    allowed_tools = list(request.allowed_tools or [])
+    if not allowed_tools:
+        findings.append("missing_allowed_tools")
+    elif any(tool not in _ALLOWED_HERMES_TOOLS for tool in allowed_tools):
+        findings.append("unsupported_allowed_tool")
+    model_policy = dict(request.model_override_policy or {})
+    allowed_families = [str(item).strip().lower() for item in model_policy.get("allowed_families", []) if str(item).strip()]
+    if not allowed_families:
+        findings.append("missing_allowed_families")
+    elif any(not family.startswith("qwen3.5") for family in allowed_families):
+        findings.append("non_qwen_family_declared")
+    if str(model_policy.get("provider_policy") or "").strip() != "qwen_only":
+        findings.append("provider_policy_not_qwen_only")
+    if str(request.return_format or "").strip() != "candidate_artifact":
+        findings.append("unsupported_return_format")
+    capability_declaration = dict(request.capability_declaration or {})
+    if not str(capability_declaration.get("task_type") or "").strip():
+        findings.append("missing_task_type_capability")
+    if not isinstance(capability_declaration.get("required_capabilities"), list):
+        findings.append("required_capabilities_not_list")
+    callback_contract = dict(request.callback_contract or {})
+    if str(callback_contract.get("kind") or "").strip() != "task_event":
+        findings.append("callback_contract_kind_invalid")
+    if str(callback_contract.get("task_id") or "").strip() != request.task_id:
+        findings.append("callback_contract_task_id_mismatch")
+    if str(callback_contract.get("lane") or "").strip() != request.lane:
+        findings.append("callback_contract_lane_mismatch")
+    return {
+        "allowed": not findings,
+        "findings": findings,
+        "reason": "hermes_request_contract_valid" if not findings else "hermes_request_contract_invalid",
+    }
+
+
+def _validate_hermes_token_usage(token_usage: dict[str, Any]) -> None:
+    if not isinstance(token_usage, dict):
+        raise HermesResponseMalformedError("Hermes response token_usage must be an object.")
+    for key, value in token_usage.items():
+        if not isinstance(value, (int, float)) or value < 0:
+            raise HermesResponseMalformedError(f"Hermes response token_usage.{key} must be a non-negative number.")
+
+
 def _parse_hermes_response(*, request: HermesTaskRequest, payload: dict[str, Any]) -> HermesTaskResult:
     if not isinstance(payload, dict):
         raise HermesResponseMalformedError("Hermes response must be a JSON object.")
@@ -193,11 +251,21 @@ def _parse_hermes_response(*, request: HermesTaskRequest, payload: dict[str, Any
     summary = str(payload.get("summary") or "").strip()
     content = str(payload.get("content") or "").strip()
     family = str(payload.get("family") or "qwen3.5").strip().lower()
+    model_name = str(payload.get("model_name") or "").strip()
     citations = list(payload.get("citations") or [])
     proposed_next_actions = list(payload.get("proposed_next_actions") or [])
     token_usage = dict(payload.get("token_usage") or {})
     if not title or not summary or not content:
         raise HermesResponseMalformedError("Hermes response must include non-empty `title`, `summary`, and `content`.")
+    if not model_name:
+        raise HermesResponseMalformedError("Hermes response must include non-empty `model_name`.")
+    if "status" in payload and str(payload.get("status") or "").strip() not in {"", SUCCESS_STATUS}:
+        raise HermesResponseMalformedError("Hermes success response cannot declare a non-completed status.")
+    if any(not isinstance(item, dict) for item in citations):
+        raise HermesResponseMalformedError("Hermes response citations must be objects.")
+    if any(not isinstance(item, dict) for item in proposed_next_actions):
+        raise HermesResponseMalformedError("Hermes response proposed_next_actions must be objects.")
+    _validate_hermes_token_usage(token_usage)
     allowed_families = list((request.model_override_policy or {}).get("allowed_families") or HERMES_ALLOWED_FAMILIES)
     if not any(family.startswith(allowed) for allowed in allowed_families):
         raise HermesResponseMalformedError(
@@ -213,7 +281,7 @@ def _parse_hermes_response(*, request: HermesTaskRequest, payload: dict[str, Any
         status=SUCCESS_STATUS,
         execution_backend=HERMES_BACKEND_ID,
         family=family,
-        model_name=str(payload.get("model_name") or ""),
+        model_name=model_name,
         artifacts=[],
         checkpoint_summary=summary,
         citations=citations,
@@ -272,6 +340,7 @@ def _record_failed_result(
     *,
     request: HermesTaskRequest,
     status: str,
+    failure_category: str,
     error: str,
     raw_response: Optional[dict[str, Any]] = None,
     root: Path,
@@ -284,6 +353,7 @@ def _record_failed_result(
         received_at=now_iso(),
         status=status,
         execution_backend=HERMES_BACKEND_ID,
+        failure_category=failure_category,
         checkpoint_summary="",
         error_summary=error,
         error=error,
@@ -332,6 +402,7 @@ def execute_hermes_task(
         timeout_seconds=timeout_seconds,
         metadata=metadata,
     )
+    request_validation = validate_hermes_task_request(request)
     _update_task_for_hermes(task, request=request, result=None)
     save_task(task, root=root_path)
     save_hermes_request(request, root=root_path)
@@ -382,49 +453,64 @@ def execute_hermes_task(
         root=root_path,
     )
 
-    use_transport = transport or _default_transport
-    try:
-        payload = use_transport(request)
-        result = _parse_hermes_response(request=request, payload=payload)
-    except TimeoutError as exc:
+    if not request_validation["allowed"]:
         result = _record_failed_result(
             request=request,
-            status=TIMEOUT_STATUS,
-            error=str(exc) or "Hermes request timed out.",
-            root=root_path,
-        )
-    except HermesTransportUnreachableError as exc:
-        result = _record_failed_result(
-            request=request,
-            status=UNREACHABLE_STATUS,
-            error=str(exc) or "Hermes backend unreachable.",
-            root=root_path,
-        )
-    except (ConnectionError, OSError) as exc:
-        result = _record_failed_result(
-            request=request,
-            status=UNREACHABLE_STATUS,
-            error=str(exc) or "Hermes backend unreachable.",
-            root=root_path,
-        )
-    except HermesResponseMalformedError as exc:
-        result = _record_failed_result(
-            request=request,
-            status=MALFORMED_STATUS,
-            error=str(exc),
-            raw_response=payload if "payload" in locals() and isinstance(payload, dict) else {},
-            root=root_path,
-        )
-    except Exception as exc:
-        result = _record_failed_result(
-            request=request,
-            status=FAILED_STATUS,
-            error=f"{type(exc).__name__}: {exc}",
-            raw_response=payload if "payload" in locals() and isinstance(payload, dict) else {},
+            status=INVALID_REQUEST_STATUS,
+            failure_category="invalid_request_contract",
+            error="; ".join(request_validation["findings"]),
+            raw_response={"request_validation": request_validation},
             root=root_path,
         )
     else:
-        save_hermes_result(result, root=root_path)
+        use_transport = transport or _default_transport
+        try:
+            payload = use_transport(request)
+            result = _parse_hermes_response(request=request, payload=payload)
+        except TimeoutError as exc:
+            result = _record_failed_result(
+                request=request,
+                status=TIMEOUT_STATUS,
+                failure_category="timeout",
+                error=str(exc) or "Hermes request timed out.",
+                root=root_path,
+            )
+        except HermesTransportUnreachableError as exc:
+            result = _record_failed_result(
+                request=request,
+                status=UNREACHABLE_STATUS,
+                failure_category="unreachable_backend",
+                error=str(exc) or "Hermes backend unreachable.",
+                root=root_path,
+            )
+        except (ConnectionError, OSError) as exc:
+            result = _record_failed_result(
+                request=request,
+                status=UNREACHABLE_STATUS,
+                failure_category="unreachable_backend",
+                error=str(exc) or "Hermes backend unreachable.",
+                root=root_path,
+            )
+        except HermesResponseMalformedError as exc:
+            result = _record_failed_result(
+                request=request,
+                status=MALFORMED_STATUS,
+                failure_category="malformed_response",
+                error=str(exc),
+                raw_response=payload if "payload" in locals() and isinstance(payload, dict) else {},
+                root=root_path,
+            )
+        except Exception as exc:
+            result = _record_failed_result(
+                request=request,
+                status=FAILED_STATUS,
+                failure_category="execution_failure",
+                error=f"{type(exc).__name__}: {exc}",
+                raw_response=payload if "payload" in locals() and isinstance(payload, dict) else {},
+                root=root_path,
+            )
+        else:
+            save_hermes_result(result, root=root_path)
 
     execution_request.status = "completed" if result.status == SUCCESS_STATUS else "failed"
     execution_request.backend_run_id = result.run_id
@@ -498,13 +584,7 @@ def execute_hermes_task(
         )
     else:
         degradation_policy = load_degradation_policy_for_subsystem(HERMES_BACKEND_ID, root=root_path)
-        failure_category = "backend_failure"
-        if result.status == TIMEOUT_STATUS:
-            failure_category = "timeout"
-        elif result.status == UNREACHABLE_STATUS:
-            failure_category = "unreachable_backend"
-        elif result.status == MALFORMED_STATUS:
-            failure_category = "malformed_response"
+        failure_category = result.failure_category or "backend_failure"
         fallback_allowed = bool(
             degradation_policy
             and degradation_policy.fallback_action in {"local_fallback_allowed", "local_fallback"}
@@ -627,7 +707,7 @@ def execute_hermes_task(
         metadata={
             "family": result.family,
             "request_status": execution_request.status,
-            "failure_category": failure_category if result.status != SUCCESS_STATUS else "",
+            "failure_category": result.failure_category if result.status != SUCCESS_STATUS else "",
             "degradation_policy_id": (
                 ((final_task.backend_metadata if final_task else {}) or {}).get("degradation", {})
             ).get("degradation_policy_id"),
@@ -650,6 +730,7 @@ def execute_hermes_task(
         "result": result.to_dict(),
         "task_status": final_task.status if final_task else None,
         "candidate_artifact_id": result.candidate_artifact_id,
+        "request_validation": request_validation,
     }
 
 

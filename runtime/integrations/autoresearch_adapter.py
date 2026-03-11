@@ -59,6 +59,7 @@ AUTORESEARCH_BACKEND_ID = "autoresearch_adapter"
 SUCCESS_STATUS = "completed"
 FAILED_STATUS = "failed"
 STOPPED_STATUS = "stopped"
+INVALID_REQUEST_STATUS = "invalid_request"
 
 Runner = Callable[["LabRunRequest"], dict[str, Any]]
 
@@ -171,14 +172,19 @@ def build_autoresearch_summary(root: Optional[Path] = None) -> dict[str, Any]:
     results = list_lab_run_results(root=root)
     diversity_maps = list_strategy_diversity_maps(root=root)
     status_counts: dict[str, int] = {}
+    failure_category_counts: dict[str, int] = {}
     for row in results:
         status = row.get("status", "unknown")
         status_counts[status] = status_counts.get(status, 0) + 1
+        failure_category = row.get("failure_category", "")
+        if failure_category:
+            failure_category_counts[failure_category] = failure_category_counts.get(failure_category, 0) + 1
     return {
         "lab_run_request_count": len(requests),
         "lab_run_result_count": len(results),
         "strategy_diversity_map_count": len(diversity_maps),
         "lab_run_status_counts": status_counts,
+        "lab_run_failure_category_counts": failure_category_counts,
         "latest_lab_run_request": requests[0] if requests else None,
         "latest_lab_run_result": results[0] if results else None,
         "latest_strategy_diversity_map": diversity_maps[0] if diversity_maps else None,
@@ -224,6 +230,53 @@ def _direction_for(metric_name: str, metric_directions: dict[str, str]) -> str:
     return direction
 
 
+def validate_lab_run_request(request: LabRunRequest) -> dict[str, Any]:
+    findings: list[str] = []
+    if not str(request.objective or "").strip():
+        findings.append("missing_objective")
+    if not list(request.objective_metrics or []):
+        findings.append("missing_objective_metrics")
+    if str(request.primary_metric or "").strip() not in list(request.objective_metrics or []):
+        findings.append("primary_metric_not_in_objective_metrics")
+    if not str(request.baseline_ref or "").strip():
+        findings.append("missing_baseline_ref")
+    if not str(request.benchmark_slice_ref or "").strip():
+        findings.append("missing_benchmark_slice_ref")
+    if str(request.sandbox_class or "").strip().lower() != "bounded":
+        findings.append("unsupported_sandbox_class")
+    if not str(request.sandbox_root or "").strip():
+        findings.append("missing_sandbox_root")
+    if not str(request.target_module or "").strip():
+        findings.append("missing_target_module")
+    if not str(request.program_md_path or "").strip():
+        findings.append("missing_program_md_path")
+    if not str(request.eval_command or "").strip():
+        findings.append("missing_eval_command")
+    if int(request.pass_index or 0) < 1:
+        findings.append("invalid_pass_index")
+    if int(request.remaining_budget_units or 0) < 1:
+        findings.append("invalid_remaining_budget_units")
+    if not str((request.metadata or {}).get("task_type") or "").strip():
+        findings.append("missing_task_type_metadata")
+    return {
+        "allowed": not findings,
+        "findings": findings,
+        "reason": "lab_run_request_contract_valid" if not findings else "lab_run_request_contract_invalid",
+    }
+
+
+def _validate_numeric_map(payload: Any, *, label: str) -> dict[str, float]:
+    if not isinstance(payload, dict):
+        raise LabRunMalformedError(f"{label} must be an object.")
+    parsed: dict[str, float] = {}
+    for key, value in payload.items():
+        try:
+            parsed[str(key)] = float(value)
+        except (TypeError, ValueError) as exc:
+            raise LabRunMalformedError(f"{label}.{key} must be numeric.") from exc
+    return parsed
+
+
 def _score_improved(*, metric_name: str, direction: str, current: float, best: Optional[float]) -> bool:
     if best is None:
         return True
@@ -241,8 +294,13 @@ def _parse_result(*, request: LabRunRequest, payload: dict[str, Any]) -> LabRunR
     raw_metrics = payload.get("metrics")
     if not summary:
         raise LabRunMalformedError("Lab run response must include non-empty `summary`.")
+    if not hypothesis:
+        raise LabRunMalformedError("Lab run response must include non-empty `hypothesis`.")
     if not isinstance(raw_metrics, dict):
         raise LabRunMalformedError("Lab run response must include `metrics` as an object.")
+    status = str(payload.get("status") or SUCCESS_STATUS).strip()
+    if status not in {SUCCESS_STATUS, STOPPED_STATUS}:
+        raise LabRunMalformedError(f"Lab run response status `{status}` is not allowed for a successful run payload.")
 
     metrics: dict[str, float] = {}
     for metric_name in request.objective_metrics:
@@ -258,9 +316,13 @@ def _parse_result(*, request: LabRunRequest, payload: dict[str, Any]) -> LabRunR
     if budget_used < 1:
         raise LabRunMalformedError("Lab run response `budget_used` must be >= 1.")
 
-    baseline_metrics = dict(payload.get("baseline_metrics") or {})
-    candidate_metrics = dict(payload.get("candidate_metrics") or raw_metrics)
-    delta_metrics = dict(payload.get("delta_metrics") or {})
+    baseline_metrics = _validate_numeric_map(payload.get("baseline_metrics") or {}, label="baseline_metrics")
+    candidate_metrics = _validate_numeric_map(payload.get("candidate_metrics") or raw_metrics, label="candidate_metrics")
+    delta_metrics = _validate_numeric_map(payload.get("delta_metrics") or {}, label="delta_metrics")
+    token_usage = _validate_numeric_map(payload.get("token_usage") or {}, label="token_usage")
+    recommendation = payload.get("recommendation") or {}
+    if not isinstance(recommendation, dict):
+        raise LabRunMalformedError("Lab run response recommendation must be an object.")
     if not delta_metrics and baseline_metrics:
         for metric_name, metric_value in metrics.items():
             baseline_value = baseline_metrics.get(metric_name)
@@ -278,14 +340,14 @@ def _parse_result(*, request: LabRunRequest, payload: dict[str, Any]) -> LabRunR
         task_id=request.task_id,
         run_id=str(payload.get("run_id") or new_id("labrun")),
         received_at=now_iso(),
-        status=str(payload.get("status") or SUCCESS_STATUS),
+        status=status,
         candidate_patch_path=str(payload.get("candidate_patch_path") or ""),
         baseline_metrics=baseline_metrics,
         candidate_metrics=candidate_metrics,
         delta_metrics=delta_metrics,
         experiment_log_path=str(payload.get("experiment_log_path") or ""),
-        recommendation=dict(payload.get("recommendation") or {}),
-        token_usage=dict(payload.get("token_usage") or {}),
+        recommendation=dict(recommendation),
+        token_usage=token_usage,
         summary=summary,
         hypothesis=hypothesis,
         comparison_summary=str(payload.get("comparison_summary") or "").strip(),
@@ -547,6 +609,7 @@ def execute_research_campaign(
             sandbox_class="bounded",
             metadata={"task_type": task.task_type},
         )
+        request_validation = validate_lab_run_request(request)
         save_lab_run_request(request, root=root_path)
         execution_identity = resolve_execution_identity(task=task, routing_meta=routing_meta)
         execution_request = record_backend_execution_request(
@@ -567,8 +630,13 @@ def execute_research_campaign(
         latest_execution_request_id = execution_request.backend_execution_request_id
 
         try:
+            if not request_validation["allowed"]:
+                raise LabRunMalformedError("; ".join(request_validation["findings"]))
             result = _parse_result(request=request, payload=use_runner(request))
         except Exception as exc:
+            failure_category = "runner_failure"
+            if isinstance(exc, LabRunMalformedError):
+                failure_category = "invalid_request_contract" if not request_validation["allowed"] else "malformed_result"
             result = LabRunResult(
                 result_id=new_id("labres"),
                 request_id=request.request_id,
@@ -576,10 +644,11 @@ def execute_research_campaign(
                 task_id=task_id,
                 run_id=new_id("labrun"),
                 received_at=now_iso(),
-                status=FAILED_STATUS,
+                status=INVALID_REQUEST_STATUS if failure_category == "invalid_request_contract" else FAILED_STATUS,
                 experiment_log_path="",
                 recommendation={},
                 token_usage={},
+                failure_category=failure_category,
                 summary="",
                 hypothesis="",
                 comparison_summary=f"{type(exc).__name__}: {exc}",
@@ -597,7 +666,7 @@ def execute_research_campaign(
                 updated_at=now_iso(),
                 actor=actor,
                 lane=lane,
-                status=FAILED_STATUS,
+                status=result.status,
                 stop_reason=result.comparison_summary,
                 raw_result={},
                 execution_backend=AUTORESEARCH_BACKEND_ID,
@@ -609,7 +678,7 @@ def execute_research_campaign(
                 lane=lane,
                 execution_backend=AUTORESEARCH_BACKEND_ID,
                 backend_run_id=run.run_id,
-                status=FAILED_STATUS,
+                status=result.status,
                 request_summary=request.objective,
                 response_summary="",
                 decision_summary=f"Research experiment failed: {run.stop_reason}",
@@ -620,7 +689,7 @@ def execute_research_campaign(
                     "primary_metric": request.primary_metric,
                     "primary_direction": request.metric_directions.get(request.primary_metric, "maximize"),
                     "metrics": {},
-                    "expected_status": FAILED_STATUS,
+                    "expected_status": result.status,
                 },
                 source_refs={
                     "campaign_id": campaign.campaign_id,
@@ -644,7 +713,7 @@ def execute_research_campaign(
                 execution_backend=AUTORESEARCH_BACKEND_ID,
                 provider_id=execution_identity["provider_id"],
                 model_name=execution_identity["model_name"],
-                status=FAILED_STATUS,
+                status=result.status,
                 backend_run_id=run.run_id,
                 trace_id=trace.trace_id,
                 outcome_summary=run.stop_reason,
@@ -654,6 +723,7 @@ def execute_research_campaign(
                     "request_id": request.request_id,
                     "run_id": run.run_id,
                 },
+                metadata={"failure_category": failure_category},
                 root=root_path,
             )
             latest_execution_result_id = execution_result.backend_execution_result_id
@@ -805,7 +875,12 @@ def execute_research_campaign(
                 "result_id": result.result_id,
                 "run_id": run.run_id,
             },
-            metadata={"metrics": dict(result.candidate_metrics), "budget_used": result.budget_used, "token_usage": dict(result.token_usage)},
+            metadata={
+                "metrics": dict(result.candidate_metrics),
+                "budget_used": result.budget_used,
+                "token_usage": dict(result.token_usage),
+                "failure_category": result.failure_category,
+            },
             root=root_path,
         )
         latest_execution_result_id = execution_result.backend_execution_result_id

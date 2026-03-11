@@ -2060,6 +2060,7 @@ class HermesTaskResultRecord:
     citations: list[dict[str, Any]] = field(default_factory=list)
     proposed_next_actions: list[dict[str, Any]] = field(default_factory=list)
     token_usage: dict[str, Any] = field(default_factory=dict)
+    failure_category: str = ""
     error_summary: str = ""
     title: str = ""
     summary: str = ""
@@ -2084,6 +2085,7 @@ class HermesTaskResultRecord:
         data.setdefault("citations", [])
         data.setdefault("proposed_next_actions", [])
         data.setdefault("token_usage", {})
+        data.setdefault("failure_category", "")
         data.setdefault("error_summary", "")
         data.setdefault("title", "")
         data.setdefault("summary", "")
@@ -2167,6 +2169,7 @@ class LabRunResultRecord:
     experiment_log_path: str = ""
     recommendation: dict[str, Any] = field(default_factory=dict)
     token_usage: dict[str, Any] = field(default_factory=dict)
+    failure_category: str = ""
     summary: str = ""
     hypothesis: str = ""
     comparison_summary: str = ""
@@ -2191,6 +2194,7 @@ class LabRunResultRecord:
         data.setdefault("experiment_log_path", "")
         data.setdefault("recommendation", {})
         data.setdefault("token_usage", {})
+        data.setdefault("failure_category", "")
         data.setdefault("summary", "")
         data.setdefault("hypothesis", "")
         data.setdefault("comparison_summary", "")

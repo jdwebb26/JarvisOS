@@ -1,6 +1,11 @@
 from pathlib import Path
+import re
+import shutil
+import sys
 
-import pytest
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from runtime.controls.control_store import apply_control_action
 from runtime.core.approval_store import load_approval_checkpoint, load_approval, request_approval
@@ -18,6 +23,26 @@ from runtime.integrations.hermes_adapter import (
     load_hermes_result,
 )
 from scripts.operator_handoff_pack import build_operator_handoff_pack
+
+
+class raises:
+    def __init__(self, exc_type, match: str = ""):
+        self.exc_type = exc_type
+        self.match = match
+        self.caught = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, _tb):
+        if exc is None:
+            raise AssertionError(f"Expected {self.exc_type.__name__} to be raised.")
+        if not isinstance(exc, self.exc_type):
+            return False
+        self.caught = exc
+        if self.match and not re.search(self.match, str(exc)):
+            raise AssertionError(f"Exception {exc!r} did not match /{self.match}/.")
+        return True
 
 
 def _make_task(
@@ -107,6 +132,7 @@ def test_hermes_success_updates_pending_review_and_writes_candidate(tmp_path: Pa
     assert stored_result["checkpoint_summary"] == f"Hermes candidate stored: {result['candidate_artifact_id']}"
     assert stored_result["artifacts"][0]["artifact_id"] == result["candidate_artifact_id"]
     assert stored_result["error_summary"] == ""
+    assert stored_result["failure_category"] == ""
 
 
 def test_hermes_success_updates_pending_approval_checkpoint(tmp_path: Path):
@@ -161,6 +187,27 @@ def test_hermes_malformed_response_blocks_task(tmp_path: Path):
     assert result["candidate_artifact_id"] is None
     assert result["result"]["status"] == "malformed"
     assert result["result"]["error_summary"]
+    assert result["result"]["failure_category"] == "malformed_response"
+
+
+def test_hermes_invalid_request_contract_blocks_before_dispatch(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_hermes_invalid_request", status=TaskStatus.RUNNING.value)
+
+    result = execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        timeout_seconds=0,
+        transport=_success_transport,
+    )
+
+    stored_task = load_task(task.task_id, root=tmp_path)
+    assert stored_task is not None
+    assert stored_task.status == TaskStatus.BLOCKED.value
+    assert result["result"]["status"] == "invalid_request"
+    assert result["result"]["failure_category"] == "invalid_request_contract"
+    assert "invalid_timeout_seconds" in result["request_validation"]["findings"]
 
 
 def test_hermes_summary_surfaces_contract_fields(tmp_path: Path):
@@ -190,6 +237,7 @@ def test_hermes_summary_surfaces_contract_fields(tmp_path: Path):
     handoff = build_operator_handoff_pack(tmp_path)["pack"]
 
     assert status["hermes_summary"]["hermes_request_count"] == 1
+    assert status["hermes_summary"]["hermes_failure_category_counts"] == {}
     assert status["hermes_summary"]["latest_hermes_result"]["citations"][0]["kind"] == "web"
     assert snapshot["hermes_summary"]["latest_hermes_result"]["proposed_next_actions"][0]["kind"] == "review"
     assert export_payload["hermes_summary"]["latest_hermes_request"]["return_format"] == "candidate_artifact"
@@ -208,7 +256,7 @@ def test_hermes_respects_control_state(tmp_path: Path):
         root=tmp_path,
     )
 
-    with pytest.raises(ValueError, match="Control state forbids task progress"):
+    with raises(ValueError, match="Control state forbids task progress"):
         execute_hermes_task(
             task_id=task.task_id,
             actor="tester",
@@ -216,3 +264,22 @@ def test_hermes_respects_control_state(tmp_path: Path):
             root=tmp_path,
             transport=_success_transport,
         )
+
+
+if __name__ == "__main__":
+    def _run_tmp(test_fn, name: str) -> None:
+        path = Path(name)
+        if path.exists():
+            shutil.rmtree(path)
+        path.mkdir(parents=True, exist_ok=True)
+        try:
+            test_fn(path)
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
+
+    _run_tmp(test_hermes_success_updates_pending_review_and_writes_candidate, "tmp_test_hermes_review")
+    _run_tmp(test_hermes_success_updates_pending_approval_checkpoint, "tmp_test_hermes_approval")
+    _run_tmp(test_hermes_malformed_response_blocks_task, "tmp_test_hermes_malformed")
+    _run_tmp(test_hermes_invalid_request_contract_blocks_before_dispatch, "tmp_test_hermes_invalid_request")
+    _run_tmp(test_hermes_summary_surfaces_contract_fields, "tmp_test_hermes_summary")
+    _run_tmp(test_hermes_respects_control_state, "tmp_test_hermes_control")
