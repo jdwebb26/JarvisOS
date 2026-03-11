@@ -42,6 +42,18 @@ def research_recommendations_dir(root: Optional[Path] = None) -> Path:
     return _state_dir("research_recommendations", root=root)
 
 
+def research_workspace_dir(sandbox_root: str, *, root: Optional[Path] = None) -> Path:
+    path = (Path(root or ROOT).resolve() / str(sandbox_root or "").strip()).resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def standard_run_outputs_dir(run_id: str, *, sandbox_root: str, root: Optional[Path] = None) -> Path:
+    path = research_workspace_dir(sandbox_root, root=root) / run_id / "standard_run_outputs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _record_path(folder: Path, record_id: str) -> Path:
     return folder / f"{record_id}.json"
 

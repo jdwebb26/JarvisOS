@@ -1,18 +1,18 @@
 {
   "ok": true,
   "strict": false,
-  "timestamp_utc": "2026-03-10T16:48:43.376804+00:00",
+  "timestamp_utc": "2026-03-11T18:27:14.071153+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "requested_root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "summary": {
-    "pass": 69,
+    "pass": 277,
     "warn": 0,
     "fail": 0
   },
   "foundation": {
     "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
     "created_dirs": [],
-    "existing_dirs_count": 14,
+    "existing_dirs_count": 112,
     "copied_configs": {
       "config/app.yaml": "kept_existing",
       "config/channels.yaml": "kept_existing",
@@ -75,6 +75,36 @@
     {
       "status": "pass",
       "category": "filesystem",
+      "message": "Directory `runtime/controls` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/integrations` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/researchlab` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/evals` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/ralph` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/memory` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
       "message": "Directory `scripts` is present."
     },
     {
@@ -110,6 +140,21 @@
     {
       "status": "pass",
       "category": "filesystem",
+      "message": "Directory `state/heartbeat_reports` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/browser_control_allowlists` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/voice_sessions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
       "message": "Directory `state/logs` is present."
     },
     {
@@ -121,6 +166,481 @@
       "status": "pass",
       "category": "filesystem",
       "message": "Directory `state/reviews` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/controls` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/control_actions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/control_events` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/control_blocked_actions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/hermes_requests` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/hermes_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/research_campaigns` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/experiment_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/metric_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/research_recommendations` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/lab_run_requests` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/lab_run_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/strategy_diversity_maps` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/run_traces` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/eval_cases` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/eval_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/eval_outcomes` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/eval_profiles` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/model_registry_entries` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/capability_profiles` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/routing_policies` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/routing_overrides` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/routing_requests` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/routing_decisions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/provider_adapter_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/backend_assignments` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/backend_execution_requests` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/backend_execution_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/token_budgets` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/degradation_policies` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/degradation_events` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/candidate_records` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/candidate_validations` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/promotion_decisions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/rejection_decisions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/candidate_revocations` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/task_provenance` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/artifact_provenance` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/promotion_provenance` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/routing_provenance` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/decision_provenance` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/publish_provenance` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/rollback_provenance` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory_provenance` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/replay_plans` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/replay_executions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/replay_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/modality_contracts` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/output_dependencies` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/rollback_plans` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/rollback_executions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/revocation_impacts` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/approval_sessions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/approval_decision_contexts` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/approval_resume_tokens` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/subsystem_contracts` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/trajectories` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_profiles` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/consolidation_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/digest_artifact_links` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory_candidates` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory_entries` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory_retrievals` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory_validations` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory_promotion_decisions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory_rejection_decisions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/memory_revocation_decisions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_action_executions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_queue_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_bulk_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_task_interventions` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_safe_autofix_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_plans` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_applies` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_ingress` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_ingress_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_ingress_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_messages` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_transport_cycles` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_transport_replay_plans` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_reply_transport_replays` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_outbound_packets` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_imported_reply_messages` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_gateway_inbound_messages` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_bridge_cycles` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_bridge_replay_plans` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_bridge_replays` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_doctor_reports` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_remediation_plans` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_remediation_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_remediation_step_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_recovery_cycles` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_control_plane_checkpoints` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_incident_reports` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/operator_incident_snapshots` is present."
     },
     {
       "status": "pass",
@@ -205,6 +725,311 @@
     {
       "status": "pass",
       "category": "files",
+      "message": "File `scripts/operator_checkpoint_action_pack.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_action_executor.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_action_ledger.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_action_explain.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_bulk_action_runner.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_command_center.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_decision_inbox.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_reply_plan.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_apply_reply.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_reply_preview.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_reply_ingest.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_reply_ingress_runner.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_outbound_prompt.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_enqueue_reply_message.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_reply_ack.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_reply_transport_cycle.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_reply_transport_cycles.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_explain_reply_transport_cycle.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_compare_reply_transport_cycles.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_replay_transport_cycle.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_publish_outbound_packet.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_import_reply_message.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_outbound_packets.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_imported_reply_messages.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_bridge_cycle.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_bridge_cycles.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_explain_bridge_cycle.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_compare_bridge_cycles.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_replay_bridge_cycle.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_doctor.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_plan_remediation.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_explain_doctor_issue.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_doctor_reports.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_run_remediation_plan.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_remediation_runs.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_explain_remediation_run.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_recovery_cycle.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_recovery_cycles.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_explain_recovery_cycle.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_checkpoint_control_plane.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_control_plane_checkpoints.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_explain_control_plane_checkpoint.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_compare_control_plane_checkpoints.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_detect_incidents.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_incident_reports.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_explain_incident_report.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_decision_shortlist.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_compare_inbox.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_actions.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_tasks.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_list_runs.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_decision_manifest.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_compare_packs.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_compare_triage.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_triage_pack.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_task_intervene.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_safe_autofix.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_resume_action.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_queue_runner.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/overnight_operator_run.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_handoff_pack.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
       "message": "File `scripts/smoke_test.py` is present."
     },
     {
@@ -225,7 +1050,92 @@
     {
       "status": "pass",
       "category": "files",
+      "message": "File `runtime/core/routing.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/execution_contracts.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/backend_assignments.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/provenance_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/replay_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/modality_contracts.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/candidate_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/rollback_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/approval_sessions.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/subsystem_contracts.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
       "message": "File `runtime/core/approval_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/controls/control_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/integrations/hermes_adapter.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/integrations/autoresearch_adapter.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/researchlab/runner.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/evals/trace_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/ralph/consolidator.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/memory/governance.py` is present."
     },
     {
       "status": "pass",
@@ -246,6 +1156,36 @@
       "status": "pass",
       "category": "files",
       "message": "File `runtime/gateway/complete_from_artifact.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/gateway/hermes_execute.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/gateway/autoresearch_campaign.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/gateway/replay_eval.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/gateway/ralph_consolidate.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/gateway/memory_retrieve.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/gateway/memory_decision.py` is present."
     },
     {
       "status": "pass",
@@ -285,6 +1225,11 @@
     {
       "status": "pass",
       "category": "config",
+      "message": "config/app.yaml has no wildcard bind posture."
+    },
+    {
+      "status": "pass",
+      "category": "config",
       "message": "Live config `config/channels.yaml` has no obvious placeholders."
     },
     {
@@ -301,6 +1246,11 @@
       "status": "pass",
       "category": "config",
       "message": "config/models.yaml is pinned to Qwen 3.5."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "config/models.yaml keeps model endpoints on localhost."
     },
     {
       "status": "pass",
@@ -330,12 +1280,72 @@
     {
       "status": "pass",
       "category": "imports",
+      "message": "Module `runtime.core.routing` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.candidate_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.rollback_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.approval_sessions` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.subsystem_contracts` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
       "message": "Module `runtime.core.review_store` imports cleanly."
     },
     {
       "status": "pass",
       "category": "imports",
       "message": "Module `runtime.core.approval_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.controls.control_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.integrations.hermes_adapter` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.integrations.autoresearch_adapter` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.researchlab.runner` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.evals.trace_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.ralph.consolidator` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.memory.governance` imports cleanly."
     },
     {
       "status": "pass",
@@ -351,6 +1361,36 @@
       "status": "pass",
       "category": "imports",
       "message": "Module `runtime.gateway.complete_from_artifact` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.gateway.hermes_execute` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.gateway.autoresearch_campaign` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.gateway.replay_eval` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.gateway.ralph_consolidate` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.gateway.memory_retrieve` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.gateway.memory_decision` imports cleanly."
     },
     {
       "status": "pass",

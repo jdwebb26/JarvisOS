@@ -52,6 +52,7 @@ from runtime.researchlab.runner import (
     save_metric_result,
     save_research_campaign,
     save_research_recommendation,
+    standard_run_outputs_dir,
 )
 
 
@@ -275,6 +276,108 @@ def _validate_numeric_map(payload: Any, *, label: str) -> dict[str, float]:
         except (TypeError, ValueError) as exc:
             raise LabRunMalformedError(f"{label}.{key} must be numeric.") from exc
     return parsed
+
+
+def _relative_to_root(path: Path, *, root: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path.resolve())
+
+
+def _default_candidate_patch(result: LabRunResult) -> str:
+    lines = [
+        f"# candidate.patch placeholder for {result.run_id}",
+        f"# summary: {result.summary}",
+        f"# hypothesis: {result.hypothesis}",
+    ]
+    return "\n".join(lines).strip() + "\n"
+
+
+def _default_experiment_log(request: LabRunRequest, result: LabRunResult) -> str:
+    lines = [
+        f"# Experiment Log {result.run_id}",
+        "",
+        f"Objective: {request.objective}",
+        f"Summary: {result.summary}",
+        f"Hypothesis: {result.hypothesis}",
+        f"Status: {result.status}",
+        f"Budget used: {result.budget_used}",
+        "",
+        "## Candidate Metrics",
+    ]
+    for metric_name, value in sorted(result.candidate_metrics.items()):
+        lines.append(f"- {metric_name}: {value}")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _materialize_standard_run_outputs(
+    *,
+    request: LabRunRequest,
+    result: LabRunResult,
+    root: Path,
+) -> dict[str, str]:
+    output_dir = standard_run_outputs_dir(result.run_id, sandbox_root=request.sandbox_root, root=root)
+    run_config_path = output_dir / "run_config.json"
+    baseline_metrics_path = output_dir / "baseline_metrics.json"
+    candidate_metrics_path = output_dir / "candidate_metrics.json"
+    delta_metrics_path = output_dir / "delta_metrics.json"
+    candidate_patch_path = output_dir / "candidate.patch"
+    experiment_log_path = output_dir / "experiment_log.md"
+    recommendation_path = output_dir / "recommendation.json"
+
+    run_config = {
+        "request_id": request.request_id,
+        "campaign_id": request.campaign_id,
+        "task_id": request.task_id,
+        "run_id": result.run_id,
+        "pass_index": request.pass_index,
+        "lane": request.lane,
+        "requested_by": request.requested_by,
+        "target_module": request.target_module,
+        "program_md_path": request.program_md_path,
+        "eval_command": request.eval_command,
+        "baseline_ref": request.baseline_ref,
+        "benchmark_slice_ref": request.benchmark_slice_ref,
+        "objective": request.objective,
+        "objective_metrics": list(request.objective_metrics),
+        "primary_metric": request.primary_metric,
+        "metric_directions": dict(request.metric_directions),
+        "sandbox_root": request.sandbox_root,
+        "sandbox_class": request.sandbox_class,
+        "budget_minutes": request.budget_minutes,
+        "remaining_budget_units": request.remaining_budget_units,
+        "stop_conditions": dict(request.stop_conditions),
+    }
+    run_config_path.write_text(json.dumps(run_config, indent=2) + "\n", encoding="utf-8")
+    baseline_metrics_path.write_text(json.dumps(result.baseline_metrics, indent=2) + "\n", encoding="utf-8")
+    candidate_metrics_path.write_text(json.dumps(result.candidate_metrics, indent=2) + "\n", encoding="utf-8")
+    delta_metrics_path.write_text(json.dumps(result.delta_metrics, indent=2) + "\n", encoding="utf-8")
+    candidate_patch_path.write_text(
+        str(result.raw_result.get("candidate_patch") or _default_candidate_patch(result)),
+        encoding="utf-8",
+    )
+    experiment_log_path.write_text(
+        str(result.raw_result.get("experiment_log") or _default_experiment_log(request, result)),
+        encoding="utf-8",
+    )
+    recommendation_path.write_text(json.dumps(result.recommendation, indent=2) + "\n", encoding="utf-8")
+
+    refs = {
+        "output_dir": _relative_to_root(output_dir, root=root),
+        "run_config_path": _relative_to_root(run_config_path, root=root),
+        "baseline_metrics_path": _relative_to_root(baseline_metrics_path, root=root),
+        "candidate_metrics_path": _relative_to_root(candidate_metrics_path, root=root),
+        "delta_metrics_path": _relative_to_root(delta_metrics_path, root=root),
+        "candidate_patch_path": _relative_to_root(candidate_patch_path, root=root),
+        "experiment_log_path": _relative_to_root(experiment_log_path, root=root),
+        "recommendation_path": _relative_to_root(recommendation_path, root=root),
+    }
+    result.candidate_patch_path = refs["candidate_patch_path"]
+    result.experiment_log_path = refs["experiment_log_path"]
+    result.raw_result = dict(result.raw_result)
+    result.raw_result["standard_run_outputs"] = refs
+    return refs
 
 
 def _score_improved(*, metric_name: str, direction: str, current: float, best: Optional[float]) -> bool:
@@ -852,6 +955,7 @@ def execute_research_campaign(
         )
         run.trace_id = trace.trace_id
         save_experiment_run(run, root=root_path)
+        _materialize_standard_run_outputs(request=request, result=result, root=root_path)
         save_lab_run_result(result, root=root_path)
         execution_request.status = "completed"
         execution_request.backend_run_id = run.run_id

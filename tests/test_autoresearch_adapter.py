@@ -268,8 +268,8 @@ def test_autoresearch_persists_spec_fields_and_surfaces_summary(tmp_path: Path):
             "baseline_metrics": {"win_rate": 0.58},
             "candidate_metrics": {"win_rate": 0.63},
             "delta_metrics": {"win_rate": 0.05},
-            "candidate_patch_path": "workspace/work/research_contract/patch.diff",
-            "experiment_log_path": "workspace/work/research_contract/run.log",
+            "candidate_patch": "--- a/runtime/core/routing.py\n+++ b/runtime/core/routing.py\n@@\n+# bounded patch\n",
+            "experiment_log": "# Run Log\n\nbounded experiment log\n",
             "recommendation": {"action": "promote_candidate"},
             "token_usage": {"prompt_tokens": 120, "completion_tokens": 80, "total_tokens": 200},
             "budget_used": 1,
@@ -294,15 +294,40 @@ def test_autoresearch_persists_spec_fields_and_surfaces_summary(tmp_path: Path):
     assert request_row["budget_minutes"] == 15
     assert request_row["sandbox_root"] == "workspace/work/research_contract"
 
+    standard_outputs = result_row["raw_result"]["standard_run_outputs"]
+    output_dir = tmp_path / standard_outputs["output_dir"]
+    run_config_path = tmp_path / standard_outputs["run_config_path"]
+    baseline_metrics_path = tmp_path / standard_outputs["baseline_metrics_path"]
+    candidate_metrics_path = tmp_path / standard_outputs["candidate_metrics_path"]
+    delta_metrics_path = tmp_path / standard_outputs["delta_metrics_path"]
+    candidate_patch_path = tmp_path / standard_outputs["candidate_patch_path"]
+    experiment_log_path = tmp_path / standard_outputs["experiment_log_path"]
+    recommendation_path = tmp_path / standard_outputs["recommendation_path"]
+
     assert result_row["task_id"] == task.task_id
     assert result_row["run_id"] == "run_contract"
-    assert result_row["candidate_patch_path"] == "workspace/work/research_contract/patch.diff"
+    assert result_row["candidate_patch_path"] == standard_outputs["candidate_patch_path"]
     assert result_row["baseline_metrics"] == {"win_rate": 0.58}
     assert result_row["candidate_metrics"] == {"win_rate": 0.63}
     assert result_row["delta_metrics"] == {"win_rate": 0.05}
-    assert result_row["experiment_log_path"] == "workspace/work/research_contract/run.log"
+    assert result_row["experiment_log_path"] == standard_outputs["experiment_log_path"]
     assert result_row["recommendation"] == {"action": "promote_candidate"}
     assert result_row["token_usage"]["total_tokens"] == 200
+    assert output_dir == tmp_path / "workspace" / "work" / "research_contract" / "run_contract" / "standard_run_outputs"
+    assert run_config_path.exists()
+    assert baseline_metrics_path.exists()
+    assert candidate_metrics_path.exists()
+    assert delta_metrics_path.exists()
+    assert candidate_patch_path.exists()
+    assert experiment_log_path.exists()
+    assert recommendation_path.exists()
+    assert json.loads(run_config_path.read_text(encoding="utf-8"))["run_id"] == "run_contract"
+    assert json.loads(baseline_metrics_path.read_text(encoding="utf-8")) == {"win_rate": 0.58}
+    assert json.loads(candidate_metrics_path.read_text(encoding="utf-8")) == {"win_rate": 0.63}
+    assert json.loads(delta_metrics_path.read_text(encoding="utf-8")) == {"win_rate": 0.05}
+    assert candidate_patch_path.read_text(encoding="utf-8").startswith("--- a/runtime/core/routing.py")
+    assert "bounded experiment log" in experiment_log_path.read_text(encoding="utf-8")
+    assert json.loads(recommendation_path.read_text(encoding="utf-8")) == {"action": "promote_candidate"}
 
     assert status["autoresearch_summary"]["lab_run_request_count"] == 1
     assert status["autoresearch_summary"]["lab_run_result_count"] == 1
@@ -310,7 +335,7 @@ def test_autoresearch_persists_spec_fields_and_surfaces_summary(tmp_path: Path):
     assert snapshot["autoresearch_summary"]["latest_lab_run_request"]["target_module"] == "runtime/core/routing.py"
     assert exported["counts"]["lab_run_requests"] == 1
     assert exported["counts"]["lab_run_results"] == 1
-    assert exported["autoresearch_summary"]["latest_lab_run_result"]["candidate_patch_path"] == "workspace/work/research_contract/patch.diff"
+    assert exported["autoresearch_summary"]["latest_lab_run_result"]["candidate_patch_path"] == standard_outputs["candidate_patch_path"]
     assert handoff["pack"]["autoresearch_summary"]["latest_lab_run_result"]["run_id"] == "run_contract"
     assert result["candidate_artifact_id"] is not None
 
