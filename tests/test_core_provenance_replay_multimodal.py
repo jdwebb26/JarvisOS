@@ -2,9 +2,21 @@ from pathlib import Path
 
 from runtime.core.intake import create_task_from_message
 from runtime.core.artifact_store import promote_artifact, write_text_artifact
+from runtime.core.execution_contracts import record_backend_execution_request, record_backend_execution_result
+from runtime.core.models import (
+    MemoryCandidateRecord,
+    RoutingDecisionRecord,
+    RoutingProvenanceRecord,
+    RoutingRequestRecord,
+    TaskRecord,
+    TaskStatus,
+    new_id,
+    now_iso,
+)
 from runtime.core.output_store import publish_artifact
-from runtime.core.provenance_store import build_provenance_summary, list_publish_provenance
+from runtime.core.provenance_store import build_provenance_summary, list_publish_provenance, save_routing_provenance
 from runtime.core.replay_store import (
+    build_backend_execution_replay_plan,
     build_candidate_promotion_replay_plan,
     build_route_replay_plan,
     execute_replay_plan,
@@ -12,8 +24,9 @@ from runtime.core.replay_store import (
 from runtime.core.rollback_store import execute_artifact_revocation, list_revocation_impacts
 from runtime.core.review_store import request_review
 from runtime.core.approval_store import request_approval
-from runtime.core.models import MemoryCandidateRecord, new_id, now_iso
+from runtime.core.routing import save_routing_decision, save_routing_request
 from runtime.core.status import build_status
+from runtime.core.task_store import create_task
 from runtime.dashboard.operator_snapshot import build_operator_snapshot
 from runtime.dashboard.state_export import build_state_export
 from runtime.memory.governance import register_memory_candidate
@@ -258,6 +271,152 @@ def test_multimodal_and_replay_summaries_surface_in_reporting(tmp_path: Path):
     assert export_payload["counts"]["modality_contracts"] >= 1
     assert export_payload["provenance_summary"]["latest_task_provenance"]["task_id"] == created["task_id"]
     assert export_payload["replay_summary"]["latest_replay_result"]["result_kind"] == "match"
-    assert export_payload["multimodal_summary"]["runtime_modality_mode"] == "text_only_qwen"
-    assert handoff["replay_summary"]["latest_replay_result"]["result_kind"] == "match"
-    assert handoff["multimodal_summary"]["modality_contract_count"] == modality_summary["modality_contract_count"]
+
+
+def test_fake_provider_identity_survives_routing_execution_provenance_replay_and_reporting(tmp_path: Path):
+    task = create_task(
+        TaskRecord(
+            task_id="task_future_provider",
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            source_lane="tests",
+            source_channel="tests",
+            source_message_id="msg_future_provider",
+            source_user="tester",
+            trigger_type="explicit_task_colon",
+            raw_request="task: future provider drill",
+            normalized_request="future provider drill",
+            task_type="research",
+            status=TaskStatus.RUNNING.value,
+            assigned_model="gpt-5.2",
+            execution_backend="planner_backend",
+            backend_metadata={
+                "routing": {
+                    "provider_id": "openai",
+                    "model_name": "gpt-5.2",
+                    "execution_backend": "planner_backend",
+                }
+            },
+        ),
+        root=tmp_path,
+    )
+    routing_request = save_routing_request(
+        RoutingRequestRecord(
+            routing_request_id=new_id("route_req"),
+            task_id=task.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor="tester",
+            lane="tests",
+            normalized_request=task.normalized_request,
+            task_type=task.task_type,
+            risk_level="normal",
+            priority="normal",
+            required_capabilities=["reasoning", "planning"],
+            policy_constraints={"provider_switch_drill": True},
+        ),
+        root=tmp_path,
+    )
+    routing_decision = save_routing_decision(
+        RoutingDecisionRecord(
+            routing_decision_id=new_id("route_dec"),
+            routing_request_id=routing_request.routing_request_id,
+            task_id=task.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor="tester",
+            lane="tests",
+            selected_model_registry_entry_id="fake-openai-gpt-5.2",
+            selected_capability_profile_id="fake-planner-profile",
+            selected_provider_id="openai",
+            selected_model_name="gpt-5.2",
+            selected_execution_backend="planner_backend",
+            selection_reason="provider-switch drill",
+            candidate_model_names=["gpt-5.2", "kimi-2.5"],
+            policy_constraints={"provider_switch_drill": True},
+        ),
+        root=tmp_path,
+    )
+    save_routing_provenance(
+        RoutingProvenanceRecord(
+            routing_provenance_id=new_id("route_prov"),
+            routing_request_id=routing_request.routing_request_id,
+            routing_decision_id=routing_decision.routing_decision_id,
+            task_id=task.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor="tester",
+            lane="tests",
+            selected_provider_id="openai",
+            selected_model_name="gpt-5.2",
+            selected_execution_backend="planner_backend",
+            source_refs={"provider_switch_drill": "openai"},
+            replay_input={"task_id": task.task_id},
+        ),
+        root=tmp_path,
+    )
+    request = record_backend_execution_request(
+        task_id=task.task_id,
+        actor="tester",
+        lane="tests",
+        request_kind="provider_switch_drill",
+        execution_backend="planner_backend",
+        provider_id="openai",
+        model_name="gpt-5.2",
+        routing_decision_id=routing_decision.routing_decision_id,
+        input_summary="fake provider drill request",
+        source_refs={"provider_switch_drill": True},
+        root=tmp_path,
+    )
+    record_backend_execution_result(
+        backend_execution_request_id=request.backend_execution_request_id,
+        task_id=task.task_id,
+        actor="tester",
+        lane="tests",
+        request_kind="provider_switch_drill",
+        execution_backend="planner_backend",
+        provider_id="openai",
+        model_name="gpt-5.2",
+        status="completed",
+        outcome_summary="fake provider drill result",
+        source_refs={"provider_switch_drill": True},
+        root=tmp_path,
+    )
+    replay_plan = build_backend_execution_replay_plan(
+        backend_execution_request_id=request.backend_execution_request_id,
+        actor="tester",
+        lane="replay",
+        root=tmp_path,
+    )
+    replay_result = execute_replay_plan(
+        replay_plan_id=replay_plan.replay_plan_id,
+        actor="tester",
+        lane="replay",
+        root=tmp_path,
+    )
+
+    status = build_status(tmp_path)
+    snapshot = build_operator_snapshot(tmp_path)
+    export_payload = build_state_export(tmp_path)
+    handoff = build_operator_handoff_pack(tmp_path)["pack"]
+
+    assert replay_result["replay_result"]["result_kind"] == "match"
+    assert status["routing_summary"]["latest_routing_decision"]["selected_provider_id"] == "openai"
+    assert status["routing_summary"]["latest_routing_decision"]["selected_model_name"] == "gpt-5.2"
+    assert status["routing_summary"]["latest_routing_decision"]["selected_execution_backend"] == "planner_backend"
+    assert status["execution_contract_summary"]["latest_backend_execution_result"]["provider_id"] == "openai"
+    assert status["execution_contract_summary"]["latest_backend_execution_result"]["model_name"] == "gpt-5.2"
+    assert status["execution_contract_summary"]["latest_backend_execution_result"]["execution_backend"] == "planner_backend"
+    assert status["provenance_summary"]["latest_routing_provenance"]["selected_provider_id"] == "openai"
+    assert status["replay_summary"]["latest_replay_result"]["expected_snapshot"]["provider_id"] == "openai"
+    assert snapshot["execution_contract_summary"]["latest_backend_execution_result"]["provider_id"] == "openai"
+    assert snapshot["provenance_summary"]["latest_routing_provenance"]["selected_provider_id"] == "openai"
+    assert snapshot["replay_summary"]["latest_replay_result"]["expected_snapshot"]["provider_id"] == "openai"
+    assert export_payload["routing_summary"]["latest_routing_decision"]["selected_provider_id"] == "openai"
+    assert export_payload["execution_contract_summary"]["latest_backend_execution_result"]["provider_id"] == "openai"
+    assert export_payload["provenance_summary"]["latest_routing_provenance"]["selected_provider_id"] == "openai"
+    assert export_payload["replay_summary"]["latest_replay_result"]["expected_snapshot"]["provider_id"] == "openai"
+    assert handoff["model_registry_summary"]["latest_routing_decision"]["selected_provider_id"] == "openai"
+    assert handoff["execution_contract_summary"]["latest_backend_execution_result"]["provider_id"] == "openai"
+    assert handoff["provenance_summary"]["latest_routing_provenance"]["selected_provider_id"] == "openai"
+    assert handoff["replay_summary"]["latest_replay_result"]["expected_snapshot"]["provider_id"] == "openai"

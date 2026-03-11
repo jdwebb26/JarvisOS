@@ -1,7 +1,12 @@
 from pathlib import Path
 
 from runtime.core.artifact_store import demote_artifact, promote_artifact, revoke_artifact, write_text_artifact
-from runtime.core.execution_contracts import build_execution_contract_summary
+from runtime.core.execution_contracts import (
+    build_execution_contract_summary,
+    record_backend_execution_request,
+    record_backend_execution_result,
+    resolve_execution_identity,
+)
 from runtime.core.intake import create_task_from_message
 from runtime.core.output_store import publish_artifact
 from runtime.core.task_runtime import load_task, save_task
@@ -48,6 +53,54 @@ def test_backend_execution_contracts_emit_for_hermes(tmp_path: Path):
     assert latest_result["request_kind"] == "hermes_task"
     assert latest_result["status"] == "completed"
     assert latest_result["candidate_artifact_id"] == result["candidate_artifact_id"]
+
+
+def test_execution_identity_resolution_does_not_force_qwen_without_qwen_context():
+    resolved = resolve_execution_identity(
+        task=type("TaskStub", (), {"assigned_model": "FutureModel-1", "backend_metadata": {}})(),
+        routing_meta={},
+    )
+
+    assert resolved["model_name"] == "FutureModel-1"
+    assert resolved["provider_id"] == "unassigned"
+
+
+def test_backend_execution_summary_preserves_non_qwen_provider_identity(tmp_path: Path):
+    request = record_backend_execution_request(
+        task_id="task_fake_provider",
+        actor="tester",
+        lane="tests",
+        request_kind="provider_switch_drill",
+        execution_backend="worker_backend",
+        provider_id="kimi",
+        model_name="kimi-2.5",
+        input_summary="fake provider drill request",
+        root=tmp_path,
+    )
+    record_backend_execution_result(
+        backend_execution_request_id=request.backend_execution_request_id,
+        task_id=request.task_id,
+        actor="tester",
+        lane="tests",
+        request_kind=request.request_kind,
+        execution_backend="worker_backend",
+        provider_id="kimi",
+        model_name="kimi-2.5",
+        status="completed",
+        outcome_summary="fake provider drill result",
+        root=tmp_path,
+    )
+
+    execution_summary = build_execution_contract_summary(root=tmp_path)
+    latest_request = execution_summary["latest_backend_execution_request"]
+    latest_result = execution_summary["latest_backend_execution_result"]
+
+    assert latest_request["provider_id"] == "kimi"
+    assert latest_request["model_name"] == "kimi-2.5"
+    assert latest_request["execution_backend"] == "worker_backend"
+    assert latest_result["provider_id"] == "kimi"
+    assert latest_result["model_name"] == "kimi-2.5"
+    assert latest_result["execution_backend"] == "worker_backend"
 
 
 def test_ralph_execution_contracts_and_reporting_surface_cleanly(tmp_path: Path):

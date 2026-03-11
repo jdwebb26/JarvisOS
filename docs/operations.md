@@ -50,6 +50,7 @@ The system should provide:
 Run these before treating the repo as deployable:
 
 ```bash
+python3 scripts/bootstrap.py
 python3 scripts/validate.py
 python3 scripts/smoke_test.py
 python3 scripts/doctor.py
@@ -57,8 +58,9 @@ python3 scripts/doctor.py
 
 Use them this way:
 
+- `bootstrap.py` creates the managed state/workspace folders and copies missing live config skeletons from the example files.
 - `validate.py` answers whether the repo, configs, imports, and writable paths are ready.
-- `smoke_test.py` answers whether the current repo-local deployment baseline plus the proven runtime lifecycle are still green.
+- `smoke_test.py` answers whether the current repo-local deployment baseline plus the proven runtime lifecycle are still green, and it rebuilds the dashboard/operator summary artifacts.
 - `doctor.py` answers what is healthy, what is degraded, and what the operator should do next.
 
 ## Practical Next Move After Green

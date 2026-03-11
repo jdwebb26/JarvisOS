@@ -24,6 +24,7 @@ from runtime.core.artifact_store import load_artifact, write_text_artifact
 from runtime.core.execution_contracts import (
     record_backend_execution_request,
     record_backend_execution_result,
+    resolve_execution_identity,
 )
 from runtime.core.models import (
     ConsolidationRunRecord,
@@ -285,6 +286,7 @@ def execute_consolidation(
 
     original_status = task.status
     routing_meta = (task.backend_metadata or {}).get("routing") or {}
+    execution_identity = resolve_execution_identity(task=task, routing_meta=routing_meta)
     run = ConsolidationRunRecord(
         consolidation_run_id=new_id("ralphrun"),
         task_id=task_id,
@@ -302,8 +304,8 @@ def execute_consolidation(
         lane=lane,
         request_kind="ralph_consolidation",
         execution_backend=RALPH_BACKEND_ID,
-        provider_id=str(routing_meta.get("provider_id") or "qwen"),
-        model_name=str(task.assigned_model or "Qwen3.5-35B"),
+        provider_id=execution_identity["provider_id"],
+        model_name=execution_identity["model_name"],
         routing_decision_id=routing_meta.get("routing_decision_id"),
         provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
         backend_run_id=run.consolidation_run_id,
@@ -461,8 +463,8 @@ def execute_consolidation(
         lane=lane,
         request_kind="ralph_consolidation",
         execution_backend=RALPH_BACKEND_ID,
-        provider_id=str(routing_meta.get("provider_id") or "qwen"),
-        model_name=str(task.assigned_model or "Qwen3.5-35B"),
+        provider_id=execution_identity["provider_id"],
+        model_name=execution_identity["model_name"],
         status=run.status,
         backend_run_id=run.consolidation_run_id,
         candidate_artifact_id=digest_artifact["artifact_id"],

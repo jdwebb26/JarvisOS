@@ -18,6 +18,12 @@ from runtime.core.models import (
     new_id,
     now_iso,
 )
+from runtime.core.token_budget import (
+    apply_budget_usage,
+    assert_token_budget_allows_execution,
+    build_token_budget_summary,
+    extract_usage_from_metadata,
+)
 
 
 def _state_dir(name: str, root: Optional[Path] = None) -> Path:
@@ -108,6 +114,36 @@ def latest_backend_execution_result(root: Optional[Path] = None) -> Optional[Bac
     return rows[0] if rows else None
 
 
+def resolve_execution_identity(
+    *,
+    task=None,
+    routing_meta: Optional[dict] = None,
+    provider_id: Optional[str] = None,
+    model_name: Optional[str] = None,
+) -> dict[str, str]:
+    routing = dict(routing_meta or {})
+    if task is not None:
+        routing = dict(((getattr(task, "backend_metadata", None) or {}).get("routing") or {})) | routing
+
+    resolved_model_name = str(
+        model_name
+        or routing.get("model_name")
+        or getattr(task, "assigned_model", "")
+        or "unassigned"
+    )
+    resolved_provider_id = str(provider_id or routing.get("provider_id") or "").strip()
+    if not resolved_provider_id:
+        if resolved_model_name.lower().startswith("qwen"):
+            resolved_provider_id = "qwen"
+        else:
+            resolved_provider_id = "unassigned"
+
+    return {
+        "provider_id": resolved_provider_id,
+        "model_name": resolved_model_name,
+    }
+
+
 def record_backend_execution_request(
     *,
     task_id: str,
@@ -126,6 +162,13 @@ def record_backend_execution_request(
     status: str = "pending",
     root: Optional[Path] = None,
 ) -> BackendExecutionRequestRecord:
+    assert_token_budget_allows_execution(
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        execution_backend=execution_backend,
+        root=root,
+    )
     return save_backend_execution_request(
         BackendExecutionRequestRecord(
             backend_execution_request_id=new_id("breq"),
@@ -170,7 +213,7 @@ def record_backend_execution_result(
     metadata: Optional[dict] = None,
     root: Optional[Path] = None,
 ) -> BackendExecutionResultRecord:
-    return save_backend_execution_result(
+    record = save_backend_execution_result(
         BackendExecutionResultRecord(
             backend_execution_result_id=new_id("bres"),
             backend_execution_request_id=backend_execution_request_id,
@@ -194,11 +237,21 @@ def record_backend_execution_result(
         ),
         root=root,
     )
+    token_usage, cost_usd = extract_usage_from_metadata(metadata)
+    apply_budget_usage(
+        task_id=task_id,
+        execution_backend=execution_backend,
+        token_usage=token_usage,
+        cost_usd=cost_usd,
+        root=root,
+    )
+    return record
 
 
 def build_execution_contract_summary(root: Optional[Path] = None) -> dict:
     requests = list_backend_execution_requests(root=root)
     results = list_backend_execution_results(root=root)
+    token_budget_summary = build_token_budget_summary(root=root)
     status_counts: dict[str, int] = {}
     request_kind_counts: dict[str, int] = {}
     for row in results:
@@ -211,6 +264,7 @@ def build_execution_contract_summary(root: Optional[Path] = None) -> dict:
         "backend_execution_kind_counts": request_kind_counts,
         "latest_backend_execution_request": requests[0].to_dict() if requests else None,
         "latest_backend_execution_result": results[0].to_dict() if results else None,
+        "token_budget_summary": token_budget_summary,
     }
 
 

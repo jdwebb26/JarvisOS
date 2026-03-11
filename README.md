@@ -73,6 +73,7 @@ Current green meaning: `ok: true`, `total: 5`, `passed: 5`, `failed: 0`.
 Deployment/operator baseline:
 
 ```bash
+python3 scripts/bootstrap.py
 python3 scripts/validate.py
 python3 scripts/smoke_test.py
 python3 scripts/doctor.py
@@ -80,8 +81,9 @@ python3 scripts/doctor.py
 
 What these cover:
 
+- `bootstrap.py` creates the managed state/workspace folders and copies missing live config skeletons from the example files.
 - `validate.py` checks repo shape, current config presence, active Qwen-only policy hints, writable operator paths, and key imports.
-- `smoke_test.py` runs the repo-local preflight and then the proven runtime regression pack.
+- `smoke_test.py` runs the repo-local preflight, the proven runtime regression pack, and rebuilds the operator/dashboard summary artifacts.
 - `doctor.py` rolls the baseline into one operator-facing verdict with next actions.
 
 After a green baseline, the practical next operator move is to inspect `state/logs/operator_snapshot.json` and push the next `ready_to_ship` or `shipped` task through apply/publish-complete. See [docs/runtime-regression-runbook.md](docs/runtime-regression-runbook.md), [docs/deployment.md](docs/deployment.md), and [docs/operations.md](docs/operations.md).

@@ -26,6 +26,7 @@ from runtime.core.artifact_store import write_text_artifact
 from runtime.core.execution_contracts import (
     record_backend_execution_request,
     record_backend_execution_result,
+    resolve_execution_identity,
     save_backend_execution_request,
 )
 from runtime.core.models import (
@@ -419,14 +420,15 @@ def execute_research_campaign(
             remaining_budget_units=max_budget_units - campaign.budget_used,
             stop_conditions=dict(campaign.stop_conditions),
         )
+        execution_identity = resolve_execution_identity(task=task, routing_meta=routing_meta)
         execution_request = record_backend_execution_request(
             task_id=task_id,
             actor=actor,
             lane=lane,
             request_kind="research_experiment",
             execution_backend=AUTORESEARCH_BACKEND_ID,
-            provider_id=str(routing_meta.get("provider_id") or "qwen"),
-            model_name=str(task.assigned_model or "Qwen3.5-35B"),
+            provider_id=execution_identity["provider_id"],
+            model_name=execution_identity["model_name"],
             routing_decision_id=routing_meta.get("routing_decision_id"),
             provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
             input_summary=request.objective,
@@ -493,8 +495,8 @@ def execute_research_campaign(
                 lane=lane,
                 request_kind="research_experiment",
                 execution_backend=AUTORESEARCH_BACKEND_ID,
-                provider_id=str(routing_meta.get("provider_id") or "qwen"),
-                model_name=str(task.assigned_model or "Qwen3.5-35B"),
+                provider_id=execution_identity["provider_id"],
+                model_name=execution_identity["model_name"],
                 status=FAILED_STATUS,
                 backend_run_id=run.run_id,
                 trace_id=trace.trace_id,
@@ -642,8 +644,8 @@ def execute_research_campaign(
             lane=lane,
             request_kind="research_experiment",
             execution_backend=AUTORESEARCH_BACKEND_ID,
-            provider_id=str(routing_meta.get("provider_id") or "qwen"),
-            model_name=str(task.assigned_model or "Qwen3.5-35B"),
+            provider_id=execution_identity["provider_id"],
+            model_name=execution_identity["model_name"],
             status=result.status,
             backend_run_id=run.run_id,
             trace_id=trace.trace_id,

@@ -13,8 +13,17 @@ if str(ROOT) not in sys.path:
 
 from runtime.controls.control_store import assert_control_allows
 from runtime.core.artifact_store import write_text_artifact
-from runtime.core.models import EvalCaseRecord, EvalResultRecord, RunTraceRecord, new_id, now_iso
+from runtime.core.eval_profiles import ensure_default_eval_profiles, resolve_eval_profile
+from runtime.core.models import (
+    EvalCaseRecord,
+    EvalDerivedOutcome,
+    EvalResultRecord,
+    RunTraceRecord,
+    new_id,
+    now_iso,
+)
 from runtime.core.task_events import append_event, make_event
+from runtime.core.task_store import load_task
 
 
 EVALUATION_BACKEND_ID = "evaluation_spine"
@@ -168,12 +177,23 @@ def create_eval_case_for_trace(
     lane: str,
     evaluator_kind: str,
     objective: str,
+    eval_profile_id: Optional[str] = None,
+    eval_profile_version: Optional[str] = None,
     criteria: Optional[dict[str, Any]] = None,
     root: Optional[Path] = None,
 ) -> EvalCaseRecord:
     trace = load_run_trace(trace_id, root=root)
     if trace is None:
         raise ValueError(f"Run trace not found: {trace_id}")
+    task = load_task(trace.task_id, root=Path(root or ROOT).resolve())
+    task_type = task.task_type if task is not None else "general"
+    ensure_default_eval_profiles(root=root)
+    profile = resolve_eval_profile(
+        task_type=task_type,
+        profile_id=eval_profile_id,
+        profile_version=eval_profile_version,
+        root=root,
+    )
     record = EvalCaseRecord(
         eval_case_id=new_id("evalcase"),
         trace_id=trace_id,
@@ -184,6 +204,9 @@ def create_eval_case_for_trace(
         lane=lane,
         evaluator_kind=evaluator_kind,
         objective=objective,
+        profile_id=profile.profile_id if profile else eval_profile_id,
+        profile_version=profile.profile_version if profile else eval_profile_version,
+        task_type=task_type,
         criteria=dict(criteria or {}),
     )
     save_eval_case(record, root=root)
@@ -276,6 +299,99 @@ def _default_eval_for_trace(trace: RunTraceRecord, criteria: dict[str, Any]) -> 
     return score, passed, summary, details, {"trace_kind": trace.trace_kind, "trace_status": trace.status}
 
 
+def _evaluate_profile_outcome(
+    *,
+    trace: RunTraceRecord,
+    score: float,
+    compared_values: dict[str, Any],
+    profile,
+) -> dict[str, Any]:
+    metrics: dict[str, Any] = {"score": score, "trace_status": trace.status}
+    if "primary_metric" in compared_values and "primary_metric_value" in compared_values:
+        metric_name = str(compared_values["primary_metric"])
+        metric_value = compared_values["primary_metric_value"]
+        if metric_name not in metrics:
+            metrics[metric_name] = metric_value
+        else:
+            metrics[f"source_metric:{metric_name}"] = metric_value
+        metrics["primary_metric_value"] = metric_value
+
+    veto_results: dict[str, Any] = {}
+    for check in list(profile.veto_checks):
+        name = str(check.get("name") or check.get("kind") or f"veto_{len(veto_results)+1}")
+        kind = str(check.get("kind") or "")
+        passed = True
+        details = ""
+        if kind == "trace_status_equals":
+            expected = str(check.get("expected") or "completed")
+            passed = trace.status == expected
+            details = f"expected={expected} actual={trace.status}"
+        elif kind == "candidate_artifact_required":
+            passed = bool(trace.candidate_artifact_id)
+            details = f"candidate_artifact_id={trace.candidate_artifact_id!r}"
+        elif kind == "response_fields_required":
+            required = list(check.get("fields") or [])
+            passed = all(trace.response_payload.get(field) for field in required)
+            details = f"fields={required}"
+        elif kind == "primary_metric_present":
+            metric_name = str(compared_values.get("primary_metric") or "").strip()
+            passed = bool(metric_name and metric_name in metrics)
+            details = f"primary_metric={metric_name!r}"
+        veto_results[name] = {"passed": passed, "kind": kind, "details": details}
+
+    hard_fail_results: dict[str, bool] = {}
+    for condition in list(profile.hard_fail_conditions):
+        if condition == "trace_error_present":
+            hard_fail_results[condition] = bool(trace.error)
+        elif condition == "trace_not_completed":
+            hard_fail_results[condition] = trace.status != "completed"
+        else:
+            hard_fail_results[condition] = False
+
+    quality_scores: dict[str, Any] = {}
+    for metric in list(profile.quality_metrics):
+        metric_name = str(metric.get("metric") or "")
+        if not metric_name:
+            continue
+        quality_scores[metric_name] = metrics.get(metric_name)
+
+    derived_outcome = EvalDerivedOutcome.PROMOTABLE.value
+    derived_reason = "Eval profile thresholds satisfied."
+    veto_failed = any(not result.get("passed", False) for result in veto_results.values())
+    hard_fail_triggered = any(hard_fail_results.values())
+    threshold_failures: list[str] = []
+    minimum_score = profile.promotion_thresholds.get("minimum_score")
+    if minimum_score is not None and float(score) < float(minimum_score):
+        threshold_failures.append(f"score<{minimum_score}")
+    for metric in list(profile.quality_metrics):
+        metric_name = str(metric.get("metric") or "")
+        minimum = metric.get("minimum")
+        if metric_name and minimum is not None:
+            actual = quality_scores.get(metric_name)
+            if actual is None or float(actual) < float(minimum):
+                threshold_failures.append(f"{metric_name}<{minimum}")
+
+    if hard_fail_triggered or veto_failed:
+        derived_outcome = EvalDerivedOutcome.REJECTED.value
+        reasons = [name for name, failed in hard_fail_results.items() if failed]
+        reasons.extend(name for name, result in veto_results.items() if not result.get("passed", False))
+        derived_reason = ", ".join(reasons) or "Hard veto failed."
+    elif threshold_failures:
+        derived_outcome = EvalDerivedOutcome.REVIEW_ONLY.value
+        derived_reason = ", ".join(threshold_failures)
+
+    passed = derived_outcome == EvalDerivedOutcome.PROMOTABLE.value
+    return {
+        "veto_results": veto_results,
+        "hard_fail_results": hard_fail_results,
+        "quality_scores": quality_scores,
+        "metrics": metrics,
+        "derived_outcome": derived_outcome,
+        "derived_reason": derived_reason,
+        "passed": passed,
+    }
+
+
 def replay_trace_to_eval(
     *,
     trace_id: str,
@@ -283,6 +399,8 @@ def replay_trace_to_eval(
     lane: str,
     evaluator_kind: str,
     objective: str,
+    eval_profile_id: Optional[str] = None,
+    eval_profile_version: Optional[str] = None,
     criteria: Optional[dict[str, Any]] = None,
     root: Optional[Path] = None,
     emit_report_artifact: bool = True,
@@ -305,10 +423,41 @@ def replay_trace_to_eval(
         lane=lane,
         evaluator_kind=evaluator_kind,
         objective=objective,
+        eval_profile_id=eval_profile_id,
+        eval_profile_version=eval_profile_version,
         criteria=criteria,
         root=root_path,
     )
     score, passed, summary, details, compared_values = _default_eval_for_trace(trace, eval_case.criteria)
+    profile = None
+    if eval_case.profile_id:
+        profile = resolve_eval_profile(
+            task_type=eval_case.task_type,
+            profile_id=eval_case.profile_id,
+            profile_version=eval_case.profile_version,
+            root=root_path,
+        )
+    if profile is None:
+        derived = {
+            "veto_results": {},
+            "hard_fail_results": {},
+            "quality_scores": {"score": score},
+            "metrics": {"score": score, "trace_status": trace.status},
+            "derived_outcome": EvalDerivedOutcome.OPERATOR_DEFINED_EVAL_PENDING.value,
+            "derived_reason": f"No EvalProfile found for task_type={eval_case.task_type}.",
+            "passed": False,
+        }
+        passed = derived["passed"]
+    else:
+        derived = _evaluate_profile_outcome(
+            trace=trace,
+            score=score,
+            compared_values=compared_values,
+            profile=profile,
+        )
+        passed = derived["passed"]
+        summary = f"Replay eval {derived['derived_outcome']} ({score:.4f})."
+        details = f"{details}; derived_reason={derived['derived_reason']}"
 
     eval_result = EvalResultRecord(
         eval_result_id=new_id("evalres"),
@@ -320,9 +469,17 @@ def replay_trace_to_eval(
         actor=actor,
         lane=lane,
         evaluator_kind=evaluator_kind,
+        profile_id=eval_case.profile_id,
+        profile_version=eval_case.profile_version,
         status="completed",
         score=score,
         passed=passed,
+        veto_results=derived["veto_results"],
+        quality_scores=derived["quality_scores"],
+        derived_outcome=derived["derived_outcome"],
+        derived_reason=derived["derived_reason"],
+        metrics=derived["metrics"],
+        notes=objective,
         summary=summary,
         details=details,
         compared_values=compared_values,
@@ -334,10 +491,16 @@ def replay_trace_to_eval(
             f"Trace: {trace.trace_id}\n"
             f"Trace kind: {trace.trace_kind}\n"
             f"Objective: {objective}\n"
+            f"Eval profile: {eval_case.profile_id or 'none'}@{eval_case.profile_version or 'none'}\n"
             f"Score: {score:.4f}\n"
             f"Passed: {passed}\n\n"
+            f"Derived outcome: {eval_result.derived_outcome}\n"
+            f"Derived reason: {eval_result.derived_reason}\n\n"
             f"Summary: {summary}\n"
             f"Details: {details}\n\n"
+            f"Veto results:\n{json.dumps(eval_result.veto_results, indent=2)}\n\n"
+            f"Quality scores:\n{json.dumps(eval_result.quality_scores, indent=2)}\n\n"
+            f"Metrics:\n{json.dumps(eval_result.metrics, indent=2)}\n\n"
             f"Compared values:\n{json.dumps(compared_values, indent=2)}\n"
         )
         artifact = write_text_artifact(
