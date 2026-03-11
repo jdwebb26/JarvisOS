@@ -4,7 +4,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from runtime.gateway.discord_command import handle_discord_command
 from runtime.gateway.desktop_action import handle_desktop_action
+from runtime.gateway.tradingview_command import handle_tradingview_command
 from runtime.voice.spotify_router import maybe_route_voice_to_spotify, parse_spotify_voice_command
 
 
@@ -36,6 +38,121 @@ def classify_voice_route(normalized_command: str) -> dict:
             "query": spotify["query"],
             "target": spotify["target"],
             "reason": spotify["reason"],
+        }
+
+    if lowered == "open discord":
+        return {
+            "matched": True,
+            "subsystem": "discord",
+            "intent": "open_discord",
+            "query": "",
+            "target": "discord",
+            "reason": "matched_open_discord",
+        }
+
+    if lowered == "focus discord":
+        return {
+            "matched": True,
+            "subsystem": "discord",
+            "intent": "focus_discord",
+            "query": "",
+            "target": "discord",
+            "reason": "matched_focus_discord",
+        }
+
+    discord_server_match = re.fullmatch(r"open discord server\s+(.+)", command, re.IGNORECASE)
+    if discord_server_match:
+        query = discord_server_match.group(1).strip()
+        if query:
+            return {
+                "matched": True,
+                "subsystem": "discord",
+                "intent": "open_server",
+                "query": query,
+                "target": "discord_server",
+                "reason": "matched_open_discord_server",
+            }
+
+    discord_channel_match = re.fullmatch(r"open discord channel\s+(.+)", command, re.IGNORECASE)
+    if discord_channel_match:
+        query = discord_channel_match.group(1).strip()
+        if query:
+            return {
+                "matched": True,
+                "subsystem": "discord",
+                "intent": "open_channel",
+                "query": query,
+                "target": "discord_channel",
+                "reason": "matched_open_discord_channel",
+            }
+
+    discord_draft_match = re.fullmatch(r"draft discord message\s+(.+)", command, re.IGNORECASE)
+    if discord_draft_match:
+        query = discord_draft_match.group(1).strip()
+        if query:
+            return {
+                "matched": True,
+                "subsystem": "discord",
+                "intent": "draft_message",
+                "query": query,
+                "target": "discord_message",
+                "reason": "matched_draft_discord_message",
+            }
+
+    if lowered == "open tradingview":
+        return {
+            "matched": True,
+            "subsystem": "tradingview",
+            "intent": "open_tradingview",
+            "query": "",
+            "target": "tradingview",
+            "reason": "matched_open_tradingview",
+        }
+
+    if lowered == "focus tradingview":
+        return {
+            "matched": True,
+            "subsystem": "tradingview",
+            "intent": "focus_tradingview",
+            "query": "",
+            "target": "tradingview",
+            "reason": "matched_focus_tradingview",
+        }
+
+    tradingview_symbol_match = re.fullmatch(r"set tradingview symbol to\s+(.+)", command, re.IGNORECASE)
+    if tradingview_symbol_match:
+        query = tradingview_symbol_match.group(1).strip()
+        if query:
+            return {
+                "matched": True,
+                "subsystem": "tradingview",
+                "intent": "set_symbol",
+                "query": query,
+                "target": "tradingview_symbol",
+                "reason": "matched_set_tradingview_symbol",
+            }
+
+    tradingview_timeframe_match = re.fullmatch(r"set tradingview timeframe to\s+(.+)", command, re.IGNORECASE)
+    if tradingview_timeframe_match:
+        query = tradingview_timeframe_match.group(1).strip()
+        if query:
+            return {
+                "matched": True,
+                "subsystem": "tradingview",
+                "intent": "set_timeframe",
+                "query": query,
+                "target": "tradingview_timeframe",
+                "reason": "matched_set_tradingview_timeframe",
+            }
+
+    if lowered == "capture tradingview chart":
+        return {
+            "matched": True,
+            "subsystem": "tradingview",
+            "intent": "capture_chart",
+            "query": "",
+            "target": "tradingview_chart",
+            "reason": "matched_capture_tradingview_chart",
         }
 
     if lowered == "show status":
@@ -202,6 +319,42 @@ def maybe_route_voice_command(
             "route": route,
             "route_reason": spotify_result["route_reason"],
             "gateway_result": spotify_result["gateway_result"],
+        }
+
+    if route["subsystem"] == "discord":
+        gateway_result = handle_discord_command(
+            route["intent"],
+            query=route["query"],
+            actor=actor,
+            lane=lane,
+            task_id=task_id,
+            root=resolved_root,
+        )
+        return {
+            "matched": True,
+            "routed": True,
+            "execute": True,
+            "route": route,
+            "route_reason": "discord_gateway_invoked",
+            "gateway_result": gateway_result,
+        }
+
+    if route["subsystem"] == "tradingview":
+        gateway_result = handle_tradingview_command(
+            route["intent"],
+            query=route["query"],
+            actor=actor,
+            lane=lane,
+            task_id=task_id,
+            root=resolved_root,
+        )
+        return {
+            "matched": True,
+            "routed": True,
+            "execute": True,
+            "route": route,
+            "route_reason": "tradingview_gateway_invoked",
+            "gateway_result": gateway_result,
         }
 
     if route["subsystem"] == "desktop":
