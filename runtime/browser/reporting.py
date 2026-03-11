@@ -55,6 +55,8 @@ def build_browser_action_summary(*, root: Optional[Path] = None) -> dict[str, An
         "result_status_counts": result_status_counts,
         "confirmation_required_count": sum(1 for row in requests if row.get("confirmation_required")),
         "pending_confirmation_count": confirmation_state_counts.get("pending_confirmation", 0),
+        "cancelled_request_count": request_status_counts.get("cancelled", 0),
+        "cancelled_result_count": result_status_counts.get("cancelled", 0),
         "confirmation_state_counts": confirmation_state_counts,
         "evidence_present_count": sum(1 for row in results if row.get("evidence_refs")),
         "screenshot_placeholder_count": sum(

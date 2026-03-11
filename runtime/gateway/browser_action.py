@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.browser.backends.pinchtab import PinchTabBackend
+from runtime.browser.protocol import cancel_browser_action as cancel_browser_action_record
 from runtime.browser.protocol import complete_browser_action, request_browser_action
 from runtime.browser.reporting import build_browser_action_summary
 from runtime.browser.tracing import save_browser_snapshot, save_browser_trace
@@ -247,6 +248,46 @@ def handle_browser_action(
         "evidence_snapshot": evidence_snapshot,
         "browser_action_summary": build_browser_action_summary(root=resolved_root),
         "executed": True,
+    }
+
+
+def cancel_browser_action(
+    *,
+    request_id: str,
+    actor: str,
+    lane: str,
+    reason: str = "operator_cancelled",
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    resolved_root = Path(root or ROOT).resolve()
+    cancellation = cancel_browser_action_record(
+        request_id=request_id,
+        actor=actor,
+        lane=lane,
+        reason=reason,
+        root=resolved_root,
+    )
+
+    append_event(
+        make_event(
+            task_id=cancellation["request"]["task_id"],
+            event_type="browser_action_cancelled",
+            actor=actor,
+            lane=lane,
+            checkpoint_summary=f"Browser action cancelled: {request_id}",
+            reason=reason,
+            execution_backend="browser_cancel",
+            backend_run_id=cancellation["result"]["result_id"],
+        ),
+        root=resolved_root,
+    )
+
+    return {
+        "kind": "cancelled",
+        "request": cancellation["request"],
+        "result": cancellation["result"],
+        "browser_action_summary": build_browser_action_summary(root=resolved_root),
+        "executed": False,
     }
 
 

@@ -52,6 +52,17 @@ def load_browser_action_request(request_id: str, *, root: Optional[Path] = None)
     return BrowserActionRequestRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
+def load_browser_action_result_for_request(request_id: str, *, root: Optional[Path] = None) -> Optional[BrowserActionResultRecord]:
+    for path in sorted(browser_action_results_dir(root).glob("*.json")):
+        try:
+            row = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if row.get("request_id") == request_id:
+            return BrowserActionResultRecord.from_dict(row)
+    return None
+
+
 def request_browser_action(
     *,
     task_id: str,
@@ -115,6 +126,8 @@ def complete_browser_action(
     request = load_browser_action_request(request_id, root=root)
     if request is None:
         raise ValueError(f"Unknown browser action request: {request_id}")
+    if request.status == "cancelled":
+        raise ValueError(f"Browser action request `{request_id}` was cancelled and cannot execute.")
     result = save_browser_action_result(
         BrowserActionResultRecord(
             result_id=new_id("bres"),
@@ -137,4 +150,51 @@ def complete_browser_action(
     request.status = status
     request.confirmation_state = confirmation_state
     save_browser_action_request(request, root=root)
+    return {"request": request.to_dict(), "result": result.to_dict()}
+
+
+def cancel_browser_action(
+    *,
+    request_id: str,
+    actor: str,
+    lane: str,
+    reason: str = "operator_cancelled",
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    request = load_browser_action_request(request_id, root=root)
+    if request is None:
+        raise ValueError(f"Unknown browser action request: {request_id}")
+    if request.status not in {"accepted", "pending_review"}:
+        raise ValueError(f"Browser action request `{request_id}` is `{request.status}` and cannot be cancelled.")
+
+    existing_result = load_browser_action_result_for_request(request_id, root=root)
+    if existing_result is not None:
+        raise ValueError(f"Browser action request `{request_id}` already has a result and cannot be cancelled.")
+
+    cancelled_at = now_iso()
+    request.status = "cancelled"
+    request.cancelled_at = cancelled_at
+    request.cancelled_by = actor
+    request.cancel_reason = reason
+    save_browser_action_request(request, root=root)
+
+    result = save_browser_action_result(
+        BrowserActionResultRecord(
+            result_id=new_id("bres"),
+            request_id=request.request_id,
+            task_id=request.task_id,
+            created_at=cancelled_at,
+            updated_at=cancelled_at,
+            actor=actor,
+            lane=lane,
+            status="cancelled",
+            outcome_summary="Browser action cancelled before execution.",
+            confirmation_state=request.confirmation_state,
+            error=None,
+            cancelled_at=cancelled_at,
+            cancelled_by=actor,
+            cancel_reason=reason,
+        ),
+        root=root,
+    )
     return {"request": request.to_dict(), "result": result.to_dict()}

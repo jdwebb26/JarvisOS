@@ -1235,6 +1235,9 @@ class BrowserActionRequestRecord:
     confirmation_reason: str = "none"
     status: str = "pending"
     allowlist_ref: Optional[str] = None
+    cancelled_at: Optional[str] = None
+    cancelled_by: Optional[str] = None
+    cancel_reason: str = ""
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
 
@@ -1252,6 +1255,9 @@ class BrowserActionRequestRecord:
         data.setdefault("confirmation_reason", "none")
         data.setdefault("status", "pending")
         data.setdefault("allowlist_ref", None)
+        data.setdefault("cancelled_at", None)
+        data.setdefault("cancelled_by", None)
+        data.setdefault("cancel_reason", "")
         return cls(**data)
 
 
@@ -1271,6 +1277,9 @@ class BrowserActionResultRecord:
     trace_refs: dict[str, Any] = field(default_factory=dict)
     evidence_refs: dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
+    cancelled_at: Optional[str] = None
+    cancelled_by: Optional[str] = None
+    cancel_reason: str = ""
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
 
@@ -1285,6 +1294,9 @@ class BrowserActionResultRecord:
         data.setdefault("trace_refs", {})
         data.setdefault("evidence_refs", {})
         data.setdefault("error", None)
+        data.setdefault("cancelled_at", None)
+        data.setdefault("cancelled_by", None)
+        data.setdefault("cancel_reason", "")
         return cls(**data)
 
 
