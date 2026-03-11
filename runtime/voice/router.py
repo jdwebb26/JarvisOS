@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from runtime.core.security_validation import validate_route_safety
 from runtime.gateway.browser_action import handle_browser_action
 from runtime.gateway.discord_command import handle_discord_command
 from runtime.gateway.desktop_action import handle_desktop_action
@@ -25,6 +26,17 @@ _SAFE_DESKTOP_PATHS = {"downloads", "desktop", "documents"}
 def _looks_like_url_or_site(value: str) -> bool:
     candidate = (value or "").strip()
     return bool(candidate and _SITE_LIKE_RE.fullmatch(candidate))
+
+
+def _build_route_safety(route: dict, *, root: Path) -> dict | None:
+    if not route.get("matched"):
+        return None
+    return validate_route_safety(
+        subsystem=route.get("subsystem", ""),
+        intent=route.get("intent", ""),
+        query=route.get("query", ""),
+        root=root,
+    )
 
 
 def build_voice_route_capability_summary() -> dict:
@@ -177,6 +189,42 @@ def classify_voice_route(normalized_command: str) -> dict:
             "query": "",
             "target": "tradingview_chart",
             "reason": "matched_capture_tradingview_chart",
+        }
+
+    tradingview_buy_match = re.fullmatch(r"buy\s+(.+)\s+on tradingview", command, re.IGNORECASE)
+    if tradingview_buy_match:
+        query = tradingview_buy_match.group(1).strip()
+        if query:
+            return {
+                "matched": True,
+                "subsystem": "tradingview",
+                "intent": "buy",
+                "query": query,
+                "target": "tradingview_trade",
+                "reason": "matched_buy_on_tradingview",
+            }
+
+    tradingview_sell_match = re.fullmatch(r"sell\s+(.+)\s+on tradingview", command, re.IGNORECASE)
+    if tradingview_sell_match:
+        query = tradingview_sell_match.group(1).strip()
+        if query:
+            return {
+                "matched": True,
+                "subsystem": "tradingview",
+                "intent": "sell",
+                "query": query,
+                "target": "tradingview_trade",
+                "reason": "matched_sell_on_tradingview",
+            }
+
+    if lowered == "place trade on tradingview":
+        return {
+            "matched": True,
+            "subsystem": "tradingview",
+            "intent": "place_trade",
+            "query": "",
+            "target": "tradingview_trade",
+            "reason": "matched_place_trade_on_tradingview",
         }
 
     if lowered == "show status":
@@ -333,8 +381,11 @@ def maybe_route_voice_command(
             "execute": bool(execute),
             "route": route,
             "route_reason": route["reason"],
+            "route_safety": None,
             "gateway_result": None,
         }
+
+    route_safety = _build_route_safety(route, root=resolved_root)
 
     if not execute:
         return {
@@ -343,6 +394,18 @@ def maybe_route_voice_command(
             "execute": False,
             "route": route,
             "route_reason": "route_preview_only",
+            "route_safety": route_safety,
+            "gateway_result": None,
+        }
+
+    if route_safety and route_safety.get("safe") is False:
+        return {
+            "matched": True,
+            "routed": False,
+            "execute": True,
+            "route": route,
+            "route_reason": "route_safety_blocked",
+            "route_safety": route_safety,
             "gateway_result": None,
         }
 
@@ -361,6 +424,7 @@ def maybe_route_voice_command(
             "execute": True,
             "route": route,
             "route_reason": spotify_result["route_reason"],
+            "route_safety": route_safety,
             "gateway_result": spotify_result["gateway_result"],
         }
 
@@ -379,6 +443,7 @@ def maybe_route_voice_command(
             "execute": True,
             "route": route,
             "route_reason": "discord_gateway_invoked",
+            "route_safety": route_safety,
             "gateway_result": gateway_result,
         }
 
@@ -397,6 +462,7 @@ def maybe_route_voice_command(
             "execute": True,
             "route": route,
             "route_reason": "tradingview_gateway_invoked",
+            "route_safety": route_safety,
             "gateway_result": gateway_result,
         }
 
@@ -417,6 +483,7 @@ def maybe_route_voice_command(
             "execute": True,
             "route": route,
             "route_reason": "desktop_gateway_invoked",
+            "route_safety": route_safety,
             "gateway_result": gateway_result,
         }
 
@@ -435,6 +502,7 @@ def maybe_route_voice_command(
             "execute": True,
             "route": route,
             "route_reason": "notification_gateway_invoked",
+            "route_safety": route_safety,
             "gateway_result": gateway_result,
         }
 
@@ -454,6 +522,7 @@ def maybe_route_voice_command(
             "execute": True,
             "route": route,
             "route_reason": "browser_gateway_invoked",
+            "route_safety": route_safety,
             "gateway_result": gateway_result,
         }
 
@@ -463,5 +532,6 @@ def maybe_route_voice_command(
         "execute": True,
         "route": route,
         "route_reason": f"{route['subsystem']}_preview_only_in_slice",
+        "route_safety": route_safety,
         "gateway_result": None,
     }
