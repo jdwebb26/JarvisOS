@@ -17,12 +17,16 @@ from runtime.core.execution_contracts import build_execution_contract_summary
 from runtime.core.models import OutputStatus, RecordLifecycleState, TaskRecord, TaskStatus
 from runtime.core.token_budget import build_token_budget_summary
 from runtime.core.approval_sessions import build_approval_session_summary
+from runtime.core.browser_control_allowlist import build_browser_control_allowlist_summary
+from runtime.core.eval_profiles import build_eval_profile_summary
+from runtime.core.heartbeat_reports import build_heartbeat_report_summary
 from runtime.core.provenance_store import build_provenance_summary
 from runtime.core.promotion_governance import build_promotion_governance_summary
 from runtime.core.rollback_store import build_rollback_summary
 from runtime.core.routing import build_model_registry_summary
 from runtime.core.modality_contracts import build_modality_summary
 from runtime.core.subsystem_contracts import build_subsystem_contract_summary
+from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.controls.control_store import build_control_summary, get_effective_control_state, list_blocked_actions, list_control_events, list_control_records
 
 
@@ -241,6 +245,7 @@ def build_status(root: Path) -> dict[str, Any]:
     approval_decision_contexts = _load_jsons(root / "state" / "approval_decision_contexts")
     approval_resume_tokens = _load_jsons(root / "state" / "approval_resume_tokens")
     subsystem_contracts = _load_jsons(root / "state" / "subsystem_contracts")
+    eval_profiles = _load_jsons(root / "state" / "eval_profiles")
     from scripts.operator_checkpoint_action_pack import classify_action_pack
     from scripts.operator_triage_support import (
         build_decision_inbox_data,
@@ -270,6 +275,10 @@ def build_status(root: Path) -> dict[str, Any]:
     execution_contract_summary = build_execution_contract_summary(root)
     token_budget_summary = build_token_budget_summary(root)
     degradation_summary = build_degradation_summary(root)
+    eval_profile_summary = build_eval_profile_summary(root=root)
+    browser_control_allowlist_summary = build_browser_control_allowlist_summary(root=root)
+    voice_session_summary = build_voice_session_summary(root=root)
+    heartbeat_summary = build_heartbeat_report_summary(root=root)
     approval_session_summary = build_approval_session_summary(root)
     subsystem_contract_summary = build_subsystem_contract_summary(root)
     control_summary = build_control_summary(root=root)
@@ -461,6 +470,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "approval_decision_contexts": len(approval_decision_contexts),
         "approval_resume_tokens": len(approval_resume_tokens),
         "subsystem_contracts": len(subsystem_contracts),
+        "eval_profiles": len(eval_profiles),
     }
     triage_summary = build_triage_data(root, limit=10, allow_pack_rebuild=False)
     decision_inbox = build_decision_inbox_data(root, limit=10, allow_pack_rebuild=False)
@@ -584,6 +594,10 @@ def build_status(root: Path) -> dict[str, Any]:
         "execution_contract_summary": execution_contract_summary,
         "token_budget_summary": token_budget_summary,
         "degradation_summary": degradation_summary,
+        "heartbeat_summary": heartbeat_summary,
+        "eval_profile_summary": eval_profile_summary,
+        "browser_control_allowlist_summary": browser_control_allowlist_summary,
+        "voice_session_summary": voice_session_summary,
         "candidate_promotion_summary": candidate_promotion_summary,
         "provenance_summary": provenance_summary,
         "replay_summary": replay_summary,
@@ -703,6 +717,10 @@ def build_status(root: Path) -> dict[str, Any]:
             "approval_session_summary": approval_session_summary,
             "subsystem_contract_summary": subsystem_contract_summary,
             "degradation_summary": degradation_summary,
+            "heartbeat_summary": heartbeat_summary,
+            "eval_profile_summary": eval_profile_summary,
+            "browser_control_allowlist_summary": browser_control_allowlist_summary,
+            "voice_session_summary": voice_session_summary,
             "reply_ingress_summary": {
                 "reply_ingest_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",
                 "reply_transport_ready": decision_inbox.get("reply_ready") and current_action_pack.get("status") == "valid",

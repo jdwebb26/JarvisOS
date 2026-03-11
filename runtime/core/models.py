@@ -178,6 +178,21 @@ class DegradationEventStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class EvalDerivedOutcome(StrEnum):
+    PROMOTABLE = "promotable"
+    REVIEW_ONLY = "review_only"
+    REJECTED = "rejected"
+    NO_EVAL_REQUIRED_BY_POLICY = "no_eval_required_by_policy"
+    OPERATOR_DEFINED_EVAL_PENDING = "operator_defined_eval_pending"
+
+
+class HeartbeatStatus(StrEnum):
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    STOPPED = "stopped"
+    UNREACHABLE = "unreachable"
+
+
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -969,6 +984,9 @@ class EvalCaseRecord:
     lane: str
     evaluator_kind: str
     objective: str
+    profile_id: Optional[str] = None
+    profile_version: Optional[str] = None
+    task_type: str = TaskType.GENERAL.value
     criteria: dict[str, Any] = field(default_factory=dict)
     status: str = "pending"
     latest_eval_result_id: Optional[str] = None
@@ -981,6 +999,9 @@ class EvalCaseRecord:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "EvalCaseRecord":
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("profile_id", None)
+        data.setdefault("profile_version", None)
+        data.setdefault("task_type", TaskType.GENERAL.value)
         data.setdefault("criteria", {})
         data.setdefault("status", "pending")
         data.setdefault("latest_eval_result_id", None)
@@ -998,9 +1019,17 @@ class EvalResultRecord:
     actor: str
     lane: str
     evaluator_kind: str
+    profile_id: Optional[str] = None
+    profile_version: Optional[str] = None
     status: str = "completed"
     score: float = 0.0
     passed: bool = False
+    veto_results: dict[str, Any] = field(default_factory=dict)
+    quality_scores: dict[str, Any] = field(default_factory=dict)
+    derived_outcome: str = EvalDerivedOutcome.OPERATOR_DEFINED_EVAL_PENDING.value
+    derived_reason: str = ""
+    metrics: dict[str, Any] = field(default_factory=dict)
+    notes: str = ""
     summary: str = ""
     details: str = ""
     compared_values: dict[str, Any] = field(default_factory=dict)
@@ -1014,13 +1043,145 @@ class EvalResultRecord:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "EvalResultRecord":
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("profile_id", None)
+        data.setdefault("profile_version", None)
         data.setdefault("status", "completed")
         data.setdefault("score", 0.0)
         data.setdefault("passed", False)
+        data.setdefault("veto_results", {})
+        data.setdefault("quality_scores", {})
+        data.setdefault("derived_outcome", EvalDerivedOutcome.OPERATOR_DEFINED_EVAL_PENDING.value)
+        data.setdefault("derived_reason", "")
+        data.setdefault("metrics", {})
+        data.setdefault("notes", "")
         data.setdefault("summary", "")
         data.setdefault("details", "")
         data.setdefault("compared_values", {})
         data.setdefault("report_artifact_id", None)
+        return cls(**data)
+
+
+@dataclass
+class EvalProfileRecord:
+    profile_id: str
+    profile_version: str
+    task_type: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    eval_command: str
+    veto_checks: list[dict[str, Any]] = field(default_factory=list)
+    quality_metrics: list[dict[str, Any]] = field(default_factory=list)
+    hard_fail_conditions: list[str] = field(default_factory=list)
+    reproducibility_requirements: dict[str, Any] = field(default_factory=dict)
+    promotion_thresholds: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "EvalProfileRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("veto_checks", [])
+        data.setdefault("quality_metrics", [])
+        data.setdefault("hard_fail_conditions", [])
+        data.setdefault("reproducibility_requirements", {})
+        data.setdefault("promotion_thresholds", {})
+        return cls(**data)
+
+
+@dataclass
+class HeartbeatReportRecord:
+    heartbeat_report_id: str
+    subsystem_name: str
+    created_at: str
+    updated_at: str
+    status: str
+    last_active_at: str
+    current_task_count: int
+    error_summary: str = ""
+    budget_remaining: dict[str, Any] = field(default_factory=dict)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "HeartbeatReportRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("error_summary", "")
+        data.setdefault("budget_remaining", {})
+        data.setdefault("source_refs", {})
+        return cls(**data)
+
+
+@dataclass
+class BrowserControlAllowlistRecord:
+    browser_control_allowlist_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    allowed_apps: list[str] = field(default_factory=list)
+    allowed_sites: list[str] = field(default_factory=list)
+    allowed_paths: list[str] = field(default_factory=list)
+    blocked_apps: list[str] = field(default_factory=list)
+    blocked_sites: list[str] = field(default_factory=list)
+    blocked_paths: list[str] = field(default_factory=list)
+    destructive_actions_require_confirmation: bool = True
+    secret_entry_requires_manual_control: bool = True
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BrowserControlAllowlistRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("allowed_apps", [])
+        data.setdefault("allowed_sites", [])
+        data.setdefault("allowed_paths", [])
+        data.setdefault("blocked_apps", [])
+        data.setdefault("blocked_sites", [])
+        data.setdefault("blocked_paths", [])
+        data.setdefault("destructive_actions_require_confirmation", True)
+        data.setdefault("secret_entry_requires_manual_control", True)
+        return cls(**data)
+
+
+@dataclass
+class VoiceSessionRecord:
+    voice_session_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    channel_type: str
+    caller_identity: str
+    transcript_ref: str
+    active_task_id: Optional[str] = None
+    barge_in_supported: bool = False
+    escalation_state: str = "none"
+    consent_state: str = "unknown"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "VoiceSessionRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("active_task_id", None)
+        data.setdefault("barge_in_supported", False)
+        data.setdefault("escalation_state", "none")
+        data.setdefault("consent_state", "unknown")
         return cls(**data)
 
 

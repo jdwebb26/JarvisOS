@@ -11,8 +11,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.controls.control_store import build_control_summary
+from runtime.core.browser_control_allowlist import build_browser_control_allowlist_summary
 from runtime.core.degradation_policy import build_degradation_summary
+from runtime.core.eval_profiles import build_eval_profile_summary
+from runtime.core.heartbeat_reports import build_heartbeat_report_summary
 from runtime.core.token_budget import build_token_budget_summary
+from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.dashboard.status_names import normalize_status_name
 
 
@@ -74,6 +78,7 @@ def build_state_export(root: Path) -> dict:
     run_traces = _load_jsons(root / "state" / "run_traces")
     eval_cases = _load_jsons(root / "state" / "eval_cases")
     eval_results = _load_jsons(root / "state" / "eval_results")
+    eval_profiles = _load_jsons(root / "state" / "eval_profiles")
     model_registry_entries = _load_jsons(root / "state" / "model_registry_entries")
     capability_profiles = _load_jsons(root / "state" / "capability_profiles")
     routing_requests = _load_jsons(root / "state" / "routing_requests")
@@ -84,6 +89,9 @@ def build_state_export(root: Path) -> dict:
     token_budgets = _load_jsons(root / "state" / "token_budgets")
     degradation_policies = _load_jsons(root / "state" / "degradation_policies")
     degradation_events = _load_jsons(root / "state" / "degradation_events")
+    heartbeat_reports = _load_jsons(root / "state" / "heartbeat_reports")
+    browser_control_allowlists = _load_jsons(root / "state" / "browser_control_allowlists")
+    voice_sessions = _load_jsons(root / "state" / "voice_sessions")
     candidate_records = _load_jsons(root / "state" / "candidate_records")
     candidate_validations = _load_jsons(root / "state" / "candidate_validations")
     promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
@@ -166,6 +174,7 @@ def build_state_export(root: Path) -> dict:
             "run_traces": len(run_traces),
             "eval_cases": len(eval_cases),
             "eval_results": len(eval_results),
+            "eval_profiles": len(eval_profiles),
             "model_registry_entries": len(model_registry_entries),
             "capability_profiles": len(capability_profiles),
             "routing_requests": len(routing_requests),
@@ -176,6 +185,9 @@ def build_state_export(root: Path) -> dict:
             "token_budgets": len(token_budgets),
             "degradation_policies": len(degradation_policies),
             "degradation_events": len(degradation_events),
+            "heartbeat_reports": len(heartbeat_reports),
+            "browser_control_allowlists": len(browser_control_allowlists),
+            "voice_sessions": len(voice_sessions),
             "candidate_records": len(candidate_records),
             "candidate_validations": len(candidate_validations),
             "promotion_decisions": len(promotion_decisions),
@@ -440,6 +452,10 @@ def build_state_export(root: Path) -> dict:
     }
     summary["token_budget_summary"] = build_token_budget_summary(root=root)
     summary["degradation_summary"] = build_degradation_summary(root=root)
+    summary["heartbeat_summary"] = build_heartbeat_report_summary(root=root)
+    summary["eval_profile_summary"] = build_eval_profile_summary(root=root)
+    summary["browser_control_allowlist_summary"] = build_browser_control_allowlist_summary(root=root)
+    summary["voice_session_summary"] = build_voice_session_summary(root=root)
     summary["candidate_promotion_summary"] = {
         "candidate_count": len(candidate_records),
         "promotable_candidate_count": sum(1 for row in candidate_records if row.get("lifecycle_state") == "candidate"),
