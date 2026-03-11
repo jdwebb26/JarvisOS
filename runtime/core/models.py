@@ -1339,6 +1339,64 @@ class VoiceCommandRecord:
 
 
 @dataclass
+class DesktopActionRequestRecord:
+    request_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    action_type: str
+    target_app: str = ""
+    target_path: str = ""
+    action_params: dict[str, Any] = field(default_factory=dict)
+    risk_tier: str = "medium"
+    review_required: bool = False
+    status: str = "pending"
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "DesktopActionRequestRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("target_app", "")
+        data.setdefault("target_path", "")
+        data.setdefault("action_params", {})
+        data.setdefault("risk_tier", "medium")
+        data.setdefault("review_required", False)
+        data.setdefault("status", "pending")
+        return cls(**data)
+
+
+@dataclass
+class DesktopActionResultRecord:
+    result_id: str
+    request_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    status: str
+    outcome_summary: str
+    error: Optional[str] = None
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "DesktopActionResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("error", None)
+        return cls(**data)
+
+
+@dataclass
 class ConsolidationRunRecord:
     consolidation_run_id: str
     task_id: str
