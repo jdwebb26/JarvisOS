@@ -154,6 +154,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "eval_profile_summary": status.get("eval_profile_summary", {}),
         "browser_control_allowlist_summary": status.get("browser_control_allowlist_summary", {}),
         "voice_session_summary": status.get("voice_session_summary", {}),
+        "task_envelope_summary": status.get("task_envelope_summary", {}),
         "candidate_promotion_summary": status.get("candidate_promotion_summary", {}),
         "provenance_summary": status.get("provenance_summary", {}),
         "replay_summary": status.get("replay_summary", {}),

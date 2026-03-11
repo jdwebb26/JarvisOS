@@ -193,6 +193,13 @@ class HeartbeatStatus(StrEnum):
     UNREACHABLE = "unreachable"
 
 
+class AutonomyMode(StrEnum):
+    SUGGEST_ONLY = "suggest_only"
+    STEP_MODE = "step_mode"
+    BOUNDED_AUTONOMOUS = "bounded_autonomous"
+    SUPERVISED_BATCH = "supervised_batch"
+
+
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -245,7 +252,10 @@ class TaskRecord:
     backend_metadata: dict[str, Any] = field(default_factory=dict)
     review_required: bool = False
     approval_required: bool = False
+    autonomy_mode: str = AutonomyMode.STEP_MODE.value
+    task_envelope: dict[str, Any] = field(default_factory=dict)
     parent_task_id: Optional[str] = None
+    speculative_downstream: bool = False
     related_artifact_ids: list[str] = field(default_factory=list)
     candidate_artifact_ids: list[str] = field(default_factory=list)
     promoted_artifact_id: Optional[str] = None
@@ -253,6 +263,7 @@ class TaskRecord:
     revoked_artifact_ids: list[str] = field(default_factory=list)
     impacted_output_ids: list[str] = field(default_factory=list)
     blocked_dependency_refs: list[str] = field(default_factory=list)
+    dependency_block_reason: str = ""
     related_review_ids: list[str] = field(default_factory=list)
     related_approval_ids: list[str] = field(default_factory=list)
     checkpoint_summary: str = ""
@@ -282,7 +293,10 @@ class TaskRecord:
         data.setdefault("backend_metadata", {})
         data.setdefault("review_required", False)
         data.setdefault("approval_required", False)
+        data.setdefault("autonomy_mode", AutonomyMode.STEP_MODE.value)
+        data.setdefault("task_envelope", {})
         data.setdefault("parent_task_id", None)
+        data.setdefault("speculative_downstream", False)
         data.setdefault("related_artifact_ids", [])
         data.setdefault("candidate_artifact_ids", [])
         data.setdefault("promoted_artifact_id", None)
@@ -290,6 +304,7 @@ class TaskRecord:
         data.setdefault("revoked_artifact_ids", [])
         data.setdefault("impacted_output_ids", [])
         data.setdefault("blocked_dependency_refs", [])
+        data.setdefault("dependency_block_reason", "")
         data.setdefault("related_review_ids", [])
         data.setdefault("related_approval_ids", [])
         data.setdefault("checkpoint_summary", "")
@@ -1532,6 +1547,59 @@ class ModelRegistryEntryRecord:
         data.setdefault("policy_tags", [])
         data.setdefault("priority_rank", 100)
         data.setdefault("default_execution_backend", "unassigned")
+        data.setdefault("active", True)
+        return cls(**data)
+
+
+@dataclass
+class RoutingPolicyRecord:
+    routing_policy_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    default_family: str
+    allowed_families: list[str] = field(default_factory=list)
+    lane_overrides: dict[str, str] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RoutingPolicyRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("allowed_families", [])
+        data.setdefault("lane_overrides", {})
+        return cls(**data)
+
+
+@dataclass
+class RoutingOverrideRecord:
+    routing_override_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    scope_type: str
+    scope_id: str
+    override_family: str
+    expires_at: str
+    reason: str = ""
+    allowed_families: list[str] = field(default_factory=list)
+    active: bool = True
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RoutingOverrideRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("reason", "")
+        data.setdefault("allowed_families", [])
         data.setdefault("active", True)
         return cls(**data)
 

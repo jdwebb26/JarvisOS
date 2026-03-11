@@ -133,6 +133,13 @@ def create_task(record: TaskRecord, root: Optional[Path] = None) -> TaskRecord:
         ),
         root=root,
     )
+    recompute_task_readiness(
+        task_id=record.task_id,
+        actor=record.source_user,
+        lane=record.source_lane,
+        root=root,
+        reason="Initial task readiness and dependency blocking computed",
+    )
     return record
 
 
@@ -149,6 +156,116 @@ def list_tasks(root: Optional[Path] = None, limit: int = 100) -> list[TaskRecord
 
     items.sort(key=lambda x: x.updated_at, reverse=True)
     return items[:limit]
+
+
+def list_dependent_tasks(parent_task_id: str, root: Optional[Path] = None) -> list[TaskRecord]:
+    return [task for task in list_tasks(root=root, limit=10000) if task.parent_task_id == parent_task_id]
+
+
+def _dependency_state(record: TaskRecord, *, root: Optional[Path] = None) -> dict[str, object]:
+    refs: list[str] = []
+    reason = ""
+    parent_status = None
+    pending_approval_id = None
+    parent_task = None
+    if not record.parent_task_id:
+        return {
+            "refs": refs,
+            "reason": reason,
+            "hard_block": False,
+            "speculative_only": False,
+            "parent_task": None,
+            "parent_status": None,
+            "pending_approval_id": None,
+        }
+
+    parent_task = load_task(record.parent_task_id, root=root)
+    if parent_task is None:
+        refs.append(f"parent_missing:{record.parent_task_id}")
+        reason = f"Parent task {record.parent_task_id} is missing."
+        return {
+            "refs": refs,
+            "reason": reason,
+            "hard_block": True,
+            "speculative_only": False,
+            "parent_task": None,
+            "parent_status": None,
+            "pending_approval_id": None,
+        }
+
+    parent_status = parent_task.status
+    try:
+        from runtime.core.approval_store import latest_approval_for_task
+
+        pending = latest_approval_for_task(record.parent_task_id, root=root)
+        if pending is not None and pending.status == "pending":
+            pending_approval_id = pending.approval_id
+    except Exception:
+        pending_approval_id = None
+
+    approval_wall = parent_status == TaskStatus.WAITING_APPROVAL.value or pending_approval_id is not None
+    if approval_wall:
+        if record.speculative_downstream:
+            refs.append(f"speculative_parent_approval:{record.parent_task_id}")
+            reason = (
+                f"Speculative downstream task depends on parent approval for {record.parent_task_id}; "
+                "candidate-only work may proceed but promotion/publish remains blocked."
+            )
+            return {
+                "refs": refs,
+                "reason": reason,
+                "hard_block": False,
+                "speculative_only": True,
+                "parent_task": parent_task,
+                "parent_status": parent_status,
+                "pending_approval_id": pending_approval_id,
+            }
+        refs.append(f"parent_approval_blocked:{record.parent_task_id}")
+        reason = f"Parent task {record.parent_task_id} is blocked on approval."
+        return {
+            "refs": refs,
+            "reason": reason,
+            "hard_block": True,
+            "speculative_only": False,
+            "parent_task": parent_task,
+            "parent_status": parent_status,
+            "pending_approval_id": pending_approval_id,
+        }
+
+    return {
+        "refs": refs,
+        "reason": reason,
+        "hard_block": False,
+        "speculative_only": False,
+        "parent_task": parent_task,
+        "parent_status": parent_status,
+        "pending_approval_id": pending_approval_id,
+    }
+
+
+def task_dependency_summary(task_id: str, *, root: Optional[Path] = None) -> dict[str, object]:
+    record = load_task(task_id, root=root)
+    if record is None:
+        raise ValueError(f"Task not found: {task_id}")
+    return _dependency_state(record, root=root)
+
+
+def recompute_dependent_tasks(
+    parent_task_id: str,
+    *,
+    actor: str,
+    lane: str,
+    root: Optional[Path] = None,
+    reason: str = "",
+) -> None:
+    for child in list_dependent_tasks(parent_task_id, root=root):
+        recompute_task_readiness(
+            task_id=child.task_id,
+            actor=actor,
+            lane=lane,
+            root=root,
+            reason=reason or f"Dependency recompute after parent task update: {parent_task_id}",
+        )
 
 
 def transition_task(
@@ -202,6 +319,34 @@ def transition_task(
             actor=actor,
             lane=lane,
         )
+    dependency_state = _dependency_state(record, root=root)
+    if to_status in {
+        TaskStatus.QUEUED.value,
+        TaskStatus.RUNNING.value,
+        TaskStatus.READY_TO_SHIP.value,
+        TaskStatus.SHIPPED.value,
+    }:
+        if dependency_state["hard_block"]:
+            recompute_task_readiness(
+                task_id=record.task_id,
+                actor=actor,
+                lane=lane,
+                root=root,
+                reason=str(dependency_state["reason"]),
+            )
+            raise ValueError(str(dependency_state["reason"]))
+        if dependency_state["speculative_only"] and to_status in {
+            TaskStatus.READY_TO_SHIP.value,
+            TaskStatus.SHIPPED.value,
+        }:
+            recompute_task_readiness(
+                task_id=record.task_id,
+                actor=actor,
+                lane=lane,
+                root=root,
+                reason=str(dependency_state["reason"]),
+            )
+            raise ValueError(str(dependency_state["reason"]))
 
     record.status = to_status
     if error:
@@ -232,6 +377,13 @@ def transition_task(
             error=error,
         ),
         root=root,
+    )
+    recompute_dependent_tasks(
+        record.task_id,
+        actor=actor,
+        lane=lane,
+        root=root,
+        reason=f"Parent task status changed to {record.status}",
     )
 
     return record
@@ -498,8 +650,11 @@ def recompute_task_readiness(
     previous_readiness_status = record.publish_readiness_status
     previous_readiness_reason = record.publish_readiness_reason
     previous_blocked_refs = list(record.blocked_dependency_refs)
+    previous_dependency_reason = record.dependency_block_reason
 
     blocked_refs: list[str] = []
+    dependency_state = _dependency_state(record, root=root)
+    blocked_refs.extend(str(item) for item in dependency_state["refs"])
     blocked_refs.extend(f"artifact:{artifact_id}" for artifact_id in record.revoked_artifact_ids)
     blocked_refs.extend(f"output:{output_id}" for output_id in record.impacted_output_ids)
     if record.promoted_artifact_id is None and record.demoted_artifact_ids:
@@ -522,8 +677,15 @@ def recompute_task_readiness(
             published_output_exists = False
 
     has_demoted_dependency = bool(record.demoted_artifact_ids) and record.promoted_artifact_id is None
+    dependency_reason = str(dependency_state["reason"])
 
-    if record.impacted_output_ids or record.revoked_artifact_ids or has_demoted_dependency:
+    if dependency_state["hard_block"]:
+        readiness_status = "blocked_dependency"
+        readiness_reason = dependency_reason
+    elif dependency_state["speculative_only"] and record.promoted_artifact_id:
+        readiness_status = "blocked_dependency"
+        readiness_reason = dependency_reason
+    elif record.impacted_output_ids or record.revoked_artifact_ids or has_demoted_dependency:
         readiness_status = "invalidated"
         if record.impacted_output_ids or record.revoked_artifact_ids:
             readiness_reason = "Downstream impacts or revoked artifacts require recomputation before publish."
@@ -540,12 +702,16 @@ def recompute_task_readiness(
         readiness_reason = "Promoted artifact exists but final outcome is not candidate-ready."
     elif record.candidate_artifact_ids:
         readiness_status = "candidate_only"
-        readiness_reason = "Task has candidate artifacts but no promoted artifact."
+        readiness_reason = (
+            dependency_reason
+            if dependency_state["speculative_only"]
+            else "Task has candidate artifacts but no promoted artifact."
+        )
     else:
         readiness_status = "pending"
-        readiness_reason = "No promoted artifact is currently available."
+        readiness_reason = dependency_reason or "No promoted artifact is currently available."
 
-    if readiness_status == "invalidated" and previous_status not in {
+    if readiness_status in {"invalidated", "blocked_dependency"} and previous_status not in {
         TaskStatus.COMPLETED.value,
         TaskStatus.FAILED.value,
         TaskStatus.CANCELLED.value,
@@ -556,11 +722,12 @@ def recompute_task_readiness(
             record.last_error = readiness_reason
         if not record.checkpoint_summary:
             record.checkpoint_summary = readiness_reason
-    if readiness_status == "invalidated" and record.final_outcome == "candidate_ready_for_live_apply":
+    if readiness_status in {"invalidated", "blocked_dependency"} and record.final_outcome == "candidate_ready_for_live_apply":
         record.final_outcome = "candidate_invalidated"
 
     record.publish_readiness_status = readiness_status
     record.publish_readiness_reason = readiness_reason
+    record.dependency_block_reason = dependency_reason
     save_task(record, root=root)
 
     if (
@@ -568,6 +735,7 @@ def recompute_task_readiness(
         or previous_readiness_status != readiness_status
         or previous_readiness_reason != readiness_reason
         or previous_blocked_refs != record.blocked_dependency_refs
+        or previous_dependency_reason != record.dependency_block_reason
     ):
         append_event(
             make_event(
@@ -587,6 +755,7 @@ def recompute_task_readiness(
                         "publish_readiness_status": readiness_status,
                         "publish_readiness_reason": readiness_reason,
                         "blocked_dependency_refs": record.blocked_dependency_refs,
+                        "dependency_block_reason": record.dependency_block_reason,
                     },
                     sort_keys=True,
                 ),

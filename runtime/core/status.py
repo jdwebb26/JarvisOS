@@ -93,12 +93,16 @@ def _task_summary(task: TaskRecord, events_by_task: dict[str, list[dict[str, Any
         "execution_backend": task.execution_backend,
         "review_required": task.review_required,
         "approval_required": task.approval_required,
+        "autonomy_mode": task.autonomy_mode,
+        "speculative_downstream": task.speculative_downstream,
+        "task_envelope": dict(task.task_envelope),
         "promoted_artifact_id": task.promoted_artifact_id,
         "candidate_artifact_ids": list(task.candidate_artifact_ids),
         "demoted_artifact_ids": list(task.demoted_artifact_ids),
         "revoked_artifact_ids": list(task.revoked_artifact_ids),
         "impacted_output_ids": list(task.impacted_output_ids),
         "blocked_dependency_refs": list(task.blocked_dependency_refs),
+        "dependency_block_reason": task.dependency_block_reason,
         "publish_readiness_status": task.publish_readiness_status,
         "publish_readiness_reason": task.publish_readiness_reason,
         "reason": _latest_reason(task, events_by_task),
@@ -161,12 +165,16 @@ def build_status(root: Path) -> dict[str, Any]:
             "execution_backend": task.execution_backend,
             "review_required": task.review_required,
             "approval_required": task.approval_required,
+            "autonomy_mode": task.autonomy_mode,
+            "speculative_downstream": task.speculative_downstream,
+            "task_envelope": dict(task.task_envelope),
             "promoted_artifact_id": task.promoted_artifact_id,
             "candidate_artifact_ids": list(task.candidate_artifact_ids),
             "demoted_artifact_ids": list(task.demoted_artifact_ids),
             "revoked_artifact_ids": list(task.revoked_artifact_ids),
             "impacted_output_ids": list(task.impacted_output_ids),
             "blocked_dependency_refs": list(task.blocked_dependency_refs),
+            "dependency_block_reason": task.dependency_block_reason,
             "publish_readiness_status": task.publish_readiness_status,
             "publish_readiness_reason": task.publish_readiness_reason,
             "reason": _latest_reason(task, events_by_task),
@@ -216,6 +224,8 @@ def build_status(root: Path) -> dict[str, Any]:
     operator_incident_snapshots = _load_jsons(root / "state" / "operator_incident_snapshots")
     model_registry_entries = _load_jsons(root / "state" / "model_registry_entries")
     capability_profiles = _load_jsons(root / "state" / "capability_profiles")
+    routing_policies = _load_jsons(root / "state" / "routing_policies")
+    routing_overrides = _load_jsons(root / "state" / "routing_overrides")
     routing_requests = _load_jsons(root / "state" / "routing_requests")
     routing_decisions = _load_jsons(root / "state" / "routing_decisions")
     provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
@@ -439,6 +449,8 @@ def build_status(root: Path) -> dict[str, Any]:
         "operator_incident_snapshots": len(operator_incident_snapshots),
         "model_registry_entries": len(model_registry_entries),
         "capability_profiles": len(capability_profiles),
+        "routing_policies": len(routing_policies),
+        "routing_overrides": len(routing_overrides),
         "routing_requests": len(routing_requests),
         "routing_decisions": len(routing_decisions),
         "provider_adapter_results": len(provider_adapter_results),
@@ -580,6 +592,16 @@ def build_status(root: Path) -> dict[str, Any]:
     else:
         next_move = "No active work is currently queued or running."
 
+    autonomy_mode_counts: dict[str, int] = {}
+    task_envelope_task_count = 0
+    speculative_downstream_count = 0
+    for task in tasks:
+        autonomy_mode_counts[task.autonomy_mode] = autonomy_mode_counts.get(task.autonomy_mode, 0) + 1
+        if task.task_envelope:
+            task_envelope_task_count += 1
+        if task.speculative_downstream:
+            speculative_downstream_count += 1
+
     return {
         "queued_now": queued_now,
         "running_now": running_now,
@@ -598,6 +620,12 @@ def build_status(root: Path) -> dict[str, Any]:
         "eval_profile_summary": eval_profile_summary,
         "browser_control_allowlist_summary": browser_control_allowlist_summary,
         "voice_session_summary": voice_session_summary,
+        "task_envelope_summary": {
+            "task_envelope_task_count": task_envelope_task_count,
+            "autonomy_mode_counts": autonomy_mode_counts,
+            "speculative_downstream_count": speculative_downstream_count,
+            "blocked_dependency_task_count": len([task for task in tasks if task.blocked_dependency_refs]),
+        },
         "candidate_promotion_summary": candidate_promotion_summary,
         "provenance_summary": provenance_summary,
         "replay_summary": replay_summary,

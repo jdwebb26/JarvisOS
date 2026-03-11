@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 from runtime.controls.control_store import assert_control_allows, build_control_summary
 from runtime.core.candidate_store import find_candidate_for_artifact, list_candidates
 from runtime.core.models import RecordLifecycleState
-from runtime.core.task_store import load_task
+from runtime.core.task_store import load_task, task_dependency_summary
 
 
 def _provider_id_for_task(task) -> Optional[str]:
@@ -56,6 +56,9 @@ def assert_artifact_promotion_allowed(
             raise ValueError(f"Artifact candidate {candidate.candidate_id} is rejected and cannot be promoted.")
         if candidate.latest_validation_id is None:
             raise ValueError(f"Artifact candidate {candidate.candidate_id} has no validation record.")
+    dependency_state = task_dependency_summary(task.task_id, root=root_path)
+    if dependency_state["hard_block"] or dependency_state["speculative_only"]:
+        raise ValueError(str(dependency_state["reason"]))
     return {
         "control_state": state,
         "candidate_id": candidate.candidate_id if candidate else None,
@@ -88,6 +91,9 @@ def assert_artifact_publish_allowed(
         actor=actor,
         lane=lane,
     )
+    dependency_state = task_dependency_summary(task.task_id, root=root_path)
+    if dependency_state["hard_block"] or dependency_state["speculative_only"]:
+        raise ValueError(str(dependency_state["reason"]))
     return {
         "control_state": state,
         "policy_status": "eligible",

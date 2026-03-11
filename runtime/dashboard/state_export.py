@@ -15,6 +15,7 @@ from runtime.core.browser_control_allowlist import build_browser_control_allowli
 from runtime.core.degradation_policy import build_degradation_summary
 from runtime.core.eval_profiles import build_eval_profile_summary
 from runtime.core.heartbeat_reports import build_heartbeat_report_summary
+from runtime.core.routing import build_model_registry_summary
 from runtime.core.token_budget import build_token_budget_summary
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.dashboard.status_names import normalize_status_name
@@ -81,6 +82,8 @@ def build_state_export(root: Path) -> dict:
     eval_profiles = _load_jsons(root / "state" / "eval_profiles")
     model_registry_entries = _load_jsons(root / "state" / "model_registry_entries")
     capability_profiles = _load_jsons(root / "state" / "capability_profiles")
+    routing_policies = _load_jsons(root / "state" / "routing_policies")
+    routing_overrides = _load_jsons(root / "state" / "routing_overrides")
     routing_requests = _load_jsons(root / "state" / "routing_requests")
     routing_decisions = _load_jsons(root / "state" / "routing_decisions")
     provider_adapter_results = _load_jsons(root / "state" / "provider_adapter_results")
@@ -177,6 +180,8 @@ def build_state_export(root: Path) -> dict:
             "eval_profiles": len(eval_profiles),
             "model_registry_entries": len(model_registry_entries),
             "capability_profiles": len(capability_profiles),
+            "routing_policies": len(routing_policies),
+            "routing_overrides": len(routing_overrides),
             "routing_requests": len(routing_requests),
             "routing_decisions": len(routing_decisions),
             "provider_adapter_results": len(provider_adapter_results),
@@ -268,6 +273,7 @@ def build_state_export(root: Path) -> dict:
         "routing_backend_counts": {},
         "backend_execution_status_counts": {},
         "task_publish_readiness_counts": {},
+        "autonomy_mode_counts": {},
         "candidate_record_lifecycle_counts": {},
         "candidate_validation_status_counts": {},
         "approval_session_state_counts": {},
@@ -293,6 +299,9 @@ def build_state_export(root: Path) -> dict:
         summary["task_lifecycle_counts"][lifecycle_state] = summary["task_lifecycle_counts"].get(lifecycle_state, 0) + 1
         readiness = task.get("publish_readiness_status", "pending")
         summary["task_publish_readiness_counts"][readiness] = summary["task_publish_readiness_counts"].get(readiness, 0) + 1
+        autonomy_mode = task.get("autonomy_mode", "step_mode")
+        summary.setdefault("autonomy_mode_counts", {})
+        summary["autonomy_mode_counts"][autonomy_mode] = summary["autonomy_mode_counts"].get(autonomy_mode, 0) + 1
 
     for review in reviews:
         status = review.get("status", "unknown")
@@ -433,12 +442,9 @@ def build_state_export(root: Path) -> dict:
     latest_output_dependency = _latest_row(output_dependencies)
     latest_blocked_action = _latest_row(control_blocked_actions)
 
-    summary["routing_summary"] = {
-        "provider_policy": "qwen_only",
-        "active_model_names": [row.get("model_name") for row in model_registry_entries if row.get("active")],
-        "active_model_count": sum(1 for row in model_registry_entries if row.get("active")),
-        "latest_routing_decision": latest_routing_decision,
-    }
+    routing_summary = build_model_registry_summary(root=root)
+    routing_summary["latest_routing_decision"] = latest_routing_decision
+    summary["routing_summary"] = routing_summary
     summary["execution_contract_summary"] = {
         "backend_execution_request_count": len(backend_execution_requests),
         "backend_execution_result_count": len(backend_execution_results),
@@ -456,6 +462,12 @@ def build_state_export(root: Path) -> dict:
     summary["eval_profile_summary"] = build_eval_profile_summary(root=root)
     summary["browser_control_allowlist_summary"] = build_browser_control_allowlist_summary(root=root)
     summary["voice_session_summary"] = build_voice_session_summary(root=root)
+    summary["task_envelope_summary"] = {
+        "task_envelope_task_count": sum(1 for row in tasks if row.get("task_envelope")),
+        "autonomy_mode_counts": dict(summary.get("autonomy_mode_counts", {})),
+        "speculative_downstream_count": sum(1 for row in tasks if row.get("speculative_downstream")),
+        "blocked_dependency_task_count": sum(1 for row in tasks if row.get("blocked_dependency_refs")),
+    }
     summary["candidate_promotion_summary"] = {
         "candidate_count": len(candidate_records),
         "promotable_candidate_count": sum(1 for row in candidate_records if row.get("lifecycle_state") == "candidate"),

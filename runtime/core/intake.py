@@ -118,6 +118,10 @@ def create_task_from_message(
     lane: str,
     channel: str,
     message_id: str,
+    autonomy_mode: str = "step_mode",
+    task_envelope: Optional[dict] = None,
+    parent_task_id: Optional[str] = None,
+    speculative_downstream: bool = False,
     root: Optional[Path] = None,
 ) -> dict:
     root_path = Path(root or ROOT).resolve()
@@ -207,6 +211,10 @@ def create_task_from_message(
         },
         review_required=review_required(task_type, risk),
         approval_required=approval_required(task_type, risk),
+        autonomy_mode=autonomy_mode,
+        task_envelope=dict(task_envelope or {}),
+        parent_task_id=parent_task_id,
+        speculative_downstream=speculative_downstream,
     )
 
     create_task(record, root=root_path)

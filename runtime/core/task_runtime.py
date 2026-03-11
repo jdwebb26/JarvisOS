@@ -98,6 +98,27 @@ def set_task_status(
             actor=actor,
             lane=lane,
         )
+    if new_status in {
+        TaskStatus.QUEUED.value,
+        TaskStatus.RUNNING.value,
+        TaskStatus.READY_TO_SHIP.value,
+        TaskStatus.SHIPPED.value,
+    }:
+        from runtime.core.task_store import task_dependency_summary, recompute_task_readiness
+
+        dependency_state = task_dependency_summary(task_id, root=root)
+        if dependency_state["hard_block"] or (
+            dependency_state["speculative_only"]
+            and new_status in {TaskStatus.READY_TO_SHIP.value, TaskStatus.SHIPPED.value}
+        ):
+            recompute_task_readiness(
+                task_id=task_id,
+                actor=actor,
+                lane=lane,
+                root=root,
+                reason=str(dependency_state["reason"]),
+            )
+            raise ValueError(str(dependency_state["reason"]))
 
     if previous_status == new_status:
         return {
