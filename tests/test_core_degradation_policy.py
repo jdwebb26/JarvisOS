@@ -1,5 +1,16 @@
 from pathlib import Path
+import sys
+from tempfile import TemporaryDirectory
 
+try:
+    import pytest
+except ModuleNotFoundError:  # pragma: no cover - script mode fallback
+    pytest = None
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 from runtime.core.degradation_policy import (
     list_degradation_events,
     load_degradation_policy_for_subsystem,
@@ -88,3 +99,17 @@ def test_degradation_summary_surfaces_in_core_reporting(tmp_path: Path):
     assert snapshot["degradation_summary"]["latest_degradation_event"]["failure_category"] == "timeout"
     assert state_export["degradation_summary"]["degradation_event_status_counts"]["applied"] == 1
     assert handoff["degradation_summary"]["latest_degradation_event"]["fallback_action"] == "no_local_fallback"
+
+
+def _run_as_script() -> int:
+    with TemporaryDirectory() as tmp_one:
+        test_hermes_timeout_applies_degradation_policy_and_fails_task(Path(tmp_one))
+    with TemporaryDirectory() as tmp_two:
+        test_degradation_summary_surfaces_in_core_reporting(Path(tmp_two))
+    return 0
+
+
+if __name__ == "__main__":
+    if pytest is None:
+        raise SystemExit(_run_as_script())
+    raise SystemExit(pytest.main([__file__]))

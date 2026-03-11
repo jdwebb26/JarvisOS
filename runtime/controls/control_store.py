@@ -42,6 +42,9 @@ ACTION_LABELS = {
     "task_create": "task creation",
     "route_selection": "routing selection",
     "task_progress": "task progress",
+    "browser_action": "browser action",
+    "desktop_action": "desktop action",
+    "voice_command": "voice command",
     "approval_decision": "approval decision",
     "approval_resume": "approval resume",
     "promote_artifact": "artifact promotion",
@@ -482,7 +485,7 @@ def control_blocks_action(
             run_state != ControlRunState.ACTIVE.value
             or safety_mode in {ControlSafetyMode.DEGRADED.value, ControlSafetyMode.REVOKED.value}
         )
-    elif action in {"task_create", "route_selection", "approval_decision", "promote_memory", "memory_write"}:
+    elif action in {"task_create", "route_selection", "approval_decision", "promote_memory", "memory_write", "browser_action", "desktop_action", "voice_command"}:
         blocked = (
             run_state == ControlRunState.STOPPED.value
             or safety_mode in {ControlSafetyMode.DEGRADED.value, ControlSafetyMode.REVOKED.value}
@@ -492,7 +495,7 @@ def control_blocks_action(
     else:
         raise ValueError(f"Unsupported control check action: {action}")
 
-    if action in {"task_create", "route_selection", "task_progress", "approval_resume", "approval_decision", "promote_artifact", "promote_memory", "memory_write", "ready_to_ship", "ship", "publish_output"}:
+    if action in {"task_create", "route_selection", "task_progress", "approval_resume", "approval_decision", "promote_artifact", "promote_memory", "memory_write", "ready_to_ship", "ship", "publish_output", "browser_action", "desktop_action", "voice_command"}:
         if emergency_flags.get("execution_freeze"):
             blocked = True
         if emergency_flags.get("recovery_only_mode") and action not in {"rollback_execute", "recovery_execute"}:

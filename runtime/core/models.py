@@ -1217,6 +1217,68 @@ class BrowserControlAllowlistRecord:
 
 
 @dataclass
+class BrowserActionRequestRecord:
+    request_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    action_type: str
+    target_url: str
+    target_selector: str
+    action_params: dict[str, Any] = field(default_factory=dict)
+    risk_tier: str = "medium"
+    review_required: bool = False
+    status: str = "pending"
+    allowlist_ref: Optional[str] = None
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BrowserActionRequestRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("action_params", {})
+        data.setdefault("risk_tier", "medium")
+        data.setdefault("review_required", False)
+        data.setdefault("status", "pending")
+        data.setdefault("allowlist_ref", None)
+        return cls(**data)
+
+
+@dataclass
+class BrowserActionResultRecord:
+    result_id: str
+    request_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    status: str
+    outcome_summary: str
+    snapshot_refs: dict[str, Any] = field(default_factory=dict)
+    trace_refs: dict[str, Any] = field(default_factory=dict)
+    error: Optional[str] = None
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BrowserActionResultRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("snapshot_refs", {})
+        data.setdefault("trace_refs", {})
+        data.setdefault("error", None)
+        return cls(**data)
+
+
+@dataclass
 class VoiceSessionRecord:
     voice_session_id: str
     created_at: str

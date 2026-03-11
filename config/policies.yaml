@@ -41,3 +41,29 @@ storage_policy:
   artifact_index_backend: json
   review_store_backend: json
   approval_store_backend: json
+
+browser_policy:
+  enabled: false
+  default_backend: pinchtab
+  require_confirmation_for_sensitive: true
+  screenshot_on_major_actions: true
+  max_actions_per_session: 50
+
+voice_policy:
+  enabled: false
+  wake_phrase: "Jarvis"
+  require_wake_phrase: true
+  require_task_confirmation: true
+  speaker_guard_enabled: false
+  fallback_to_text: true
+
+desktop_policy:
+  enabled: false
+  require_confirmation_for_destructive: true
+  allowed_apps: []
+  blocked_apps: []
+
+risk_tier_policy:
+  high_risk_requires_text_confirmation: true
+  medium_risk_voice_allowed: true
+  low_risk_auto_execute: false

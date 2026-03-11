@@ -46,6 +46,46 @@ DEFAULT_POLICIES = [
         "auto_recover": False,
         "retry_policy": {"strategy": "manual_auditor_restore", "max_attempts": 1},
     },
+    {
+        "subsystem": "browser_backend",
+        "degradation_mode": "fail_closed",
+        "fallback_action": "no_browser_execution",
+        "requires_operator_notification": True,
+        "auto_recover": False,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    {
+        "subsystem": "voice_pipeline",
+        "degradation_mode": "text_fallback",
+        "fallback_action": "text_input_only",
+        "requires_operator_notification": True,
+        "auto_recover": True,
+        "retry_policy": {"strategy": "auto_retry", "max_attempts": 3},
+    },
+    {
+        "subsystem": "desktop_executor",
+        "degradation_mode": "fail_closed",
+        "fallback_action": "no_desktop_execution",
+        "requires_operator_notification": True,
+        "auto_recover": False,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    {
+        "subsystem": "memory_spine",
+        "degradation_mode": "read_only",
+        "fallback_action": "no_memory_writes",
+        "requires_operator_notification": True,
+        "auto_recover": True,
+        "retry_policy": {"strategy": "auto_retry", "max_attempts": 3},
+    },
+    {
+        "subsystem": "speaker_guard",
+        "degradation_mode": "require_text_confirm",
+        "fallback_action": "voice_commands_require_text_confirmation",
+        "requires_operator_notification": True,
+        "auto_recover": True,
+        "retry_policy": {"strategy": "auto_retry", "max_attempts": 3},
+    },
 ]
 
 
