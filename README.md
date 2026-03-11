@@ -1,6 +1,65 @@
-# Jarvis / OpenClaw v5
+# Jarvis / OpenClaw v5.1
 
-Jarvis/OpenClaw v5 is a chat-first operator system built around durable events, explicit task creation, approval-aware execution, Flowstate distillation, and artifact-first review. The runtime architecture is provider-agnostic, but the active deployment policy remains Qwen-only.
+Jarvis/OpenClaw v5.1 is a durable task, artifact, review, approval, provenance, replay, and control spine for Jarvis OS.
+It is designed so the architecture stays provider-agnostic while the current live deployment remains Qwen-first.
+
+## What this repo is
+
+This repo is the live JarvisOS v5.1 codebase.
+
+It contains:
+
+- the core runtime and durable record models
+- routing, candidate promotion, rollback, approval, replay, and memory governance
+- bounded subsystem adapters such as Hermes, autoresearch, and Ralph
+- operator-facing status, export, handoff, and validation scripts
+
+It is not a fresh rebuild or a sidecar demo repo. It is the working in-place v5.1 system.
+
+## Current status
+
+The repo is currently green for the intended Qwen-default deployment target.
+
+The validated baseline includes:
+
+- bootstrap
+- validate
+- smoke test
+- doctor
+- the runtime regression pack
+- the full pytest suite
+
+The runtime architecture is provider-agnostic, but the active deployment policy and tested default path remain Qwen/qwen-agent first.
+
+## How to demo locally
+
+For a clean local demo path, run:
+
+```bash
+python3 scripts/bootstrap.py
+python3 scripts/validate.py
+python3 scripts/smoke_test.py
+python3 scripts/doctor.py
+```
+
+If those are green, inspect:
+
+- `state/logs/operator_snapshot.json`
+- `state/logs/state_export.json`
+- `state/logs/operator_handoff_pack.json`
+
+Then walk the next `ready_to_ship` or `shipped` task through the normal review/apply/publish flow.
+
+## Active deployment policy
+
+The current deployment policy is intentionally Qwen-default.
+
+That means:
+
+- Qwen/qwen-agent remains the preferred and validated runtime path
+- provider/model/backend identity is still carried through durable routing and execution records
+- future provider swaps should be policy/config changes, not core-spine rewrites
+- no non-Qwen provider rollout is implied by this repo state
 
 ## Core rules
 

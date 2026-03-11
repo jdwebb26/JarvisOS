@@ -24,51 +24,51 @@
 - [ ] Check controls before every task step and autonomy cycle
 
 ## Dependency blocking and reversibility
-- [ ] Add blocked-dependency status and blocker references
-- [ ] Define speculative candidate-only downstream behavior
-- [ ] Implement demotion path for artifacts
-- [ ] Implement revocation path for memory entries
-- [ ] Mark impacted downstream artifacts when upstream sources are revoked
+- [x] Add blocked-dependency status and blocker references
+- [x] Define speculative candidate-only downstream behavior
+- [x] Implement demotion path for artifacts
+- [x] Implement revocation path for memory entries
+- [x] Mark impacted downstream artifacts when upstream sources are revoked
 
 ## Hermes
-- [ ] Implement HermesTaskRequest
-- [ ] Implement HermesTaskResult
+- [x] Implement HermesTaskRequest
+- [x] Implement HermesTaskResult
 - [ ] Map Hermes backends to sandbox classes
 - [ ] Enforce approved Qwen endpoints only
 - [ ] Validate Qwen tool-call/parser compatibility
 - [ ] Emit structured events for start, checkpoint, timeout, completion, failure
 
 ## Strategy Lab / autoresearch
-- [ ] Implement LabRunRequest
-- [ ] Implement LabRunResult
+- [x] Implement LabRunRequest
+- [x] Implement LabRunResult
 - [ ] Preserve fixed-budget run pattern
 - [ ] Enforce S3 sandbox
 - [ ] Require program file template
-- [ ] Require `baseline_ref` and `benchmark_slice_ref`
+- [x] Require `baseline_ref` and `benchmark_slice_ref`
 - [ ] Store required lab outputs
-- [ ] Add diversity map scaffolding
+- [x] Add diversity map scaffolding
 
 ## Review and approvals
-- [ ] Add resumable checkpoint references
-- [ ] Define dependent-task behavior under pending approval
-- [ ] Ensure reviewer outages do not auto-promote review-required work
+- [x] Add resumable checkpoint references
+- [x] Define dependent-task behavior under pending approval
+- [x] Ensure reviewer outages do not auto-promote review-required work
 - [ ] Implement model-override exception logging
 
 ## Memory and Ralph
-- [ ] Add memory classes and structural types
-- [ ] Add confidence/decay/contradiction fields
+- [x] Add memory classes and structural types
+- [x] Add confidence/decay/contradiction fields
 - [ ] Implement memory compression gate
-- [ ] Implement Ralph consolidation pass
-- [ ] Ensure consolidation creates candidates, not direct truth
+- [x] Implement Ralph consolidation pass
+- [x] Ensure consolidation creates candidates, not direct truth
 - [ ] Add memory matrix policy
 
 ## Eval and trace
 - [x] Implement EvalProfile
 - [x] Implement EvalOutcome
 - [ ] Separate veto checks from quality metrics
-- [ ] Implement RunTrace
+- [x] Implement RunTrace
 - [ ] Align field naming with OTel GenAI where practical
-- [ ] Add replay-to-eval path for important failures
+- [x] Add replay-to-eval path for important failures
 - [ ] Decide trajectory collection path and redaction rules
 
 ## Voice and browser
@@ -101,10 +101,10 @@
 - [ ] Update setup/runtime language away from “swarm”
 
 ## Done criteria
-- [ ] Candidate-first promotion is enforced across all subsystems
-- [ ] Demotion/revocation works across memory and artifacts
+- [x] Candidate-first promotion is enforced across all subsystems
+- [x] Demotion/revocation works across memory and artifacts
 - [ ] Emergency controls work without agent cooperation
-- [ ] Hermes and autoresearch run behind explicit contracts
+- [x] Hermes and autoresearch run behind explicit contracts
 - [ ] Ralph improves memory quality during autonomy windows
 - [ ] Voice/browser are scoped and reviewable
 - [ ] No major v4 architectural drift remains in the main path

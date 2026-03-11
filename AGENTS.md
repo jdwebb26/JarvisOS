@@ -22,6 +22,7 @@ Interpretation rules:
 - 03_Roadmap defines implementation order
 - 05_Repo_Build_Map suggests likely file locations
 - 04_Checklist is for tracking completeness, not overriding the spec
+- For post-freeze or cleanup passes, prefer proving parity against the master spec and live code before changing runtime behavior
 
 Non-negotiable v5.1 principles:
 - provider-agnostic routing
@@ -67,3 +68,8 @@ When completing a task:
 - run relevant validation/tests
 - report exactly what passed and failed
 - identify the next highest-leverage slice
+
+Post-freeze hygiene rules:
+- prefer doc, checklist, and repo-hygiene parity over runtime edits
+- remove tracked generated junk when it is clearly not source
+- do not reopen support-plane or architecture work unless the live code proves a real bug or spec gap

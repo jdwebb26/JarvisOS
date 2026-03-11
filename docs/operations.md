@@ -2,6 +2,25 @@
 
 This document describes the operator-facing expectations for everyday use.
 
+## Fast First Run
+
+For a clean first pass on a fresh checkout:
+
+```bash
+python3 scripts/bootstrap.py
+python3 scripts/validate.py
+python3 scripts/smoke_test.py
+python3 scripts/doctor.py
+```
+
+If those are green, inspect:
+
+- `state/logs/operator_snapshot.json`
+- `state/logs/state_export.json`
+- `state/logs/operator_handoff_pack.json`
+
+Then clear review/approval blockers before applying or publishing anything.
+
 ## Jarvis in `#jarvis`
 
 Jarvis should:
