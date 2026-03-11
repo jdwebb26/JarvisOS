@@ -81,6 +81,28 @@ def list_backend_execution_results(root: Optional[Path] = None) -> list[BackendE
     return _load_rows(backend_execution_results_dir(root), BackendExecutionResultRecord)
 
 
+def load_backend_execution_request(
+    backend_execution_request_id: str,
+    *,
+    root: Optional[Path] = None,
+) -> Optional[BackendExecutionRequestRecord]:
+    path = _path(backend_execution_requests_dir(root), backend_execution_request_id)
+    if not path.exists():
+        return None
+    return BackendExecutionRequestRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def load_backend_execution_result(
+    backend_execution_result_id: str,
+    *,
+    root: Optional[Path] = None,
+) -> Optional[BackendExecutionResultRecord]:
+    path = _path(backend_execution_results_dir(root), backend_execution_result_id)
+    if not path.exists():
+        return None
+    return BackendExecutionResultRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
 def latest_backend_execution_result(root: Optional[Path] = None) -> Optional[BackendExecutionResultRecord]:
     rows = list_backend_execution_results(root=root)
     return rows[0] if rows else None

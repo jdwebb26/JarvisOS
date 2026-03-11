@@ -5,6 +5,7 @@ import json
 import os
 import py_compile
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,13 @@ try:
     import requests
 except Exception:
     requests = None
+
+ROOT = Path("/home/rollan/.openclaw/workspace/jarvis-v5")
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from runtime.core.execution_contracts import record_backend_execution_request, record_backend_execution_result
+from runtime.core.task_store import load_task as load_runtime_task, save_task as save_runtime_task
 
 WORKSPACE = Path("/home/rollan/.openclaw/workspace")
 ALLOWED_EXTRA_ROOT = WORKSPACE / "tasks"
@@ -1110,6 +1118,78 @@ def write_artifact(name: str, body: str) -> Path:
     return out
 
 
+def record_qwen_candidate_generation_execution(
+    *,
+    task_id: str | None,
+    target_file: str,
+    candidate_file: str,
+    patch_plan: str,
+    artifact_path: str,
+    generation_mode: str,
+    model_candidate_accepted: bool,
+    output_status: str,
+    rejection_reason: str,
+    generation_error: str,
+    root: Path = ROOT,
+) -> dict | None:
+    if not task_id:
+        return None
+    task = load_runtime_task(task_id, root=root)
+    if task is None:
+        return None
+    routing_meta = (task.backend_metadata or {}).get("routing") or {}
+    request = record_backend_execution_request(
+        task_id=task_id,
+        actor="qwen_candidate_writer",
+        lane="writer",
+        request_kind="qwen_candidate_generation",
+        execution_backend=task.execution_backend or "qwen_executor",
+        provider_id=str(routing_meta.get("provider_id") or "qwen"),
+        model_name=task.assigned_model or MODEL_NAME,
+        routing_decision_id=routing_meta.get("routing_decision_id"),
+        provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
+        input_summary=f"Generate candidate for {Path(target_file).name}",
+        input_refs={
+            "target_file": target_file,
+            "candidate_file": candidate_file,
+            "patch_plan": patch_plan,
+        },
+        source_refs={"task_source_message_id": task.source_message_id},
+        status="completed" if model_candidate_accepted else "failed",
+        root=root,
+    )
+    result = record_backend_execution_result(
+        backend_execution_request_id=request.backend_execution_request_id,
+        task_id=task_id,
+        actor="qwen_candidate_writer",
+        lane="writer",
+        request_kind="qwen_candidate_generation",
+        execution_backend=task.execution_backend or "qwen_executor",
+        provider_id=str(routing_meta.get("provider_id") or "qwen"),
+        model_name=task.assigned_model or MODEL_NAME,
+        status="completed" if model_candidate_accepted else (output_status or "failed"),
+        outcome_summary=f"{generation_mode}: {output_status or ('accepted' if model_candidate_accepted else 'rejected')}",
+        error=rejection_reason or generation_error,
+        source_refs={"artifact_path": artifact_path},
+        metadata={
+            "target_file": target_file,
+            "candidate_file": candidate_file,
+            "patch_plan": patch_plan,
+            "generation_mode": generation_mode,
+            "model_candidate_accepted": model_candidate_accepted,
+        },
+        root=root,
+    )
+    task.backend_metadata.setdefault("execution_contracts", {})
+    task.backend_metadata["execution_contracts"]["latest_backend_execution_request_id"] = request.backend_execution_request_id
+    task.backend_metadata["execution_contracts"]["latest_backend_execution_result_id"] = result.backend_execution_result_id
+    save_runtime_task(task, root=root)
+    return {
+        "backend_execution_request_id": request.backend_execution_request_id,
+        "backend_execution_result_id": result.backend_execution_result_id,
+    }
+
+
 def mark_task_candidate_ready(task_id: str, artifact_path: str) -> dict | None:
     if not task_id:
         return None
@@ -1958,6 +2038,19 @@ def main() -> int:
         "semantic_guard_allowlisted_changes": semantic_guard_allowlisted_changes,
         "armed_task": armed_task,
     }
+    execution_contract = record_qwen_candidate_generation_execution(
+        task_id=approved_task_id if isinstance(approved_task_id, str) else None,
+        target_file=target_path,
+        candidate_file=str(candidate_file),
+        patch_plan=str(patch_plan),
+        artifact_path=str(artifact),
+        generation_mode=generation_mode,
+        model_candidate_accepted=model_candidate_accepted,
+        output_status=output_status,
+        rejection_reason=rejection_reason,
+        generation_error=generation_error,
+    )
+    payload["execution_contract"] = execution_contract
 
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))

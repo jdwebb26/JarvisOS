@@ -15,6 +15,10 @@ if str(ROOT) not in sys.path:
 from runtime.controls.control_store import control_blocks_action
 from runtime.core.artifact_store import load_artifact
 from runtime.core.candidate_store import find_candidate_for_artifact
+from runtime.core.execution_contracts import (
+    list_backend_execution_results,
+    load_backend_execution_request,
+)
 from runtime.core.models import (
     ReplayExecutionRecord,
     ReplayPlanRecord,
@@ -266,6 +270,36 @@ def build_memory_promotion_replay_plan(*, memory_candidate_id: str, actor: str, 
     )
 
 
+def build_backend_execution_replay_plan(
+    *,
+    backend_execution_request_id: str,
+    actor: str,
+    lane: str,
+    root: Optional[Path] = None,
+) -> ReplayPlanRecord:
+    root_path = Path(root or ROOT).resolve()
+    request = load_backend_execution_request(backend_execution_request_id, root=root_path)
+    return save_replay_plan(
+        ReplayPlanRecord(
+            replay_plan_id=new_id("rpl"),
+            replay_kind="backend_execution",
+            source_record_type="backend_execution_request",
+            source_record_id=backend_execution_request_id,
+            task_id=request.task_id if request else None,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=actor,
+            lane=lane,
+            mode="plan_only",
+            replay_allowed=request is not None,
+            reason="" if request is not None else "missing_source",
+            replay_input=request.to_dict() if request is not None else {},
+            source_refs={"execution_backend": request.execution_backend if request else None},
+        ),
+        root=root_path,
+    )
+
+
 def execute_replay_plan(*, replay_plan_id: str, actor: str, lane: str, root: Optional[Path] = None) -> dict:
     root_path = Path(root or ROOT).resolve()
     plan = next((row for row in list_replay_plans(root=root_path) if row.replay_plan_id == replay_plan_id), None)
@@ -404,6 +438,55 @@ def execute_replay_plan(*, replay_plan_id: str, actor: str, lane: str, root: Opt
                 if blocked:
                     result_kind = ReplayResultKind.BLOCKED_BY_CONTROL.value
                     reason = message
+                else:
+                    result_kind = ReplayResultKind.DRIFT.value
+    elif plan.replay_kind == "backend_execution":
+        request = load_backend_execution_request(plan.source_record_id, root=root_path)
+        if request is None:
+            result_kind = ReplayResultKind.MISSING_SOURCE.value
+            reason = "missing_source"
+        else:
+            blocked, message, _ = control_blocks_action(
+                action="task_progress",
+                root=root_path,
+                task_id=request.task_id,
+                subsystem=request.execution_backend,
+                provider_id=request.provider_id,
+                actor=actor,
+                lane=lane,
+            )
+            if blocked:
+                result_kind = ReplayResultKind.BLOCKED_BY_CONTROL.value
+                reason = message
+            else:
+                matching_results = [
+                    row
+                    for row in list_backend_execution_results(root=root_path)
+                    if row.task_id == request.task_id
+                    and row.request_kind == request.request_kind
+                    and row.execution_backend == request.execution_backend
+                ]
+                latest_result = matching_results[0] if matching_results else None
+                expected_snapshot = {
+                    "provider_id": request.provider_id,
+                    "model_name": request.model_name,
+                    "execution_backend": request.execution_backend,
+                    "request_kind": request.request_kind,
+                    "status": latest_result.status if latest_result else None,
+                }
+                task = load_task(request.task_id, root=root_path)
+                observed_snapshot = {
+                    "provider_id": (((task.backend_metadata if task else {}) or {}).get("routing") or {}).get("provider_id"),
+                    "model_name": task.assigned_model if task else None,
+                    "execution_backend": task.execution_backend if task else None,
+                    "request_kind": request.request_kind,
+                    "status": latest_result.status if latest_result else None,
+                }
+                if latest_result is None:
+                    result_kind = ReplayResultKind.DRIFT.value
+                    reason = "No matching backend execution result currently exists."
+                elif expected_snapshot == observed_snapshot:
+                    result_kind = ReplayResultKind.MATCH.value
                 else:
                     result_kind = ReplayResultKind.DRIFT.value
     else:

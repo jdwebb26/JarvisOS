@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.artifact_store import write_text_artifact
+from runtime.core.execution_contracts import record_backend_execution_request, record_backend_execution_result
 from runtime.core.models import TaskStatus
 from runtime.core.task_store import add_checkpoint, load_task, save_task, transition_task
 
@@ -219,6 +220,108 @@ def register_live_apply_artifact(
         lane=lane,
         root=ROOT,
     )
+
+
+def record_qwen_live_apply_execution(
+    *,
+    task_id: str | None,
+    target_file: str,
+    candidate_file: str,
+    smoke_cmd: str,
+    dry_run: bool,
+    ready: bool,
+    live_apply_ok: bool,
+    live_apply_result: dict,
+    linked_live_apply_artifact: dict | None,
+    artifact_path: str,
+    root: Path = ROOT,
+) -> dict | None:
+    if not task_id:
+        return None
+    task = load_task(task_id, root=root)
+    if task is None:
+        return None
+
+    routing_meta = (task.backend_metadata or {}).get("routing") or {}
+    request = record_backend_execution_request(
+        task_id=task_id,
+        actor="qwen_candidate_applier",
+        lane="apply",
+        request_kind="qwen_live_apply",
+        execution_backend=task.execution_backend or "qwen_executor",
+        provider_id=str(routing_meta.get("provider_id") or "qwen"),
+        model_name=task.assigned_model or "Qwen3.5-35B",
+        routing_decision_id=routing_meta.get("routing_decision_id"),
+        provider_adapter_result_id=routing_meta.get("provider_adapter_result_id"),
+        input_summary=f"Apply candidate for {Path(target_file).name if target_file else task_id}",
+        input_refs={
+            "target_file": target_file,
+            "candidate_file": candidate_file,
+            "smoke_cmd": smoke_cmd,
+            "dry_run": dry_run,
+        },
+        source_refs={"task_source_message_id": task.source_message_id},
+        status="pending" if ready else "blocked",
+        root=root,
+    )
+
+    if not ready:
+        result_status = "blocked"
+    elif dry_run and live_apply_ok:
+        result_status = "dry_run"
+    elif live_apply_result.get("rolled_back"):
+        result_status = "rolled_back"
+    elif live_apply_ok and live_apply_result.get("applied"):
+        result_status = "completed"
+    else:
+        result_status = "failed"
+
+    result = record_backend_execution_result(
+        backend_execution_request_id=request.backend_execution_request_id,
+        task_id=task_id,
+        actor="qwen_candidate_applier",
+        lane="apply",
+        request_kind="qwen_live_apply",
+        execution_backend=task.execution_backend or "qwen_executor",
+        provider_id=str(routing_meta.get("provider_id") or "qwen"),
+        model_name=task.assigned_model or "Qwen3.5-35B",
+        status=result_status,
+        candidate_artifact_id=str((linked_live_apply_artifact or {}).get("artifact_id") or "") or None,
+        outcome_summary=(
+            "live apply blocked"
+            if not ready
+            else "live apply dry run passed"
+            if dry_run and live_apply_ok
+            else "live apply completed"
+            if live_apply_ok and live_apply_result.get("applied") and not live_apply_result.get("rolled_back")
+            else "live apply rolled back"
+            if live_apply_result.get("rolled_back")
+            else "live apply failed"
+        ),
+        error=str(live_apply_result.get("error") or ""),
+        source_refs={
+            "artifact_path": artifact_path,
+            "live_apply_artifact": str(live_apply_result.get("artifact") or ""),
+        },
+        metadata={
+            "target_file": target_file,
+            "candidate_file": candidate_file,
+            "smoke_cmd": smoke_cmd,
+            "dry_run": dry_run,
+            "ready": ready,
+            "applied": bool(live_apply_result.get("applied")),
+            "rolled_back": bool(live_apply_result.get("rolled_back")),
+        },
+        root=root,
+    )
+    task.backend_metadata.setdefault("execution_contracts", {})
+    task.backend_metadata["execution_contracts"]["latest_backend_execution_request_id"] = request.backend_execution_request_id
+    task.backend_metadata["execution_contracts"]["latest_backend_execution_result_id"] = result.backend_execution_result_id
+    save_task(task, root=root)
+    return {
+        "backend_execution_request_id": request.backend_execution_request_id,
+        "backend_execution_result_id": result.backend_execution_result_id,
+    }
 
 
 def main() -> int:
@@ -469,6 +572,19 @@ def main() -> int:
         "next_action": next_action,
         "artifact": str(artifact),
     }
+    execution_contract = record_qwen_live_apply_execution(
+        task_id=task_id if isinstance(task_id, str) else None,
+        target_file=target_path_str,
+        candidate_file=candidate_path_str,
+        smoke_cmd=smoke_cmd,
+        dry_run=bool(args.dry_run),
+        ready=ready,
+        live_apply_ok=live_apply_ok,
+        live_apply_result=live_apply_result,
+        linked_live_apply_artifact=linked_artifact if "linked_artifact" in locals() else None,
+        artifact_path=str(artifact),
+    )
+    payload["execution_contract"] = execution_contract
 
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
