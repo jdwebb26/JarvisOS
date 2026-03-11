@@ -19,8 +19,8 @@
 - [ ] Implement global kill switch
 - [ ] Implement per-subsystem circuit breakers
 - [ ] Implement budget hard-stop auto-pause
-- [ ] Add TokenBudget record
-- [ ] Add DegradationPolicy record
+- [x] Add TokenBudget record
+- [x] Add DegradationPolicy record
 - [ ] Check controls before every task step and autonomy cycle
 
 ## Dependency blocking and reversibility
@@ -63,8 +63,8 @@
 - [ ] Add memory matrix policy
 
 ## Eval and trace
-- [ ] Implement EvalProfile
-- [ ] Implement EvalOutcome
+- [x] Implement EvalProfile
+- [x] Implement EvalOutcome
 - [ ] Separate veto checks from quality metrics
 - [ ] Implement RunTrace
 - [ ] Align field naming with OTel GenAI where practical
