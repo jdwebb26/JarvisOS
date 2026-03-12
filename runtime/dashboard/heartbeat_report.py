@@ -10,9 +10,12 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime.core.heartbeat_reports import build_heartbeat_report_summary, save_heartbeat_report
+from runtime.core.heartbeat_reports import build_heartbeat_report_summary, save_heartbeat_report, write_node_heartbeat
+from runtime.core.node_registry import ensure_default_nodes, get_node_capabilities
 from runtime.core.models import HeartbeatReportRecord, HeartbeatStatus, new_id, now_iso
 from runtime.core.status import summarize_status
+from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
+from runtime.evals.replay_runner import build_eval_run_summary
 
 
 def _folder_counts(path: Path) -> dict:
@@ -156,7 +159,10 @@ def _subsystem_heartbeat_rows(root: Path, status: dict, degraded_signals: list[s
 def build_heartbeat_report(root: Path) -> dict:
     logs_dir = root / "state" / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
+    ensure_default_nodes(root=root)
     status = summarize_status(root)
+    runtime_5_2_prep = build_runtime_5_2_prep_summary(root=root)
+    eval_scaffolding_summary = build_eval_run_summary(root=root)
 
     subsystems = {
         "tasks": _folder_counts(root / "state" / "tasks"),
@@ -167,6 +173,9 @@ def build_heartbeat_report(root: Path) -> dict:
         "artifacts": _folder_counts(root / "state" / "artifacts"),
         "outputs": _folder_counts(root / "workspace" / "out"),
         "logs": _folder_counts(logs_dir),
+        "backend_health": _folder_counts(root / "state" / "backend_health"),
+        "accelerators": _folder_counts(root / "state" / "accelerators"),
+        "eval_runs": _folder_counts(root / "state" / "eval_runs"),
     }
 
     degraded_signals: list[str] = []
@@ -191,7 +200,25 @@ def build_heartbeat_report(root: Path) -> dict:
     subsystem_heartbeats = _subsystem_heartbeat_rows(root, status, degraded_signals)
     for row in subsystem_heartbeats:
         save_heartbeat_report(row, root=root)
+    write_node_heartbeat(
+        node_name="NIMO",
+        status=HeartbeatStatus.DEGRADED.value if degraded_signals else HeartbeatStatus.HEALTHY.value,
+        actor="system",
+        lane="heartbeat_report",
+        current_task_count=status.get("counts", {}).get("running", 0) + status.get("counts", {}).get("blocked", 0),
+        backend_summary=["qwen_planner", "qwen_executor", "operator"],
+        model_family_summary=["qwen"],
+        capability_summary={
+            "backend_health_snapshot_count": runtime_5_2_prep["backend_health_summary"]["snapshot_count"],
+            "accelerator_summary_count": runtime_5_2_prep["accelerator_summary"]["summary_count"],
+        },
+        metadata={"scaffolding_only": True, "seed_source": "build_heartbeat_report"},
+        root=root,
+    )
     heartbeat_summary = build_heartbeat_report_summary(root=root)
+    node_health_summary = heartbeat_summary.get("node_health_summary", {})
+    primary_node = (node_health_summary.get("latest_primary_node") or {}).get("node_name") or "NIMO"
+    primary_capabilities = get_node_capabilities(primary_node, root=root)
 
     heartbeat = {
         "schema_version": "v5.1",
@@ -202,9 +229,19 @@ def build_heartbeat_report(root: Path) -> dict:
         "degraded_signals": degraded_signals,
         "status_counts": status.get("counts", {}),
         "control_state": status.get("control_state", {}),
+        "active_nodes_summary": runtime_5_2_prep["active_nodes_summary"],
+        "backend_health_summary": runtime_5_2_prep["backend_health_summary"],
+        "accelerator_summary": runtime_5_2_prep["accelerator_summary"],
+        "degraded_state_summary": runtime_5_2_prep["degraded_state_summary"],
+        "reroute_summary": runtime_5_2_prep["reroute_summary"],
+        "eval_scaffolding_summary": eval_scaffolding_summary,
         "subsystems": subsystems,
         "subsystem_heartbeats": [row.to_dict() for row in subsystem_heartbeats],
         "heartbeat_summary": heartbeat_summary,
+        "node_registry_summary": heartbeat_summary.get("node_registry_summary", {}),
+        "node_health_summary": node_health_summary,
+        "online_nodes": node_health_summary.get("online_nodes", []),
+        "primary_node_capabilities": primary_capabilities,
         "work_summary": {
             "running": status.get("running_now", []),
             "blocked": status.get("blocked", []),

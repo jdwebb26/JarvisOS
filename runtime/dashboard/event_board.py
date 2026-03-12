@@ -58,6 +58,19 @@ def build_event_board(root: Path, limit: int = 50) -> dict:
                 "artifact_title": _pick(record, "artifact_title") or _pick(record, "title"),
                 "execution_backend": _pick(record, "execution_backend"),
                 "backend_run_id": _pick(record, "backend_run_id"),
+                "producer_metadata": {
+                    "actor": record.get("actor"),
+                    "lane": record.get("lane"),
+                    "execution_backend": _pick(record, "execution_backend"),
+                },
+                "evidence_metadata": {
+                    "artifact_id": _pick(record, "artifact_id"),
+                    "backend_run_id": _pick(record, "backend_run_id"),
+                },
+                "provenance_metadata": {
+                    "from_status": normalize_status_name(_pick(record, "from_status")),
+                    "to_status": normalize_status_name(_pick(record, "to_status")),
+                },
                 "already_linked": _pick(record, "already_linked"),
             }
         )

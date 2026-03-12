@@ -36,6 +36,22 @@ def build_output_board(*, root: Path, limit: int = 50) -> dict:
                 "published_by": record.get("published_by"),
                 "lane": record.get("lane"),
                 "status": record.get("status"),
+                "producer_kind": record.get("producer_kind"),
+                "execution_backend": record.get("execution_backend"),
+                "provenance_ref": record.get("provenance_ref"),
+                "producer_metadata": {
+                    "producer_kind": record.get("producer_kind"),
+                    "execution_backend": record.get("execution_backend"),
+                    "published_by": record.get("published_by"),
+                },
+                "evidence_metadata": {
+                    "impacted_by_artifact_count": len(record.get("impacted_by_artifact_ids", [])),
+                    "superseded": bool(record.get("superseded_by_artifact_id")),
+                },
+                "provenance_metadata": {
+                    "artifact_id": record.get("artifact_id"),
+                    "provenance_ref": record.get("provenance_ref"),
+                },
                 "superseded_by_artifact_id": record.get("superseded_by_artifact_id"),
                 "impacted_by_artifact_ids": record.get("impacted_by_artifact_ids", []),
                 "revocation_reason": record.get("revocation_reason", ""),

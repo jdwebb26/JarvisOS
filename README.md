@@ -1,161 +1,151 @@
-# Jarvis / OpenClaw v5.1
+## Jarvis OS v5.1 status
 
-Jarvis/OpenClaw v5.1 is a durable task, artifact, review, approval, provenance, replay, and control spine for Jarvis OS.
-It is designed so the architecture stays provider-agnostic while the current live deployment remains Qwen-first.
+Jarvis OS v5.1 required bounded runtime scope is complete in the live repo.
 
-## What this repo is
+This repo now includes the final bounded v5.1 runtime closures that were previously identified as concrete master-spec gaps:
 
-This repo is the live JarvisOS v5.1 codebase.
+- Hermes adapter hardening
+- autoresearch adapter hardening
+- autoresearch standard run output materialization
+- bounded browser operator interrupt/cancel support
 
-It contains:
+The current repo state should be understood as:
 
-- the core runtime and durable record models
-- routing, candidate promotion, rollback, approval, replay, and memory governance
-- bounded subsystem adapters such as Hermes, autoresearch, and Ralph
-- operator-facing status, export, handoff, and validation scripts
+- **v5.1 required bounded runtime closure: complete**
+- **documentation/tracker alignment: still being cleaned up**
+- **future work after freeze: optional hardening, broader smoke coverage, and post-v5.1 features**
 
-It is not a fresh rebuild or a sidecar demo repo. It is the working in-place v5.1 system.
+## What was closed in the final v5.1 passes
 
-## Source vs runtime state
+### 1. Hermes and autoresearch adapter contract hardening
 
-The repo keeps source and live runtime artifacts separate on purpose.
+The Hermes and autoresearch integration seams now fail closed instead of loosely accepting underspecified requests or malformed result payloads.
 
-- Source code lives under `runtime/`, `scripts/`, `config/`, and `tests/`.
-- Managed runtime state lives under `state/`.
-- Operator/demo outputs live under `workspace/out/`.
-- Scratch work products live under `workspace/work/`.
+Hermes now enforces:
 
-If you see stateful artifacts at repo root, treat them as legacy residue unless they are clearly documented source files.
+- objective required
+- valid timeout required
+- bounded sandbox class required
+- explicit allowed tools required
+- Qwen-only model policy required
+- callback contract consistency required
+- stricter response validation for:
+  - model_name
+  - status
+  - citations
+  - proposed_next_actions
+  - token_usage
 
-## Current status
+Autoresearch now enforces:
 
-The repo is currently green for the intended Qwen-default deployment target.
+- objective required
+- objective metrics required
+- primary metric must be valid
+- baseline_ref required
+- benchmark_slice_ref required
+- bounded sandbox class required
+- sandbox_root required
+- target_module required
+- program_md_path required
+- eval_command required
+- task metadata required
+- stricter result validation for:
+  - hypothesis
+  - metrics maps
+  - token usage
+  - recommendation shape
+  - allowed success statuses
 
-The validated baseline includes:
+Both adapter paths now persist durable failure categorization and surface those categories through the existing status/read-model spine.
 
-- bootstrap
-- validate
-- smoke test
-- doctor
-- the runtime regression pack
-- the full pytest suite
+### 2. Standard autoresearch run outputs
 
-The runtime architecture is provider-agnostic, but the active deployment policy and tested default path remain Qwen/qwen-agent first.
+The bounded autoresearch run path now materializes the standard run outputs required by the v5.1 master spec.
 
-## How to demo locally
+Per lab run, the repo now writes:
 
-For a clean local demo path, run:
+- `run_config.json`
+- `baseline_metrics.json`
+- `candidate_metrics.json`
+- `delta_metrics.json`
+- `candidate.patch`
+- `experiment_log.md`
+- `recommendation.json`
 
-```bash
-python3 scripts/bootstrap.py
-python3 scripts/validate.py
-python3 scripts/smoke_test.py
-python3 scripts/doctor.py
-```
+These are written under the bounded research workspace using the pattern:
 
-If those are green, inspect:
+`<repo_root>/<sandbox_root>/<run_id>/standard_run_outputs/`
 
-- `state/logs/operator_snapshot.json`
-- `state/logs/state_export.json`
-- `state/logs/operator_handoff_pack.json`
+The durable `LabRunResultRecord` continues to hold the canonical structured result fields, while the standard output directory provides the required materialized run artifacts.
 
-Then walk the next `ready_to_ship` or `shipped` task through the normal review/apply/publish flow.
+### 3. Browser operator interrupt/cancel
 
-## Active deployment policy
+The bounded browser path now supports operator cancellation for pending or accepted browser actions.
 
-The current deployment policy is intentionally Qwen-default.
+Added browser behavior:
 
-That means:
+- cancellable browser request/result state
+- durable cancel metadata:
+  - `cancelled_at`
+  - `cancelled_by`
+  - `cancel_reason`
+- gateway cancel path
+- browser cancellation task event emission
+- reporting/read-model visibility for cancelled browser requests/results
+- guard that prevents cancelled browser requests from executing later
 
-- Qwen/qwen-agent remains the preferred and validated runtime path
-- provider/model/backend identity is still carried through durable routing and execution records
-- future provider swaps should be policy/config changes, not core-spine rewrites
-- no non-Qwen provider rollout is implied by this repo state
+Supported transitions now include:
 
-## Core rules
+- `pending_review -> cancelled`
+- `accepted -> cancelled`
 
-1. Conversation is not execution.
-2. Ordinary chat in `#jarvis` must not silently enqueue work.
-3. Jarvis stays conversational and useful in `#jarvis`.
-4. Explicit task creation remains supported.
-5. Task state must be durable and visible.
-6. Flowstate promotion is gated by approval.
-7. Code and risky work require review.
-8. Deployment is validation-first.
-9. No silent switching away from the Qwen 3.5 family.
+A cancelled browser request cannot later be completed into execution.
 
-## Accepted explicit task trigger
+## Validation baseline actually proven in the live repo
 
-Initial supported task trigger in `#jarvis`:
+The validated baseline currently proven in the live repo is:
 
-- `task: ...`
+- `python3 scripts/validate.py`
+- `python3 runtime/core/run_runtime_regression_pack.py`
+- `python3 tests/test_hermes_adapter.py`
+- `python3 tests/test_autoresearch_adapter.py`
+- `python3 tests/test_browser_gateway.py`
 
-## Operational spine
+Do not describe the current validated baseline as "the full pytest suite" unless that full suite has been explicitly rerun and confirmed.
 
-Discord ingest -> events.db -> enrich_worker -> router -> outputs/tasks -> executor -> dashboard
+## Source of truth
 
-v5 preserves and hardens this spine rather than replacing it.
+For v5.1 completion state, use this precedence:
 
-## Main lanes
+1. `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`
+2. live runtime code
+3. focused validation/tests that prove the implemented behavior
+4. tracker/checklist files
 
-- `#jarvis` — chat, planning, orchestration, status, explicit task creation only
-- `#tasks` — durable task lifecycle visibility
-- `#outputs` — approved final artifacts
-- `#review` — concise approval decisions
-- `#audit` — risky / high-stakes review summaries
-- `#code-review` — code-review output
-- `#flowstate` — ingest / distill / propose lane
+The rebuild checklist is a historical implementation tracker and may lag the actual repo state.
 
-## Review policy
+## Freeze posture
 
-- **Archimedes** reviews code and production-facing implementation changes
-- **Anton** reviews risky, deploy/ship, trading/quant, and other high-stakes work
+At this freeze point, no additional required bounded runtime pass is known to remain for v5.1.
 
-## Flowstate policy
+Remaining work is in the category of:
 
-Flowstate outputs do not automatically become tasks, memory, or global assumptions.
-Promotion requires explicit approval.
+- documentation alignment
+- tracker cleanup
+- optional broader validation
+- future features beyond required bounded v5.1 closure
 
-## Implementation order
+## Runtime posture: live vs 5.2 target
 
-1. Contracts and docs
-2. Bootstrap / validate / doctor
-3. Minimum durable runtime
-4. Review and approval system
-5. Flowstate lane
-6. Qwen-native specialization
-7. Dashboard / operator visibility
-8. Migration / packaging / hardening
-9. Only then expand autonomy loops
+Current live runtime posture:
+- Qwen-default / Qwen-first
+- bounded provider-agnostic architecture
+- explicit `task:` execution boundary
+- no silent widening of execution authority
 
-## Current status
+5.2 target posture:
+- multi-model, policy-routed runtime
+- richer backend health and accelerator visibility
+- replay/scoring scaffolding expanded into deeper routing evaluation
 
-The repo now has a proven runtime regression pack in `runtime/core/` covering intake, review/approval routing, `ready_to_ship`, ship, publish-complete, and output creation.
-
-Rerun command:
-
-```bash
-python3 runtime/core/run_runtime_regression_pack.py
-```
-
-Current green meaning: `ok: true`, `total: 5`, `passed: 5`, `failed: 0`.
-
-Deployment/operator baseline:
-
-```bash
-python3 scripts/bootstrap.py
-python3 scripts/validate.py
-python3 scripts/smoke_test.py
-python3 scripts/doctor.py
-```
-
-What these cover:
-
-- `bootstrap.py` creates the managed state/workspace folders and copies missing live config skeletons from the example files.
-- `validate.py` checks repo shape, current config presence, active Qwen-only policy hints, writable operator paths, and key imports.
-- `smoke_test.py` runs the repo-local preflight, the proven runtime regression pack, and rebuilds the operator/dashboard summary artifacts.
-- `doctor.py` rolls the baseline into one operator-facing verdict with next actions.
-
-After a green baseline, the practical next operator move is to inspect `state/logs/operator_snapshot.json` and push the next `ready_to_ship` or `shipped` task through apply/publish-complete. See [docs/runtime-regression-runbook.md](docs/runtime-regression-runbook.md), [docs/deployment.md](docs/deployment.md), and [docs/operations.md](docs/operations.md).
-
-For the fastest first-live-use path, use [docs/operator-first-run.md](docs/operator-first-run.md).
+This repo does not claim that the 5.2 target posture is already implemented. Current 5.2 work in this branch is scaffolding only unless a later routing-core ticket says otherwise.

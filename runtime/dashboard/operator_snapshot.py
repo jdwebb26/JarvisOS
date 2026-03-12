@@ -12,7 +12,16 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.status import summarize_status
+from runtime.dashboard.renderers.a2ui_renderer import render_operator_views
 from runtime.dashboard.status_names import normalize_status_summary
+from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
+from runtime.core.task_lease import build_task_lease_summary
+from runtime.integrations.research_backends import build_research_backend_summary
+from runtime.memory.vault_export import build_vault_export_summary
+from runtime.researchlab.experiment_store import build_experiment_summary
+from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
+from runtime.skills.skill_scheduler import build_skill_scheduler_summary
+from runtime.evals.replay_runner import build_eval_run_summary
 
 
 def _load_json_files(folder: Path) -> list[dict]:
@@ -39,6 +48,10 @@ def _load_flowstate_index(root: Path) -> dict:
 
 def build_operator_snapshot(root: Path) -> dict:
     status = normalize_status_summary(summarize_status(root=root))
+    runtime_5_2_prep = build_runtime_5_2_prep_summary(root=root)
+    eval_scaffolding_summary = build_eval_run_summary(root=root)
+    task_lease_summary = build_task_lease_summary(root=root)
+    skill_scheduler_summary = build_skill_scheduler_summary(root=root)
     reviews = _load_json_files(root / "state" / "reviews")
     approvals = _load_json_files(root / "state" / "approvals")
     flowstate_index = _load_flowstate_index(root)
@@ -152,6 +165,8 @@ def build_operator_snapshot(root: Path) -> dict:
         "token_budget_summary": status.get("token_budget_summary", {}),
         "degradation_summary": status.get("degradation_summary", {}),
         "heartbeat_summary": status.get("heartbeat_summary", {}),
+        "node_registry_summary": (status.get("heartbeat_summary", {}) or {}).get("node_registry_summary", {}),
+        "node_health_summary": (status.get("heartbeat_summary", {}) or {}).get("node_health_summary", {}),
         "hermes_summary": status.get("hermes_summary", {}),
         "autoresearch_summary": status.get("autoresearch_summary", {}),
         "eval_outcome_summary": status.get("eval_outcome_summary", {}),
@@ -159,6 +174,12 @@ def build_operator_snapshot(root: Path) -> dict:
         "browser_control_allowlist_summary": status.get("browser_control_allowlist_summary", {}),
         "browser_action_summary": status.get("browser_action_summary", {}),
         "voice_session_summary": status.get("voice_session_summary", {}),
+        "task_lease_summary": task_lease_summary,
+        "skill_scheduler_summary": skill_scheduler_summary,
+        "research_backend_summary": build_research_backend_summary(root=root),
+        "evidence_bundle_summary": build_evidence_bundle_summary(root=root),
+        "vault_summary": build_vault_export_summary(root=root),
+        "experiment_summary": build_experiment_summary(root=root),
         "task_envelope_summary": status.get("task_envelope_summary", {}),
         "candidate_promotion_summary": status.get("candidate_promotion_summary", {}),
         "provenance_summary": status.get("provenance_summary", {}),
@@ -172,6 +193,12 @@ def build_operator_snapshot(root: Path) -> dict:
         "trajectory_summary": status.get("trajectory_summary", {}),
         "operator_profile_summary": status.get("operator_profile_summary", {}),
         "policy_surface_summary": status.get("policy_surface_summary", {}),
+        "active_nodes_summary": runtime_5_2_prep["active_nodes_summary"],
+        "backend_health_summary": runtime_5_2_prep["backend_health_summary"],
+        "accelerator_summary": runtime_5_2_prep["accelerator_summary"],
+        "degraded_state_summary": runtime_5_2_prep["degraded_state_summary"],
+        "reroute_summary": runtime_5_2_prep["reroute_summary"],
+        "eval_scaffolding_summary": eval_scaffolding_summary,
         "latest_reply_ingress": (status.get("operator_control_plane", {}) or {}).get("latest_reply_ingress"),
         "latest_reply_ingress_run": (status.get("operator_control_plane", {}) or {}).get("latest_reply_ingress_run"),
         "latest_reply_transport_cycle": (status.get("operator_control_plane", {}) or {}).get("latest_reply_transport_cycle"),
@@ -245,8 +272,24 @@ def build_operator_snapshot(root: Path) -> dict:
             "operator_control_plane_checkpoints": status.get("counts", {}).get("operator_control_plane_checkpoints", 0),
             "operator_incident_reports": status.get("counts", {}).get("operator_incident_reports", 0),
             "operator_incident_snapshots": status.get("counts", {}).get("operator_incident_snapshots", 0),
+            "backend_health": runtime_5_2_prep["backend_health_summary"]["snapshot_count"],
+            "accelerators": runtime_5_2_prep["accelerator_summary"]["summary_count"],
+            "eval_runs": eval_scaffolding_summary["eval_run_count"],
+            "registered_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_registry_summary", {}) or {}).get("registered_node_count", 0),
+            "online_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_health_summary", {}) or {}).get("online_node_count", 0),
+            "burst_online_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_health_summary", {}) or {}).get("burst_online_count", 0),
+            "task_leases": task_lease_summary.get("task_lease_count", 0),
+            "active_task_leases": task_lease_summary.get("active_task_lease_count", 0),
+            "expired_task_leases": task_lease_summary.get("expired_task_lease_count", 0),
+            "approved_skills": skill_scheduler_summary.get("registry_summary", {}).get("approved_skill_count", 0),
+            "skill_candidates": skill_scheduler_summary.get("registry_summary", {}).get("skill_candidate_summary", {}).get("skill_candidate_count", 0),
         },
     }
+    snapshot["ui_view_summary"] = render_operator_views(
+        root=root,
+        source_name="operator_snapshot",
+        source_payload=snapshot,
+    )
 
     out_path = root / "state" / "logs" / "operator_snapshot.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -88,6 +88,27 @@ def _load_rows(folder: Path, model) -> list:
     return rows
 
 
+def attach_evidence_bundle_refs(payload: dict, evidence_bundle_refs: list[str] | None) -> dict:
+    row = dict(payload or {})
+    refs = [str(ref).strip() for ref in list(evidence_bundle_refs or []) if str(ref).strip()]
+    if not refs:
+        return row
+    existing = [str(ref).strip() for ref in list(row.get("evidence_bundle_refs") or []) if str(ref).strip()]
+    row["evidence_bundle_refs"] = sorted(set([*existing, *refs]))
+    return row
+
+
+def summarize_evidence_bundle_refs(rows: list[dict]) -> dict:
+    refs: list[str] = []
+    for row in rows:
+        refs.extend(str(ref).strip() for ref in list((row or {}).get("evidence_bundle_refs") or []) if str(ref).strip())
+    unique_refs = sorted(set(refs))
+    return {
+        "evidence_bundle_ref_count": len(unique_refs),
+        "evidence_bundle_refs": unique_refs,
+    }
+
+
 def save_task_provenance(record: TaskProvenanceRecord, *, root: Optional[Path] = None) -> TaskProvenanceRecord:
     return _save_record(task_provenance_dir(root), record, record.task_provenance_id)
 

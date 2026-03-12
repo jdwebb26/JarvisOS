@@ -200,6 +200,99 @@ class AutonomyMode(StrEnum):
     SUPERVISED_BATCH = "supervised_batch"
 
 
+class ModelFamily(StrEnum):
+    UNASSIGNED = "unassigned"
+    QWEN = "qwen"
+    KIMI = "kimi"
+    DEEPSEEK = "deepseek"
+    CLAUDE = "claude"
+    GPT = "gpt"
+    GEMINI = "gemini"
+    LOCAL = "local"
+    OTHER = "other"
+
+
+class ModelTier(StrEnum):
+    ROUTING = "routing"
+    GENERAL = "general"
+    HEAVY_REASONING = "heavy_reasoning"
+    CODER = "coder"
+    FLOWSTATE = "flowstate"
+    MULTIMODAL = "multimodal"
+
+
+class BackendRuntime(StrEnum):
+    UNASSIGNED = "unassigned"
+    QWEN_EXECUTOR = "qwen_executor"
+    QWEN_PLANNER = "qwen_planner"
+    HERMES_ADAPTER = "hermes_adapter"
+    AUTORESEARCH_ADAPTER = "autoresearch_adapter"
+    RALPH_ADAPTER = "ralph_adapter"
+    MEMORY_SPINE = "memory_spine"
+    BROWSER_BACKEND = "browser_backend"
+    VOICE_GATEWAY = "voice_gateway"
+    EVALUATION_SPINE = "evaluation_spine"
+    OPERATOR = "operator"
+
+
+class NodeRole(StrEnum):
+    PRIMARY = "primary"
+    BURST = "burst"
+    RESEARCH = "research"
+    EVAL = "eval"
+    OPERATOR = "operator"
+    STANDBY = "standby"
+
+
+class NodeStatus(StrEnum):
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    DRAINING = "draining"
+    STOPPED = "stopped"
+    UNREACHABLE = "unreachable"
+
+
+class TaskClass(StrEnum):
+    GENERAL = "general"
+    CODE = "code"
+    DEPLOY = "deploy"
+    RESEARCH = "research"
+    REVIEW = "review"
+    APPROVAL = "approval"
+    FLOWSTATE = "flowstate"
+    OUTPUT = "output"
+    MULTIMODAL = "multimodal"
+
+
+class AuthorityClass(StrEnum):
+    OBSERVE_ONLY = "observe_only"
+    SUGGEST_ONLY = "suggest_only"
+    REVIEW_REQUIRED = "review_required"
+    APPROVAL_REQUIRED = "approval_required"
+    EXECUTE_BOUNDED = "execute_bounded"
+
+
+class RoutingReason(StrEnum):
+    POLICY_DEFAULT = "policy_default"
+    LANE_OVERRIDE = "lane_override"
+    MANUAL_OVERRIDE = "manual_override"
+    CAPABILITY_MATCH = "capability_match"
+    COST_CLASS_MATCH = "cost_class_match"
+    LATENCY_CLASS_MATCH = "latency_class_match"
+    HEALTH_DEGRADED = "health_degraded"
+    NODE_UNAVAILABLE = "node_unavailable"
+    LOCAL_ONLY_POSTURE = "local_only_posture"
+
+
+class DegradationMode(StrEnum):
+    NONE = "none"
+    HOLD = "hold"
+    LOCAL_ONLY = "local_only"
+    REVIEW_ONLY = "review_only"
+    READ_ONLY = "read_only"
+    STOPPED = "stopped"
+
+
 def _serialize_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
@@ -1947,6 +2040,294 @@ class RoutingDecisionRecord:
         data.setdefault("candidate_model_names", [])
         data.setdefault("policy_constraints", {})
         data.setdefault("status", "selected")
+        return cls(**data)
+
+
+@dataclass
+class ModelProfile:
+    model_profile_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    family: str = ModelFamily.UNASSIGNED.value
+    tier: str = ModelTier.GENERAL.value
+    provider_id: str = "local"
+    model_name: str = "unassigned"
+    execution_backend: str = BackendRuntime.UNASSIGNED.value
+    supports_tool_calling: bool = False
+    supports_vision: bool = False
+    supports_structured_output: bool = False
+    supports_reasoning_mode: bool = False
+    max_context: Optional[int] = None
+    local_vs_hosted: str = "local"
+    cost_class: str = "unknown"
+    active: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ModelProfile":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("family", ModelFamily.UNASSIGNED.value)
+        data.setdefault("tier", ModelTier.GENERAL.value)
+        data.setdefault("provider_id", "local")
+        data.setdefault("model_name", "unassigned")
+        data.setdefault("execution_backend", BackendRuntime.UNASSIGNED.value)
+        data.setdefault("supports_tool_calling", False)
+        data.setdefault("supports_vision", False)
+        data.setdefault("supports_structured_output", False)
+        data.setdefault("supports_reasoning_mode", False)
+        data.setdefault("max_context", None)
+        data.setdefault("local_vs_hosted", "local")
+        data.setdefault("cost_class", "unknown")
+        data.setdefault("active", True)
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class BackendProfile:
+    backend_profile_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    runtime: str = BackendRuntime.UNASSIGNED.value
+    provider_id: str = "local"
+    model_profile_id: Optional[str] = None
+    task_classes: list[str] = field(default_factory=list)
+    authority_class: str = AuthorityClass.SUGGEST_ONLY.value
+    supported_node_roles: list[str] = field(default_factory=list)
+    active: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "BackendProfile":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("runtime", BackendRuntime.UNASSIGNED.value)
+        data.setdefault("provider_id", "local")
+        data.setdefault("model_profile_id", None)
+        data.setdefault("task_classes", [])
+        data.setdefault("authority_class", AuthorityClass.SUGGEST_ONLY.value)
+        data.setdefault("supported_node_roles", [])
+        data.setdefault("active", True)
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class NodeProfile:
+    node_profile_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    node_name: str
+    node_role: str = NodeRole.PRIMARY.value
+    status: str = NodeStatus.HEALTHY.value
+    authority_class: str = AuthorityClass.SUGGEST_ONLY.value
+    available_backends: list[str] = field(default_factory=list)
+    accelerator_refs: list[str] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "NodeProfile":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("node_role", NodeRole.PRIMARY.value)
+        data.setdefault("status", NodeStatus.HEALTHY.value)
+        data.setdefault("authority_class", AuthorityClass.SUGGEST_ONLY.value)
+        data.setdefault("available_backends", [])
+        data.setdefault("accelerator_refs", [])
+        data.setdefault("labels", [])
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class RoutingDecision:
+    task_id: str
+    lane: str
+    task_class: str = TaskClass.GENERAL.value
+    authority_class: str = AuthorityClass.SUGGEST_ONLY.value
+    selected_family: str = ModelFamily.UNASSIGNED.value
+    selected_tier: str = ModelTier.GENERAL.value
+    selected_backend_runtime: str = BackendRuntime.UNASSIGNED.value
+    selected_node_role: str = NodeRole.PRIMARY.value
+    routing_reason: str = RoutingReason.POLICY_DEFAULT.value
+    candidate_backends: list[str] = field(default_factory=list)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RoutingDecision":
+        data = _extract_known_fields(cls, payload)
+        data.setdefault("task_class", TaskClass.GENERAL.value)
+        data.setdefault("authority_class", AuthorityClass.SUGGEST_ONLY.value)
+        data.setdefault("selected_family", ModelFamily.UNASSIGNED.value)
+        data.setdefault("selected_tier", ModelTier.GENERAL.value)
+        data.setdefault("selected_backend_runtime", BackendRuntime.UNASSIGNED.value)
+        data.setdefault("selected_node_role", NodeRole.PRIMARY.value)
+        data.setdefault("routing_reason", RoutingReason.POLICY_DEFAULT.value)
+        data.setdefault("candidate_backends", [])
+        data.setdefault("source_refs", {})
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class EvidenceBundleRef:
+    bundle_id: str
+    artifact_ids: list[str] = field(default_factory=list)
+    trace_ids: list[str] = field(default_factory=list)
+    eval_result_ids: list[str] = field(default_factory=list)
+    provenance_refs: dict[str, Any] = field(default_factory=dict)
+    evidence_kind: str = "general"
+    status: str = "available"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "EvidenceBundleRef":
+        data = _extract_known_fields(cls, payload)
+        data.setdefault("artifact_ids", [])
+        data.setdefault("trace_ids", [])
+        data.setdefault("eval_result_ids", [])
+        data.setdefault("provenance_refs", {})
+        data.setdefault("evidence_kind", "general")
+        data.setdefault("status", "available")
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class TaskLeaseRecord:
+    task_lease_id: str
+    task_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    holder_node_id: str
+    holder_backend_runtime: str = BackendRuntime.UNASSIGNED.value
+    authority_class: str = AuthorityClass.SUGGEST_ONLY.value
+    lease_status: str = "active"
+    lease_expires_at: Optional[str] = None
+    routing_reason: str = RoutingReason.POLICY_DEFAULT.value
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "TaskLeaseRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("holder_backend_runtime", BackendRuntime.UNASSIGNED.value)
+        data.setdefault("authority_class", AuthorityClass.SUGGEST_ONLY.value)
+        data.setdefault("lease_status", "active")
+        data.setdefault("lease_expires_at", None)
+        data.setdefault("routing_reason", RoutingReason.POLICY_DEFAULT.value)
+        data.setdefault("source_refs", {})
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class ApprovedSkillRecord:
+    skill_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    skill_name: str
+    description: str = ""
+    status: str = "approved"
+    task_classes: list[str] = field(default_factory=list)
+    allowed_backends: list[str] = field(default_factory=list)
+    required_eval_profiles: list[str] = field(default_factory=list)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ApprovedSkillRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("description", "")
+        data.setdefault("status", "approved")
+        data.setdefault("task_classes", [])
+        data.setdefault("allowed_backends", [])
+        data.setdefault("required_eval_profiles", [])
+        data.setdefault("source_refs", {})
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class SkillCandidateRecord:
+    skill_candidate_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    skill_name: str
+    description: str = ""
+    status: str = "candidate"
+    source_task_id: Optional[str] = None
+    source_trace_id: Optional[str] = None
+    source_eval_result_id: Optional[str] = None
+    failure_fingerprint: str = ""
+    task_classes: list[str] = field(default_factory=list)
+    review_status: str = "pending"
+    eval_status: str = "pending"
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "SkillCandidateRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("description", "")
+        data.setdefault("status", "candidate")
+        data.setdefault("source_task_id", None)
+        data.setdefault("source_trace_id", None)
+        data.setdefault("source_eval_result_id", None)
+        data.setdefault("failure_fingerprint", "")
+        data.setdefault("task_classes", [])
+        data.setdefault("review_status", "pending")
+        data.setdefault("eval_status", "pending")
+        data.setdefault("source_refs", {})
+        data.setdefault("metadata", {})
         return cls(**data)
 
 

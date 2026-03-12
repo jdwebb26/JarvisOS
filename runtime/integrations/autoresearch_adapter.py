@@ -42,10 +42,12 @@ from runtime.core.models import (
     new_id,
     now_iso,
 )
+from runtime.core.provenance_store import attach_evidence_bundle_refs
 from runtime.core.review_store import latest_review_for_task, request_review, save_review
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_store import load_task, save_task, transition_task
 from runtime.evals.trace_store import record_run_trace
+from runtime.integrations.search_normalizer import build_source_records
 from runtime.researchlab.runner import (
     list_experiment_runs_for_campaign,
     save_experiment_run,
@@ -54,6 +56,7 @@ from runtime.researchlab.runner import (
     save_research_recommendation,
     standard_run_outputs_dir,
 )
+from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary, write_evidence_bundle
 
 
 AUTORESEARCH_BACKEND_ID = "autoresearch_adapter"
@@ -377,6 +380,55 @@ def _materialize_standard_run_outputs(
     result.experiment_log_path = refs["experiment_log_path"]
     result.raw_result = dict(result.raw_result)
     result.raw_result["standard_run_outputs"] = refs
+
+
+def _build_autoresearch_evidence_bundle(
+    *,
+    request: LabRunRequest,
+    result: LabRunResult,
+    actor: str,
+    lane: str,
+    root: Path,
+) -> dict[str, Any] | None:
+    raw_result = dict(result.raw_result or {})
+    source_records = build_source_records(
+        list(raw_result.get("sources") or []) or list(raw_result.get("citations") or []) or list(raw_result.get("search_results") or []),
+        backend_id=AUTORESEARCH_BACKEND_ID,
+        query_text=request.objective,
+    )
+    result_records = [
+        {
+            "run_id": result.run_id,
+            "result_id": result.result_id,
+            "hypothesis": result.hypothesis,
+            "summary": result.summary,
+            "candidate_metrics": dict(result.candidate_metrics or {}),
+            "baseline_metrics": dict(result.baseline_metrics or {}),
+            "delta_metrics": dict(result.delta_metrics or {}),
+            "experiment_log_path": result.experiment_log_path,
+        }
+    ]
+    if not source_records and not result_records:
+        return None
+    return write_evidence_bundle(
+        actor=actor,
+        lane=lane,
+        evidence_kind="research_results",
+        source_records=source_records,
+        result_records=result_records,
+        root=root,
+        provenance_refs={
+            "campaign_id": request.campaign_id,
+            "request_id": request.request_id,
+            "result_id": result.result_id,
+            "backend": AUTORESEARCH_BACKEND_ID,
+        },
+        metadata={
+            "non_fabricated": True,
+            "source_count": len(source_records),
+            "result_count": len(result_records),
+        },
+    )
     return refs
 
 
@@ -518,6 +570,7 @@ def _campaign_report_content(
     runs: list[ExperimentRunRecord],
     recommendation: ResearchRecommendationRecord,
     metric_rows: list[MetricResultRecord],
+    evidence_bundle_id: Optional[str] = None,
 ) -> str:
     lines = [
         f"# Research Campaign {campaign.campaign_id}",
@@ -532,6 +585,7 @@ def _campaign_report_content(
         f"Action: {recommendation.action}",
         f"Summary: {recommendation.summary}",
         f"Rationale: {recommendation.rationale}",
+        f"Evidence bundle: {evidence_bundle_id or 'none_captured'}",
         "",
         "## Run Summaries",
     ]
@@ -673,6 +727,7 @@ def execute_research_campaign(
     latest_execution_request_id: Optional[str] = None
     latest_execution_result_id: Optional[str] = None
     routing_meta = (task.backend_metadata or {}).get("routing") or {}
+    best_evidence_bundle_id: Optional[str] = None
 
     for pass_index in range(1, max_passes + 1):
         if campaign.budget_used >= campaign.max_budget_units:
@@ -956,6 +1011,20 @@ def execute_research_campaign(
         run.trace_id = trace.trace_id
         save_experiment_run(run, root=root_path)
         _materialize_standard_run_outputs(request=request, result=result, root=root_path)
+        evidence_bundle = _build_autoresearch_evidence_bundle(
+            request=request,
+            result=result,
+            actor=actor,
+            lane=lane,
+            root=root_path,
+        )
+        if evidence_bundle is not None:
+            result.raw_result = attach_evidence_bundle_refs(
+                dict(result.raw_result or {}),
+                [evidence_bundle["bundle_id"]],
+            )
+            if improved:
+                best_evidence_bundle_id = evidence_bundle["bundle_id"]
         save_lab_run_result(result, root=root_path)
         execution_request.status = "completed"
         execution_request.backend_run_id = run.run_id
@@ -978,12 +1047,14 @@ def execute_research_campaign(
                 "request_id": request.request_id,
                 "result_id": result.result_id,
                 "run_id": run.run_id,
+                "evidence_bundle_id": evidence_bundle["bundle_id"] if evidence_bundle is not None else None,
             },
             metadata={
                 "metrics": dict(result.candidate_metrics),
                 "budget_used": result.budget_used,
                 "token_usage": dict(result.token_usage),
                 "failure_category": result.failure_category,
+                "evidence_bundle_refs": [evidence_bundle["bundle_id"]] if evidence_bundle is not None else [],
             },
             root=root_path,
         )
@@ -1071,6 +1142,7 @@ def execute_research_campaign(
             runs=runs,
             recommendation=recommendation,
             metric_rows=metric_rows,
+            evidence_bundle_id=best_evidence_bundle_id,
         ),
         actor="autoresearch",
         lane=lane,
@@ -1114,6 +1186,9 @@ def execute_research_campaign(
     task = load_task(task_id, root=root_path)
     _update_task_metadata(task, campaign=campaign, recommendation=recommendation)
     task.checkpoint_summary = f"Research campaign complete: {campaign.campaign_id}"
+    if best_evidence_bundle_id:
+        task.backend_metadata.setdefault("autoresearch", {})
+        task.backend_metadata["autoresearch"]["evidence_bundle_refs"] = [best_evidence_bundle_id]
     task.backend_metadata.setdefault("execution_contracts", {})
     task.backend_metadata["execution_contracts"]["latest_backend_execution_request_id"] = latest_execution_request_id
     task.backend_metadata["execution_contracts"]["latest_backend_execution_result_id"] = latest_execution_result_id

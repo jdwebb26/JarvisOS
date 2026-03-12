@@ -4,11 +4,19 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
+if str(DEFAULT_ROOT) not in sys.path:
+    sys.path.insert(0, str(DEFAULT_ROOT))
+
+from runtime.dashboard.runtime_5_2_prep import ensure_runtime_5_2_prep_state
+from runtime.core.heartbeat_reports import write_node_heartbeat
+from runtime.core.node_registry import ensure_default_nodes
+from runtime.memory.vault_export import ensure_vault_scaffold
+
 ROOT_MARKERS = [
     "AGENTS.md",
     "scripts/bootstrap.py",
@@ -26,12 +34,15 @@ REQUIRED_DIRS = [
     "runtime/reporter",
     "runtime/flowstate",
     "runtime/dashboard",
+    "runtime/dashboard/renderers",
     "runtime/controls",
     "runtime/integrations",
     "runtime/researchlab",
     "runtime/evals",
     "runtime/ralph",
     "runtime/memory",
+    "runtime/skills",
+    "runtime/ui",
     "services",
     "services/discord",
     "services/models",
@@ -61,10 +72,13 @@ REQUIRED_DIRS = [
     "state/experiment_runs",
     "state/metric_results",
     "state/research_recommendations",
+    "state/research_queries",
+    "state/evidence_bundles",
     "state/lab_run_requests",
     "state/lab_run_results",
     "state/strategy_diversity_maps",
     "state/run_traces",
+    "state/eval_runs",
     "state/eval_cases",
     "state/eval_results",
     "state/eval_outcomes",
@@ -79,6 +93,15 @@ REQUIRED_DIRS = [
     "state/backend_assignments",
     "state/backend_execution_requests",
     "state/backend_execution_results",
+    "state/backend_health",
+    "state/accelerators",
+    "state/nodes",
+    "state/worker_heartbeats",
+    "state/task_leases",
+    "state/experiments",
+    "state/skills",
+    "state/skill_candidates",
+    "state/ui_views",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -147,6 +170,9 @@ REQUIRED_DIRS = [
     "state/operator_incident_reports",
     "state/operator_incident_snapshots",
     "workspace",
+    "workspace/vault",
+    "workspace/vault/artifacts",
+    "workspace/vault/briefs",
     "workspace/inbox",
     "workspace/work",
     "workspace/out",
@@ -178,10 +204,13 @@ AUTO_CREATE_DIRS = [
     "state/experiment_runs",
     "state/metric_results",
     "state/research_recommendations",
+    "state/research_queries",
+    "state/evidence_bundles",
     "state/lab_run_requests",
     "state/lab_run_results",
     "state/strategy_diversity_maps",
     "state/run_traces",
+    "state/eval_runs",
     "state/eval_cases",
     "state/eval_results",
     "state/eval_outcomes",
@@ -196,6 +225,15 @@ AUTO_CREATE_DIRS = [
     "state/backend_assignments",
     "state/backend_execution_requests",
     "state/backend_execution_results",
+    "state/backend_health",
+    "state/accelerators",
+    "state/nodes",
+    "state/worker_heartbeats",
+    "state/task_leases",
+    "state/experiments",
+    "state/skills",
+    "state/skill_candidates",
+    "state/ui_views",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -264,6 +302,9 @@ AUTO_CREATE_DIRS = [
     "state/operator_incident_reports",
     "state/operator_incident_snapshots",
     "workspace",
+    "workspace/vault",
+    "workspace/vault/artifacts",
+    "workspace/vault/briefs",
     "workspace/inbox",
     "workspace/work",
     "workspace/out",
@@ -345,11 +386,27 @@ def ensure_foundation(root: Path, *, force: bool = False) -> dict[str, object]:
     resolved_root = resolve_repo_root(root)
     created_dirs, existing_dirs = ensure_dirs(resolved_root, AUTO_CREATE_DIRS)
     copied_configs = ensure_config_skeletons(resolved_root, force=force)
+    runtime_prep = ensure_runtime_5_2_prep_state(root=resolved_root)
+    default_nodes = ensure_default_nodes(root=resolved_root)
+    vault_scaffold = ensure_vault_scaffold(root=resolved_root)
+    write_node_heartbeat(
+        node_name="NIMO",
+        actor="system",
+        lane="bootstrap",
+        backend_summary=["qwen_planner", "qwen_executor", "operator"],
+        model_family_summary=["qwen"],
+        capability_summary={"bootstrap_seed": True},
+        metadata={"scaffolding_only": True, "seed_source": "bootstrap"},
+        root=resolved_root,
+    )
     return {
         "root": str(resolved_root),
         "created_dirs": created_dirs,
         "existing_dirs_count": len(existing_dirs),
         "copied_configs": copied_configs,
+        "runtime_5_2_prep": runtime_prep,
+        "default_nodes": [row.to_dict() for row in default_nodes],
+        "vault_scaffold": vault_scaffold,
     }
 
 
@@ -377,6 +434,19 @@ def main() -> int:
 
     created_dirs, existing_dirs = ensure_dirs(root, REQUIRED_DIRS)
     copied_configs = ensure_config_skeletons(root, force=args.force)
+    runtime_prep = ensure_runtime_5_2_prep_state(root=root)
+    default_nodes = ensure_default_nodes(root=root)
+    vault_scaffold = ensure_vault_scaffold(root=root)
+    write_node_heartbeat(
+        node_name="NIMO",
+        actor="system",
+        lane="bootstrap",
+        backend_summary=["qwen_planner", "qwen_executor", "operator"],
+        model_family_summary=["qwen"],
+        capability_summary={"bootstrap_seed": True},
+        metadata={"scaffolding_only": True, "seed_source": "bootstrap"},
+        root=root,
+    )
 
     report = {
         "ok": True,
@@ -388,6 +458,9 @@ def main() -> int:
         "copy_examples_enabled": True,
         "copy_examples_requested": args.copy_examples,
         "copied_configs": copied_configs,
+        "runtime_5_2_prep": runtime_prep,
+        "default_nodes": [row.to_dict() for row in default_nodes],
+        "vault_scaffold": vault_scaffold,
     }
 
     report_path = root / "state" / "logs" / "bootstrap_report.json"

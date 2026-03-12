@@ -72,17 +72,21 @@ def load_run_trace(trace_id: str, *, root: Optional[Path] = None) -> Optional[Ru
     return RunTraceRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
-def list_run_traces_for_task(task_id: str, *, root: Optional[Path] = None) -> list[RunTraceRecord]:
+def list_run_traces(*, root: Optional[Path] = None, limit: Optional[int] = None) -> list[RunTraceRecord]:
     rows: list[RunTraceRecord] = []
     for path in run_traces_dir(root).glob("*.json"):
         try:
-            row = RunTraceRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+            rows.append(RunTraceRecord.from_dict(json.loads(path.read_text(encoding="utf-8"))))
         except Exception:
             continue
-        if row.task_id == task_id:
-            rows.append(row)
     rows.sort(key=lambda row: row.updated_at, reverse=True)
+    if limit is not None:
+        return rows[:limit]
     return rows
+
+
+def list_run_traces_for_task(task_id: str, *, root: Optional[Path] = None) -> list[RunTraceRecord]:
+    return [row for row in list_run_traces(root=root) if row.task_id == task_id]
 
 
 def save_eval_case(record: EvalCaseRecord, *, root: Optional[Path] = None) -> EvalCaseRecord:

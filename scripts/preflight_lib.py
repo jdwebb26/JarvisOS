@@ -14,6 +14,25 @@ from pathlib import Path
 
 from scripts.bootstrap import ensure_foundation, resolve_repo_root
 
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from runtime.dashboard.runtime_5_2_prep import (
+    build_accelerator_summary,
+    build_backend_health_summary,
+    build_degraded_state_summary,
+    ensure_runtime_5_2_prep_state,
+)
+from runtime.core.heartbeat_reports import build_node_health_summary
+from runtime.core.node_registry import ensure_default_nodes
+from runtime.core.task_lease import build_task_lease_summary
+from runtime.integrations.research_backends import build_research_backend_summary
+from runtime.memory.vault_export import build_vault_export_summary
+from runtime.researchlab.experiment_store import build_experiment_summary
+from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
+from runtime.skills.skill_scheduler import build_skill_scheduler_summary
+from runtime.evals.replay_runner import build_eval_run_summary
+
 ROOT = resolve_repo_root(Path(__file__).resolve().parents[1])
 WORKSPACE = ROOT / "workspace"
 
@@ -23,6 +42,7 @@ REQUIRED_DIRS = [
     "runtime",
     "runtime/core",
     "runtime/dashboard",
+    "runtime/dashboard/renderers",
     "runtime/executor",
     "runtime/flowstate",
     "runtime/gateway",
@@ -32,6 +52,8 @@ REQUIRED_DIRS = [
     "runtime/evals",
     "runtime/ralph",
     "runtime/memory",
+    "runtime/skills",
+    "runtime/ui",
     "scripts",
     "state",
     "state/approvals",
@@ -55,10 +77,13 @@ REQUIRED_DIRS = [
     "state/experiment_runs",
     "state/metric_results",
     "state/research_recommendations",
+    "state/research_queries",
+    "state/evidence_bundles",
     "state/lab_run_requests",
     "state/lab_run_results",
     "state/strategy_diversity_maps",
     "state/run_traces",
+    "state/eval_runs",
     "state/eval_cases",
     "state/eval_results",
     "state/eval_outcomes",
@@ -73,6 +98,15 @@ REQUIRED_DIRS = [
     "state/backend_assignments",
     "state/backend_execution_requests",
     "state/backend_execution_results",
+    "state/backend_health",
+    "state/accelerators",
+    "state/nodes",
+    "state/worker_heartbeats",
+    "state/task_leases",
+    "state/experiments",
+    "state/skills",
+    "state/skill_candidates",
+    "state/ui_views",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -142,6 +176,9 @@ REQUIRED_DIRS = [
     "state/operator_incident_snapshots",
     "state/tasks",
     "workspace",
+    "workspace/vault",
+    "workspace/vault/artifacts",
+    "workspace/vault/briefs",
     "workspace/inbox",
     "workspace/out",
     "workspace/work",
@@ -222,11 +259,24 @@ REQUIRED_FILES = [
     "scripts/operator_handoff_pack.py",
     "scripts/smoke_test.py",
     "scripts/validate.py",
+    "docs/jarvis_5_2_runtime_migration.md",
     "runtime/core/intake.py",
     "runtime/core/decision_router.py",
     "runtime/core/routing.py",
     "runtime/core/execution_contracts.py",
     "runtime/core/backend_assignments.py",
+    "runtime/core/node_registry.py",
+    "runtime/core/task_lease.py",
+    "runtime/skills/registry.py",
+    "runtime/skills/skill_store.py",
+    "runtime/skills/skill_candidate.py",
+    "runtime/skills/skill_scheduler.py",
+    "runtime/ui/a2ui_schema.py",
+    "runtime/ui/component_catalog.py",
+    "runtime/dashboard/renderers/a2ui_renderer.py",
+    "runtime/memory/vault_export.py",
+    "runtime/memory/vault_index.py",
+    "runtime/memory/brief_builder.py",
     "runtime/core/provenance_store.py",
     "runtime/core/replay_store.py",
     "runtime/core/modality_contracts.py",
@@ -238,8 +288,16 @@ REQUIRED_FILES = [
     "runtime/controls/control_store.py",
     "runtime/integrations/hermes_adapter.py",
     "runtime/integrations/autoresearch_adapter.py",
+    "runtime/integrations/research_backends.py",
+    "runtime/integrations/searxng_client.py",
+    "runtime/integrations/search_normalizer.py",
     "runtime/researchlab/runner.py",
+    "runtime/researchlab/evidence_bundle.py",
     "runtime/evals/trace_store.py",
+    "runtime/evals/replay_runner.py",
+    "runtime/evals/scorers.py",
+    "runtime/researchlab/experiment_store.py",
+    "runtime/researchlab/optimizer.py",
     "runtime/ralph/consolidator.py",
     "runtime/memory/governance.py",
     "runtime/core/review_store.py",
@@ -254,12 +312,25 @@ REQUIRED_FILES = [
     "runtime/gateway/memory_decision.py",
     "runtime/gateway/discord_intake.py",
     "runtime/dashboard/operator_snapshot.py",
+    "runtime/dashboard/runtime_5_2_prep.py",
 ]
 
 KEY_MODULES = [
     "runtime.core.intake",
     "runtime.core.decision_router",
     "runtime.core.routing",
+    "runtime.core.node_registry",
+    "runtime.core.task_lease",
+    "runtime.skills.registry",
+    "runtime.skills.skill_store",
+    "runtime.skills.skill_candidate",
+    "runtime.skills.skill_scheduler",
+    "runtime.ui.a2ui_schema",
+    "runtime.ui.component_catalog",
+    "runtime.dashboard.renderers.a2ui_renderer",
+    "runtime.memory.vault_export",
+    "runtime.memory.vault_index",
+    "runtime.memory.brief_builder",
     "runtime.core.candidate_store",
     "runtime.core.rollback_store",
     "runtime.core.approval_sessions",
@@ -269,8 +340,16 @@ KEY_MODULES = [
     "runtime.controls.control_store",
     "runtime.integrations.hermes_adapter",
     "runtime.integrations.autoresearch_adapter",
+    "runtime.integrations.research_backends",
+    "runtime.integrations.searxng_client",
+    "runtime.integrations.search_normalizer",
     "runtime.researchlab.runner",
+    "runtime.researchlab.evidence_bundle",
     "runtime.evals.trace_store",
+    "runtime.evals.replay_runner",
+    "runtime.evals.scorers",
+    "runtime.researchlab.experiment_store",
+    "runtime.researchlab.optimizer",
     "runtime.ralph.consolidator",
     "runtime.memory.governance",
     "runtime.core.publish_complete",
@@ -370,6 +449,8 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     root = resolve_repo_root(requested_root)
     findings: list[Finding] = []
     foundation = ensure_foundation(root)
+    runtime_prep = ensure_runtime_5_2_prep_state(root=root)
+    default_nodes = ensure_default_nodes(root=root)
 
     if root.exists():
         _add(findings, "pass", "repo", "Repo root exists.", details=str(root))
@@ -391,6 +472,22 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             "foundation",
             "Auto-created managed state/workspace directories.",
             details=", ".join(foundation["created_dirs"]),
+        )
+    if runtime_prep["seeded_files"]:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Seeded 5.2-prep backend/accelerator scaffolding files.",
+            details=", ".join(runtime_prep["seeded_files"]),
+        )
+    if default_nodes:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Seeded node registry scaffolding.",
+            details=", ".join(sorted(row.node_name for row in default_nodes)),
         )
 
     copied_configs = {rel: result for rel, result in foundation["copied_configs"].items() if result == "copied"}
@@ -484,12 +581,132 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             else:
                 _add(findings, "pass", "config", "config/channels.yaml includes the expected operator channel names.")
 
-    for rel in ["state/logs", "workspace/out"]:
+    for rel in ["state/logs", "workspace/out", "workspace/vault"]:
         error = _write_probe(root / rel)
         if error is None:
             _add(findings, "pass", "filesystem", f"Directory `{rel}` is writable.")
         else:
             _add(findings, "fail", "filesystem", f"Directory `{rel}` is not writable.", f"Fix permissions on `{rel}` before deployment.", error)
+
+    backend_health = build_backend_health_summary(root=root)
+    accelerator_summary = build_accelerator_summary(root=root)
+    eval_run_summary = build_eval_run_summary(root=root)
+    degraded_state = build_degraded_state_summary(root=root)
+    node_health = build_node_health_summary(root=root)
+    task_lease_summary = build_task_lease_summary(root=root)
+    skill_scheduler_summary = build_skill_scheduler_summary(root=root)
+    vault_summary = build_vault_export_summary(root=root)
+    experiment_summary = build_experiment_summary(root=root)
+    research_backend_summary = build_research_backend_summary(root=root)
+    evidence_bundle_summary = build_evidence_bundle_summary(root=root)
+
+    if backend_health["snapshot_count"]:
+        _add(findings, "pass", "runtime_prep", "Backend health scaffolding is present.")
+    else:
+        _add(findings, "warn", "runtime_prep", "Backend health scaffolding is missing.", "Run `python3 scripts/bootstrap.py` to seed backend health scaffolding.")
+
+    if accelerator_summary["summary_count"]:
+        _add(findings, "pass", "runtime_prep", "Accelerator scaffolding is present.")
+    else:
+        _add(findings, "warn", "runtime_prep", "Accelerator scaffolding is missing.", "Run `python3 scripts/bootstrap.py` to seed accelerator scaffolding.")
+
+    if eval_runs_dir := (root / "state" / "eval_runs"):
+        if eval_runs_dir.exists():
+            _add(findings, "pass", "runtime_prep", "Eval run scaffolding directory is present.")
+        else:
+            _add(findings, "warn", "runtime_prep", "Eval run scaffolding directory is missing.", "Run `python3 scripts/bootstrap.py` to create `state/eval_runs`.")
+
+    if node_health["registered_node_count"]:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Node registry scaffolding is present.",
+            details=(
+                f"registered_nodes={node_health['registered_node_count']} "
+                f"online_nodes={node_health['online_node_count']} "
+                f"burst_online={node_health['burst_online_count']}"
+            ),
+        )
+    else:
+        _add(findings, "warn", "runtime_prep", "Node registry scaffolding is missing.", "Run `python3 scripts/bootstrap.py` to seed node scaffolding.")
+
+    if node_health["primary_online_count"]:
+        _add(findings, "pass", "runtime_prep", "Primary node heartbeat is present.")
+    else:
+        _add(findings, "warn", "runtime_prep", "Primary node heartbeat is missing or stale.", "Run `python3 scripts/bootstrap.py` or rebuild the heartbeat report.")
+
+    if node_health["burst_online_count"]:
+        _add(findings, "pass", "runtime_prep", "At least one burst node heartbeat is present.")
+    else:
+        _add(findings, "pass", "runtime_prep", "No burst node is currently online; optional burst capacity remains non-critical.")
+
+    _add(
+        findings,
+        "pass",
+        "runtime_prep",
+        "Task lease scaffolding is present.",
+        details=(
+            f"leases={task_lease_summary['task_lease_count']} "
+            f"active={task_lease_summary['active_task_lease_count']} "
+            f"expired={task_lease_summary['expired_task_lease_count']} "
+            f"requeued={task_lease_summary['requeued_task_lease_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "runtime_prep",
+        "Skills scaffolding is present.",
+        details=(
+            f"approved_skills={skill_scheduler_summary['registry_summary']['approved_skill_count']} "
+            f"skill_candidates={skill_scheduler_summary['registry_summary']['skill_candidate_summary']['skill_candidate_count']} "
+            f"schedule_ready={skill_scheduler_summary['scheduler_readiness']['schedule_ready_skill_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "vault",
+        "Knowledge vault export scaffolding is present and non-authoritative.",
+        details=(
+            f"exports={vault_summary['export_count']} "
+            f"exportable_artifacts={vault_summary['exportable_artifact_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "experiments",
+        "Self-optimization experiment scaffolding is present.",
+        details=(
+            f"experiments={experiment_summary['experiment_count']} "
+            f"frontier_size={experiment_summary['frontier_size']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "research",
+        "Research backend abstraction and evidence bundle scaffolding are present.",
+        details=(
+            f"backends={research_backend_summary['research_backend_count']} "
+            f"healthy_backends={research_backend_summary['healthy_research_backend_count']} "
+            f"evidence_bundles={evidence_bundle_summary['evidence_bundle_count']}"
+        ),
+    )
+
+    if degraded_state["degraded_backend_count"]:
+        _add(
+            findings,
+            "warn",
+            "runtime_prep",
+            "Backend health summary reports degraded lanes.",
+            "Inspect doctor output and backend health scaffolding before any future routing-core migration.",
+            details=", ".join(f"{row['lane']}={row['status']}" for row in backend_health["unhealthy_lanes"][:5]),
+        )
+    else:
+        _add(findings, "pass", "runtime_prep", "Backend health scaffolding reports no degraded lanes.")
 
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
@@ -511,6 +728,24 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
         _add(findings, "pass", "operator", "Operator snapshot log exists.")
     else:
         _add(findings, "warn", "operator", "Operator snapshot log does not exist yet.", "Run a dashboard rebuild or smoke to generate operator-facing logs.")
+
+    operator_handoff_pack = root / "state" / "logs" / "operator_handoff_pack.json"
+    if operator_handoff_pack.exists():
+        try:
+            handoff = json.loads(operator_handoff_pack.read_text(encoding="utf-8"))
+        except Exception as exc:
+            _add(findings, "warn", "operator", "Operator handoff pack exists but is malformed.", "Rebuild the handoff pack after dashboard regeneration.", str(exc))
+        else:
+            required_pack_keys = {"backend_health_summary", "degraded_state_summary", "eval_scaffolding_summary"}
+            required_pack_keys.update({"active_nodes_summary", "heartbeat_summary"})
+            pack = dict(handoff.get("pack") or handoff)
+            missing = sorted(required_pack_keys - set(pack))
+            if missing:
+                _add(findings, "warn", "operator", "Operator handoff pack is missing 5.2-prep summary fields.", "Rebuild the handoff pack after bootstrap/smoke.", ", ".join(missing))
+            else:
+                _add(findings, "pass", "operator", "Operator handoff pack includes 5.2-prep runtime summaries.")
+    else:
+        _add(findings, "warn", "operator", "Operator handoff pack does not exist yet.", "Run smoke or `python3 scripts/operator_handoff_pack.py` before operator handoff.")
 
     pass_count = sum(1 for item in findings if item.status == "pass")
     warn_count = sum(1 for item in findings if item.status == "warn")
@@ -585,8 +820,79 @@ def build_doctor_report(root: Path) -> dict:
     consolidation_runs_count = len(list((root / "state" / "consolidation_runs").glob("*.json")))
     memory_retrievals_count = len(list((root / "state" / "memory_retrievals").glob("*.json")))
     reviews_count = len(list((root / "state" / "reviews").glob("*.json")))
+    backend_health = build_backend_health_summary(root=root)
+    accelerator_summary = build_accelerator_summary(root=root)
+    eval_run_summary = build_eval_run_summary(root=root)
+    degraded_state = build_degraded_state_summary(root=root)
+    node_health = build_node_health_summary(root=root)
+    task_lease_summary = build_task_lease_summary(root=root)
+    skill_scheduler_summary = build_skill_scheduler_summary(root=root)
 
     _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count} run_traces={run_traces_count} eval_results={eval_results_count} consolidation_runs={consolidation_runs_count} memory_retrievals={memory_retrievals_count}")
+    _add(
+        findings,
+        "pass",
+        "runtime_prep",
+        "5.2-prep runtime scaffolding summary loaded.",
+        details=(
+            f"backend_snapshots={backend_health['snapshot_count']} "
+            f"accelerator_summaries={accelerator_summary['summary_count']} "
+            f"eval_runs={eval_run_summary['eval_run_count']} "
+            f"registered_nodes={node_health['registered_node_count']} "
+            f"online_nodes={node_health['online_node_count']} "
+            f"task_leases={task_lease_summary['task_lease_count']} "
+            f"approved_skills={skill_scheduler_summary['registry_summary']['approved_skill_count']} "
+            f"skill_candidates={skill_scheduler_summary['registry_summary']['skill_candidate_summary']['skill_candidate_count']}"
+        ),
+    )
+    if backend_health["unhealthy_lane_count"]:
+        _add(
+            findings,
+            "warn",
+            "runtime_prep",
+            "One or more backend lanes are marked unhealthy in the 5.2-prep scaffold.",
+            "Inspect backend health rows before taking routing-core migration tickets.",
+            ", ".join(f"{row['lane']}={row['status']}" for row in backend_health["unhealthy_lanes"][:5]),
+        )
+    if degraded_state["degraded_backend_count"]:
+        _add(
+            findings,
+            "warn",
+            "runtime_prep",
+            "Degraded backend posture is present in runtime-prep summaries.",
+            "Use operator snapshot / handoff summaries to inspect degraded lanes before migration work.",
+        )
+    if not node_health["primary_online_count"]:
+        _add(
+            findings,
+            "warn",
+            "runtime_prep",
+            "Primary node heartbeat is missing or stale.",
+            "Rebuild the heartbeat report or rerun bootstrap before taking node-aware migration tickets.",
+        )
+    elif node_health["stale_heartbeat_count"]:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Node registry is readable; some optional nodes are offline or stale.",
+            details=", ".join(row["node_name"] for row in node_health["stale_nodes"][:5]),
+        )
+    if task_lease_summary["expired_task_lease_count"]:
+        _add(
+            findings,
+            "warn",
+            "runtime_prep",
+            "Expired task leases are present and may need reclaim handling.",
+            "Inspect task_lease_summary in operator surfaces before enabling any future burst-worker execution flow.",
+        )
+    if skill_scheduler_summary["registry_summary"]["skill_candidate_summary"]["skill_candidate_count"]:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Skill candidates are present and remain bounded behind review/eval gating.",
+        )
 
     state_export = root / "state" / "logs" / "state_export.json"
     if state_export.exists():
@@ -639,6 +945,14 @@ def build_doctor_report(root: Path) -> dict:
             "memory_retrievals": memory_retrievals_count,
             "reviews": reviews_count,
             "outputs": outputs_count,
+            "backend_health_snapshots": backend_health["snapshot_count"],
+            "accelerator_summaries": accelerator_summary["summary_count"],
+            "eval_runs": eval_run_summary["eval_run_count"],
+            "registered_nodes": node_health["registered_node_count"],
+            "online_nodes": node_health["online_node_count"],
+            "task_leases": task_lease_summary["task_lease_count"],
+            "approved_skills": skill_scheduler_summary["registry_summary"]["approved_skill_count"],
+            "skill_candidates": skill_scheduler_summary["registry_summary"]["skill_candidate_summary"]["skill_candidate_count"],
         },
         "groups": grouped,
         "next_actions": next_actions,
@@ -656,7 +970,14 @@ def render_doctor_report(report: dict) -> str:
             f"warn={report['summary']['warn']} "
             f"fail={report['summary']['fail']} "
             f"tasks={report['summary']['tasks']} "
-            f"outputs={report['summary']['outputs']}"
+            f"outputs={report['summary']['outputs']} "
+            f"backend_health={report['summary'].get('backend_health_snapshots', 0)} "
+            f"eval_runs={report['summary'].get('eval_runs', 0)} "
+            f"nodes={report['summary'].get('registered_nodes', 0)} "
+            f"online_nodes={report['summary'].get('online_nodes', 0)} "
+            f"task_leases={report['summary'].get('task_leases', 0)} "
+            f"approved_skills={report['summary'].get('approved_skills', 0)} "
+            f"skill_candidates={report['summary'].get('skill_candidates', 0)}"
         ),
     ]
     for category, items in report["groups"].items():
@@ -736,6 +1057,7 @@ def run_smoke(root: Path) -> dict:
     rebuild_message = ""
     try:
         from runtime.dashboard.rebuild_all import rebuild_all
+        from scripts.operator_handoff_pack import build_operator_handoff_pack
 
         rebuild_payload = rebuild_all(root=root)
         rebuild_ok = bool(rebuild_payload.get("ok"))
@@ -763,6 +1085,37 @@ def run_smoke(root: Path) -> dict:
             "root": str(root),
             "steps": steps,
             "message": "Smoke stopped at dashboard_rebuild.",
+        }
+
+    handoff = build_operator_handoff_pack(root)
+    handoff_pack = handoff.get("pack", {})
+    handoff_ok = all(
+        key in handoff_pack
+        for key in ("backend_health_summary", "degraded_state_summary", "eval_scaffolding_summary")
+    )
+    steps.append(
+        {
+            "step": "operator_handoff_pack",
+            "ok": handoff_ok,
+            "summary": {
+                "has_backend_health_summary": "backend_health_summary" in handoff_pack,
+                "has_degraded_state_summary": "degraded_state_summary" in handoff_pack,
+                "has_eval_scaffolding_summary": "eval_scaffolding_summary" in handoff_pack,
+            },
+            "message": (
+                "operator handoff pack includes 5.2-prep runtime summaries"
+                if handoff_ok
+                else "operator handoff pack is missing one or more 5.2-prep runtime summaries"
+            ),
+        }
+    )
+    if not handoff_ok:
+        return {
+            "ok": False,
+            "timestamp_utc": now_iso(),
+            "root": str(root),
+            "steps": steps,
+            "message": "Smoke stopped at operator_handoff_pack.",
         }
 
     return {

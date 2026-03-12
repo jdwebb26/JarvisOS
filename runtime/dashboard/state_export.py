@@ -22,11 +22,20 @@ from runtime.core.policy_surface_summary import build_policy_surface_summary
 from runtime.core.prompt_caching_policy import build_prompt_caching_policy_summary
 from runtime.core.routing import build_model_registry_summary
 from runtime.core.security_validation import build_security_validation_summary
+from runtime.core.task_lease import build_task_lease_summary
+from runtime.integrations.research_backends import build_research_backend_summary
+from runtime.memory.vault_export import build_vault_export_summary
 from runtime.core.token_budget import build_token_budget_summary
+from runtime.dashboard.renderers.a2ui_renderer import render_operator_views
+from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.browser.reporting import build_browser_action_summary
+from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
 from runtime.integrations.notification_adapter import build_notification_summary
+from runtime.evals.replay_runner import build_eval_run_summary
+from runtime.researchlab.experiment_store import build_experiment_summary
+from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
 from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
 from runtime.dashboard.status_names import normalize_status_name
 
@@ -90,6 +99,7 @@ def build_state_export(root: Path) -> dict:
     lab_run_results = _load_jsons(root / "state" / "lab_run_results")
     strategy_diversity_maps = _load_jsons(root / "state" / "strategy_diversity_maps")
     run_traces = _load_jsons(root / "state" / "run_traces")
+    eval_runs = _load_jsons(root / "state" / "eval_runs")
     eval_cases = _load_jsons(root / "state" / "eval_cases")
     eval_results = _load_jsons(root / "state" / "eval_results")
     eval_outcomes = _load_jsons(root / "state" / "eval_outcomes")
@@ -173,6 +183,10 @@ def build_state_export(root: Path) -> dict:
     operator_control_plane_checkpoints = _load_jsons(root / "state" / "operator_control_plane_checkpoints")
     operator_incident_reports = _load_jsons(root / "state" / "operator_incident_reports")
     operator_incident_snapshots = _load_jsons(root / "state" / "operator_incident_snapshots")
+    backend_health = _load_jsons(root / "state" / "backend_health")
+    accelerators = _load_jsons(root / "state" / "accelerators")
+    runtime_5_2_prep = build_runtime_5_2_prep_summary(root=root)
+    eval_scaffolding_summary = build_eval_run_summary(root=root)
 
     summary = {
         "counts": {
@@ -197,6 +211,7 @@ def build_state_export(root: Path) -> dict:
             "lab_run_results": len(lab_run_results),
             "strategy_diversity_maps": len(strategy_diversity_maps),
             "run_traces": len(run_traces),
+            "eval_runs": len(eval_runs),
             "eval_cases": len(eval_cases),
             "eval_results": len(eval_results),
             "eval_outcomes": len(eval_outcomes),
@@ -211,6 +226,8 @@ def build_state_export(root: Path) -> dict:
             "backend_assignments": len(backend_assignments),
             "backend_execution_requests": len(backend_execution_requests),
             "backend_execution_results": len(backend_execution_results),
+            "backend_health": len(backend_health),
+            "accelerators": len(accelerators),
             "token_budgets": len(token_budgets),
             "degradation_policies": len(degradation_policies),
             "degradation_events": len(degradation_events),
@@ -506,6 +523,12 @@ def build_state_export(root: Path) -> dict:
     summary["browser_control_allowlist_summary"] = build_browser_control_allowlist_summary(root=root)
     summary["browser_action_summary"] = build_browser_action_summary(root=root)
     summary["voice_session_summary"] = build_voice_session_summary(root=root)
+    summary["task_lease_summary"] = build_task_lease_summary(root=root)
+    summary["skill_scheduler_summary"] = build_skill_scheduler_summary(root=root)
+    summary["research_backend_summary"] = build_research_backend_summary(root=root)
+    summary["evidence_bundle_summary"] = build_evidence_bundle_summary(root=root)
+    summary["vault_summary"] = build_vault_export_summary(root=root)
+    summary["experiment_summary"] = build_experiment_summary(root=root)
     summary["trajectory_summary"] = build_trajectory_summary(root=root)
     summary["operator_profile_summary"] = build_operator_profile_summary(root=root)
     summary["security_validation_summary"] = build_security_validation_summary(root=root)
@@ -526,6 +549,12 @@ def build_state_export(root: Path) -> dict:
         voice_route_capability_summary=summary["voice_route_capability_summary"],
         voice_route_safety_summary=summary["voice_route_safety_summary"],
     )
+    summary["active_nodes_summary"] = runtime_5_2_prep["active_nodes_summary"]
+    summary["backend_health_summary"] = runtime_5_2_prep["backend_health_summary"]
+    summary["accelerator_summary"] = runtime_5_2_prep["accelerator_summary"]
+    summary["degraded_state_summary"] = runtime_5_2_prep["degraded_state_summary"]
+    summary["reroute_summary"] = runtime_5_2_prep["reroute_summary"]
+    summary["eval_scaffolding_summary"] = eval_scaffolding_summary
     summary["task_envelope_summary"] = {
         "task_envelope_task_count": sum(1 for row in tasks if row.get("task_envelope")),
         "autonomy_mode_counts": dict(summary.get("autonomy_mode_counts", {})),
@@ -869,6 +898,11 @@ def build_state_export(root: Path) -> dict:
         "latest_recovery_cycle_issue_count_after": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_after"),
         "latest_recovery_cycle_stop_reason": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("stop_reason"),
     }
+    summary["ui_view_summary"] = render_operator_views(
+        root=root,
+        source_name="state_export",
+        source_payload=summary,
+    )
 
     out_path = root / "state" / "logs" / "state_export.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)

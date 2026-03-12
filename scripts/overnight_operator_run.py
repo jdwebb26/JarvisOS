@@ -8,8 +8,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from runtime.skills.skill_scheduler import build_overnight_skill_digest, list_overnight_schedule_ready_skills
 
 
 def _run_json(cmd: list[str]) -> dict[str, Any]:
@@ -47,6 +50,23 @@ def _failure_payload(name: str, command: list[str], error: str, steps: list[dict
         "failed_step": name,
         "error": error,
         "steps": steps,
+    }
+
+
+def _overnight_skill_summary(run_root: Path) -> dict[str, Any]:
+    digest = build_overnight_skill_digest(root=run_root)
+    return {
+        "approved_only_policy": digest["approved_only_policy"],
+        "candidate_execution_enabled": digest["candidate_execution_enabled"],
+        "autopromotion_allowed": digest["autopromotion_allowed"],
+        "live_execution_enabled": digest["live_execution_enabled"],
+        "schedule_ready_skill_count": digest["schedule_ready_skill_count"],
+        "excluded_skill_candidate_count": digest["excluded_skill_candidate_count"],
+        "schedule_ready_skills": list_overnight_schedule_ready_skills(root=run_root),
+        "degraded_posture_summary": digest["degraded_posture_summary"],
+        "task_lease_summary": digest["task_lease_summary"],
+        "node_health_summary": digest["node_health_summary"],
+        "notes": digest["notes"],
     }
 
 
@@ -300,11 +320,31 @@ def main() -> int:
     parser.add_argument("--max-budget-units", type=int, default=2, help="Maximum research budget units")
     parser.add_argument("--research-response-json", default="", help="Inline research response JSON or list")
     parser.add_argument("--research-response-file", default="", help="Path to mock research response JSON or list")
+    parser.add_argument(
+        "--skill-digest-only",
+        action="store_true",
+        help="Only emit approved-skill overnight readiness/digest information; do not run any overnight gateway flow.",
+    )
     args = parser.parse_args()
 
     run_root = Path(args.root).resolve()
     repo_root = REPO_ROOT
     py = sys.executable
+    overnight_skill_summary = _overnight_skill_summary(run_root)
+
+    if args.skill_digest_only:
+        payload = {
+            "ok": True,
+            "flow": "skill_digest",
+            "task_id": args.task_id,
+            "approved_skill_readiness": overnight_skill_summary,
+            "notes": [
+                "Approved-skill overnight readiness only. No skill execution was attempted.",
+                "Skill candidates remain excluded and automatic execution remains disabled.",
+            ],
+        }
+        print(json.dumps(payload, indent=2))
+        return 0
 
     if args.flow == "hermes":
         payload = _hermes_chain(args, py, repo_root, run_root)
@@ -312,6 +352,8 @@ def main() -> int:
         if not args.objective_metrics:
             parser.error("--objective-metric is required for --flow research")
         payload = _research_chain(args, py, repo_root, run_root)
+
+    payload["approved_skill_readiness"] = overnight_skill_summary
 
     print(json.dumps(payload, indent=2))
     return 0 if payload.get("ok") else 1
