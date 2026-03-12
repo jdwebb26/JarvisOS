@@ -378,6 +378,198 @@ def build_discord_live_ops_summary(
     }
 
 
+def _bridge_row_timestamp(row: dict[str, Any]) -> str:
+    return str(
+        row.get("completed_at")
+        or row.get("imported_at")
+        or row.get("processed_at")
+        or row.get("started_at")
+        or row.get("generated_at")
+        or row.get("created_at")
+        or ""
+    )
+
+
+def _find_nested_field(payload: Any, keys: tuple[str, ...]) -> Any:
+    if isinstance(payload, dict):
+        for key in keys:
+            value = payload.get(key)
+            if value not in {None, "", [], {}}:
+                return value
+        for value in payload.values():
+            found = _find_nested_field(value, keys)
+            if found not in {None, "", [], {}}:
+                return found
+    if isinstance(payload, list):
+        for value in payload:
+            found = _find_nested_field(value, keys)
+            if found not in {None, "", [], {}}:
+                return found
+    return None
+
+
+def _bridge_failure_from_apply(apply_row: dict[str, Any] | None) -> tuple[str, str]:
+    if not apply_row:
+        return "", ""
+    payload = dict(apply_row)
+    failure = _find_nested_field(payload, ("failure",))
+    if isinstance(failure, dict):
+        failure_kind = str(failure.get("kind") or "").strip()
+        failure_reason = str(failure.get("error") or failure.get("reason") or "").strip()
+        if failure_kind:
+            return failure_kind, failure_reason
+    failure_kind = str(_find_nested_field(payload, ("error_type", "failure_kind", "failure_category")) or "").strip()
+    failure_reason = str(
+        _find_nested_field(
+            payload,
+            ("message", "failure_reason", "reason", "error"),
+        )
+        or ""
+    ).strip()
+    return failure_kind, failure_reason
+
+
+def build_openclaw_discord_bridge_summary(
+    *,
+    root: Path,
+    gateway_inbound_messages: list[dict[str, Any]] | None = None,
+    imported_reply_messages: list[dict[str, Any]] | None = None,
+    reply_ingress: list[dict[str, Any]] | None = None,
+    reply_applies: list[dict[str, Any]] | None = None,
+    bridge_cycles: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    gateway_rows = gateway_inbound_messages if gateway_inbound_messages is not None else _load_jsons(root / "state" / "operator_gateway_inbound_messages")
+    imported_rows = imported_reply_messages if imported_reply_messages is not None else _load_jsons(root / "state" / "operator_imported_reply_messages")
+    ingress_rows = reply_ingress if reply_ingress is not None else _load_jsons(root / "state" / "operator_reply_ingress")
+    apply_rows = reply_applies if reply_applies is not None else _load_jsons(root / "state" / "operator_reply_applies")
+    cycle_rows = bridge_cycles if bridge_cycles is not None else _load_jsons(root / "state" / "operator_bridge_cycles")
+
+    apply_by_id = {str(row.get("reply_apply_id") or ""): row for row in apply_rows if row.get("reply_apply_id")}
+    bridge_by_message: dict[str, dict[str, Any]] = {}
+    for row in cycle_rows:
+        for message_id in row.get("imported_source_message_ids", []):
+            if message_id and message_id not in bridge_by_message:
+                bridge_by_message[str(message_id)] = row
+
+    attempts: dict[str, dict[str, Any]] = {}
+
+    def ensure_attempt(message_id: str) -> dict[str, Any]:
+        return attempts.setdefault(
+            message_id,
+            {
+                "source_message_id": message_id,
+                "source_kind": "",
+                "source_lane": "",
+                "source_channel": "",
+                "source_user": "",
+                "attempted_at": "",
+                "mirror_stage": "gateway_inbound",
+                "selected_provider_id": None,
+                "selected_model_name": None,
+                "failure_class": "",
+                "failure_reason": "",
+                "latest_result_kind": "",
+                "reply_applied": False,
+                "bridge_cycle_id": None,
+                "bridge_cycle_ok": None,
+            },
+        )
+
+    for row in gateway_rows:
+        if not _is_discord_origin(lane=str(row.get("source_lane") or ""), channel=str(row.get("source_channel") or "")):
+            continue
+        message_id = str(row.get("source_message_id") or "").strip()
+        if not message_id:
+            continue
+        attempt = ensure_attempt(message_id)
+        attempt["source_kind"] = str(row.get("source_kind") or attempt["source_kind"] or "openclaw")
+        attempt["source_lane"] = str(row.get("source_lane") or attempt["source_lane"])
+        attempt["source_channel"] = str(row.get("source_channel") or attempt["source_channel"])
+        attempt["source_user"] = str(row.get("source_user") or attempt["source_user"])
+        attempt["attempted_at"] = max(attempt["attempted_at"], _bridge_row_timestamp(row))
+        attempt["selected_provider_id"] = attempt["selected_provider_id"] or _find_nested_field(row, ("provider_id", "selected_provider_id"))
+        attempt["selected_model_name"] = attempt["selected_model_name"] or _find_nested_field(row, ("model_name", "selected_model_name"))
+        failure_class = str(_find_nested_field(row, ("failure_class", "error_type", "failure_category")) or "").strip()
+        failure_reason = str(_find_nested_field(row, ("failure_reason", "message", "error", "reason")) or "").strip()
+        if failure_class and not attempt["failure_class"]:
+            attempt["failure_class"] = failure_class
+            attempt["failure_reason"] = failure_reason
+
+    for row in imported_rows:
+        if not _is_discord_origin(lane=str(row.get("source_lane") or ""), channel=str(row.get("source_channel") or "")):
+            continue
+        message_id = str(row.get("source_message_id") or "").strip()
+        if not message_id:
+            continue
+        attempt = ensure_attempt(message_id)
+        attempt["source_kind"] = str(row.get("source_kind") or attempt["source_kind"] or "openclaw")
+        attempt["source_lane"] = str(row.get("source_lane") or attempt["source_lane"])
+        attempt["source_channel"] = str(row.get("source_channel") or attempt["source_channel"])
+        attempt["source_user"] = str(row.get("source_user") or attempt["source_user"])
+        attempt["attempted_at"] = max(attempt["attempted_at"], _bridge_row_timestamp(row))
+        attempt["mirror_stage"] = "imported"
+        attempt["latest_result_kind"] = str(row.get("classification") or attempt["latest_result_kind"])
+
+    for row in ingress_rows:
+        if not _is_discord_origin(lane=str(row.get("source_lane") or ""), channel=str(row.get("source_channel") or "")):
+            continue
+        message_id = str(row.get("source_message_id") or "").strip()
+        if not message_id:
+            continue
+        attempt = ensure_attempt(message_id)
+        attempt["source_kind"] = str(row.get("source_kind") or attempt["source_kind"] or "openclaw")
+        attempt["source_lane"] = str(row.get("source_lane") or attempt["source_lane"])
+        attempt["source_channel"] = str(row.get("source_channel") or attempt["source_channel"])
+        attempt["source_user"] = str(row.get("source_user") or attempt["source_user"])
+        attempt["attempted_at"] = max(attempt["attempted_at"], _bridge_row_timestamp(row))
+        attempt["mirror_stage"] = "reply_ingress"
+        attempt["latest_result_kind"] = str(row.get("result_kind") or attempt["latest_result_kind"])
+        apply_row = apply_by_id.get(str(row.get("result_ref_id") or ""))
+        if apply_row:
+            attempt["mirror_stage"] = "reply_applied"
+            attempt["reply_applied"] = bool(apply_row.get("ok"))
+            failure_class, failure_reason = _bridge_failure_from_apply(apply_row)
+            attempt["selected_provider_id"] = attempt["selected_provider_id"] or _find_nested_field(
+                apply_row,
+                ("provider_id", "selected_provider_id"),
+            )
+            attempt["selected_model_name"] = attempt["selected_model_name"] or _find_nested_field(
+                apply_row,
+                ("model_name", "selected_model_name"),
+            )
+            if failure_class:
+                attempt["failure_class"] = failure_class
+                attempt["failure_reason"] = failure_reason
+
+    for message_id, attempt in attempts.items():
+        cycle = bridge_by_message.get(message_id)
+        if not cycle:
+            continue
+        attempt["bridge_cycle_id"] = cycle.get("bridge_cycle_id")
+        attempt["bridge_cycle_ok"] = cycle.get("ok")
+        attempt["attempted_at"] = max(attempt["attempted_at"], _bridge_row_timestamp(cycle))
+        if attempt["mirror_stage"] == "gateway_inbound":
+            attempt["mirror_stage"] = "bridge_cycle"
+
+    rows = sorted(attempts.values(), key=lambda row: row.get("attempted_at") or "", reverse=True)
+    latest_attempt = rows[0] if rows else None
+    latest_failure = next((row for row in rows if row.get("failure_class")), None)
+    latest_successful_reply = next((row for row in rows if row.get("reply_applied") and not row.get("failure_class")), None)
+
+    return {
+        "summary_kind": "mirrored_openclaw_discord_activity",
+        "authoritative_runtime": "openclaw",
+        "mirrored_only": True,
+        "note": "Read-only mirror of external OpenClaw Discord activity. Repo-native task/runtime records remain authoritative for Jarvis execution state.",
+        "recent_discord_attempt_count": len(rows),
+        "pending_gateway_import_count": sum(1 for row in gateway_rows if _is_discord_origin(lane=str(row.get("source_lane") or ""), channel=str(row.get("source_channel") or "")) and not row.get("imported_at")),
+        "latest_attempt": latest_attempt,
+        "latest_failure": latest_failure,
+        "latest_successful_reply": latest_successful_reply,
+        "recent_discord_attempts": rows[:10],
+    }
+
+
 def _task_summary(task: TaskRecord, events_by_task: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     control_state = get_effective_control_state(
         root=ROOT,
@@ -514,6 +706,7 @@ def build_status(root: Path) -> dict[str, Any]:
     operator_reply_transport_replays = _load_jsons(root / "state" / "operator_reply_transport_replays")
     operator_outbound_packets = _load_jsons(root / "state" / "operator_outbound_packets")
     operator_imported_reply_messages = _load_jsons(root / "state" / "operator_imported_reply_messages")
+    operator_gateway_inbound_messages = _load_jsons(root / "state" / "operator_gateway_inbound_messages")
     operator_bridge_cycles = _load_jsons(root / "state" / "operator_bridge_cycles")
     operator_bridge_replay_plans = _load_jsons(root / "state" / "operator_bridge_replay_plans")
     operator_bridge_replays = _load_jsons(root / "state" / "operator_bridge_replays")
@@ -636,6 +829,14 @@ def build_status(root: Path) -> dict[str, Any]:
         backend_execution_results=backend_execution_results,
         degradation_events=degradation_events,
         blocked_actions=blocked_control_actions,
+    )
+    openclaw_discord_bridge_summary = build_openclaw_discord_bridge_summary(
+        root=root,
+        gateway_inbound_messages=operator_gateway_inbound_messages,
+        imported_reply_messages=operator_imported_reply_messages,
+        reply_ingress=operator_reply_ingress,
+        reply_applies=operator_reply_applies,
+        bridge_cycles=operator_bridge_cycles,
     )
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
@@ -961,6 +1162,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "candidate_artifacts": candidate_artifacts,
         "routing_summary": routing_summary,
         "discord_live_ops_summary": discord_live_ops_summary,
+        "openclaw_discord_bridge_summary": openclaw_discord_bridge_summary,
         "backend_assignment_summary": backend_assignment_summary,
         "execution_contract_summary": execution_contract_summary,
         "token_budget_summary": token_budget_summary,

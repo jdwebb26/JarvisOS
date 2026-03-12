@@ -38,7 +38,7 @@ from runtime.core.routing import (
     resolve_runtime_route_policy,
     runtime_routing_policy_path,
 )
-from runtime.core.status import build_discord_live_ops_summary
+from runtime.core.status import build_discord_live_ops_summary, build_openclaw_discord_bridge_summary
 
 ROOT = resolve_repo_root(Path(__file__).resolve().parents[1])
 WORKSPACE = ROOT / "workspace"
@@ -950,6 +950,7 @@ def build_doctor_report(root: Path) -> dict:
     task_lease_summary = build_task_lease_summary(root=root)
     skill_scheduler_summary = build_skill_scheduler_summary(root=root)
     discord_live_ops_summary = build_discord_live_ops_summary(root=root)
+    openclaw_discord_bridge_summary = build_openclaw_discord_bridge_summary(root=root)
     live_lane_diagnostic = dict(discord_live_ops_summary.get("live_lane_diagnostic") or {})
 
     _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count} run_traces={run_traces_count} eval_results={eval_results_count} consolidation_runs={consolidation_runs_count} memory_retrievals={memory_retrievals_count}")
@@ -1065,6 +1066,34 @@ def build_doctor_report(root: Path) -> dict:
             details=str(refusal.get("failure_reason") or ""),
         )
 
+    if openclaw_discord_bridge_summary.get("recent_discord_attempt_count"):
+        latest_bridge_failure = dict(openclaw_discord_bridge_summary.get("latest_failure") or {})
+        latest_bridge_attempt = dict(openclaw_discord_bridge_summary.get("latest_attempt") or {})
+        if latest_bridge_failure:
+            _add(
+                findings,
+                "warn",
+                "openclaw_bridge",
+                f"Latest mirrored OpenClaw Discord activity recorded a failure: {latest_bridge_failure.get('failure_class')}.",
+                "Inspect openclaw_discord_bridge_summary and the external OpenClaw Discord/gateway runtime.",
+                details=(
+                    f"source_message_id={latest_bridge_attempt.get('source_message_id') or 'unknown'} "
+                    f"model={latest_bridge_attempt.get('selected_model_name') or 'unknown'} "
+                    f"provider={latest_bridge_attempt.get('selected_provider_id') or 'unknown'}"
+                ),
+            )
+        else:
+            _add(
+                findings,
+                "pass",
+                "openclaw_bridge",
+                "Mirrored OpenClaw Discord activity summary is available.",
+                details=(
+                    f"recent_attempts={openclaw_discord_bridge_summary.get('recent_discord_attempt_count', 0)} "
+                    f"latest_success={bool(openclaw_discord_bridge_summary.get('latest_successful_reply'))}"
+                ),
+            )
+
     state_export = root / "state" / "logs" / "state_export.json"
     if state_export.exists():
         _add(findings, "pass", "operator", "state_export.json is present for operator/dashboard visibility.")
@@ -1129,6 +1158,7 @@ def build_doctor_report(root: Path) -> dict:
         "next_actions": next_actions,
         "regression_pack": regression["payload"] if regression["ok"] else None,
         "live_lane_diagnostic": live_lane_diagnostic,
+        "openclaw_discord_bridge_summary": openclaw_discord_bridge_summary,
     }
 
 
@@ -1161,6 +1191,17 @@ def render_doctor_report(report: dict) -> str:
             f"failure_category={live_lane.get('failure_category') or 'none'} "
             f"selected_model={live_lane.get('selected_model_name') or 'unknown'} "
             f"selected_host={live_lane.get('selected_host_name') or 'unknown'}"
+        )
+    bridge = report.get("openclaw_discord_bridge_summary") or {}
+    if bridge:
+        latest_attempt = bridge.get("latest_attempt") or {}
+        latest_failure = bridge.get("latest_failure") or {}
+        lines.append(
+            "openclaw_bridge: "
+            f"recent_attempts={bridge.get('recent_discord_attempt_count', 0)} "
+            f"latest_model={latest_attempt.get('selected_model_name') or 'unknown'} "
+            f"latest_provider={latest_attempt.get('selected_provider_id') or 'unknown'} "
+            f"latest_failure={latest_failure.get('failure_class') or 'none'}"
         )
     for category, items in report["groups"].items():
         noteworthy = [item for item in items if item["status"] != "pass"]
