@@ -37,6 +37,7 @@ from runtime.evals.replay_runner import build_eval_run_summary
 from runtime.researchlab.experiment_store import build_experiment_summary
 from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
 from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
+from runtime.core.status import build_discord_live_ops_summary
 from runtime.dashboard.status_names import normalize_status_name
 
 
@@ -492,6 +493,13 @@ def build_state_export(root: Path) -> dict:
     routing_summary = build_model_registry_summary(root=root)
     routing_summary["latest_routing_decision"] = latest_routing_decision
     summary["routing_summary"] = routing_summary
+    summary["discord_live_ops_summary"] = build_discord_live_ops_summary(
+        root=root,
+        routing_summary=routing_summary,
+        backend_execution_results=backend_execution_results,
+        degradation_events=degradation_events,
+        blocked_actions=control_blocked_actions,
+    )
     summary["backend_assignment_summary"] = {
         "backend_assignment_count": len(backend_assignments),
         "latest_backend_assignment": latest_backend_assignment,

@@ -160,6 +160,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "current_reply_ack": (status.get("operator_control_plane", {}) or {}).get("current_reply_ack", {}),
         "gateway_bridge_summary": (status.get("operator_control_plane", {}) or {}).get("gateway_bridge_summary", {}),
         "routing_summary": status.get("routing_summary", {}),
+        "discord_live_ops_summary": status.get("discord_live_ops_summary", {}),
         "backend_assignment_summary": status.get("backend_assignment_summary", {}),
         "execution_contract_summary": status.get("execution_contract_summary", {}),
         "token_budget_summary": status.get("token_budget_summary", {}),

@@ -28,7 +28,7 @@ from runtime.core.prompt_caching_policy import build_prompt_caching_policy_summa
 from runtime.core.provenance_store import build_provenance_summary
 from runtime.core.promotion_governance import build_promotion_governance_summary
 from runtime.core.rollback_store import build_rollback_summary
-from runtime.core.routing import build_model_registry_summary
+from runtime.core.routing import build_model_registry_summary, build_routing_failure_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.modality_contracts import build_modality_summary
 from runtime.core.subsystem_contracts import build_subsystem_contract_summary
@@ -86,6 +86,187 @@ def _latest_reason(task: TaskRecord, events_by_task: dict[str, list[dict[str, An
         if reason:
             return reason
     return ""
+
+
+def _row_timestamp(row: dict[str, Any]) -> str:
+    return str(row.get("updated_at") or row.get("created_at") or "")
+
+
+def _latest_rows_by_task(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        task_id = str(row.get("task_id") or "")
+        if not task_id:
+            continue
+        current = latest.get(task_id)
+        if current is None or _row_timestamp(row) >= _row_timestamp(current):
+            latest[task_id] = row
+    return latest
+
+
+def _is_discord_origin(*, lane: str, channel: str) -> bool:
+    return "discord" in str(lane or "").lower() or "discord" in str(channel or "").lower()
+
+
+def _infer_backend_failure_category(result: dict[str, Any] | None) -> str:
+    if not result:
+        return ""
+    metadata = dict(result.get("metadata") or {})
+    failure_category = str(metadata.get("failure_category") or metadata.get("error_category") or "").strip()
+    if failure_category:
+        return failure_category
+    text = " ".join(
+        [
+            str(result.get("status") or ""),
+            str(result.get("error") or ""),
+            str(result.get("outcome_summary") or ""),
+        ]
+    ).lower()
+    if "model timeout" in text:
+        return "model_timeout"
+    if "backend timeout" in text or "unreachable backend" in text:
+        return "backend_timeout"
+    if "invalid provider" in text or "invalid model" in text or "provider/model" in text:
+        return "invalid_provider_model_config"
+    if "timeout" in text:
+        return "timeout"
+    status = str(result.get("status") or "").strip()
+    if status and status not in {"completed", "ready"}:
+        return status
+    return ""
+
+
+def build_discord_live_ops_summary(
+    *,
+    root: Path,
+    tasks: list[TaskRecord] | None = None,
+    routing_summary: dict[str, Any] | None = None,
+    backend_execution_results: list[dict[str, Any]] | None = None,
+    degradation_events: list[dict[str, Any]] | None = None,
+    blocked_actions: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    task_rows = sorted(tasks or _load_tasks(root), key=_sort_key, reverse=True)
+    latest_backend_by_task = _latest_rows_by_task(
+        backend_execution_results if backend_execution_results is not None else _load_jsons(root / "state" / "backend_execution_results")
+    )
+    latest_degradation_by_task = _latest_rows_by_task(
+        degradation_events if degradation_events is not None else _load_jsons(root / "state" / "degradation_events")
+    )
+    latest_blocked_by_task = _latest_rows_by_task(
+        blocked_actions if blocked_actions is not None else _load_jsons(root / "state" / "control_blocked_actions")
+    )
+    routing = dict(routing_summary or build_model_registry_summary(root))
+    latest_failed_request = dict(routing.get("latest_failed_routing_request") or {})
+    if latest_failed_request and "failure_code" not in latest_failed_request:
+        latest_failed_request = build_routing_failure_summary(latest_failed_request) or {}
+    latest_discord_routing_refusal = (
+        latest_failed_request or None
+        if latest_failed_request
+        and _is_discord_origin(
+            lane=str(latest_failed_request.get("lane") or ""),
+            channel=str(latest_failed_request.get("channel") or ""),
+        )
+        else None
+    )
+
+    rows: list[dict[str, Any]] = []
+    failure_category_counts: dict[str, int] = {}
+    active_statuses = {
+        TaskStatus.QUEUED.value,
+        TaskStatus.RUNNING.value,
+        TaskStatus.BLOCKED.value,
+        TaskStatus.WAITING_REVIEW.value,
+        TaskStatus.WAITING_APPROVAL.value,
+        TaskStatus.READY_TO_SHIP.value,
+    }
+
+    for task in task_rows:
+        if not _is_discord_origin(lane=task.source_lane, channel=task.source_channel):
+            continue
+        routing_meta = dict((task.backend_metadata or {}).get("routing") or {})
+        latest_backend = latest_backend_by_task.get(task.task_id)
+        latest_degradation = latest_degradation_by_task.get(task.task_id)
+        latest_blocked = latest_blocked_by_task.get(task.task_id)
+        degradation_refs = dict((latest_degradation or {}).get("source_refs") or {})
+        fallback_allowed = degradation_refs.get("fallback_allowed")
+        fallback_action = str((latest_degradation or {}).get("fallback_action") or "")
+        backend_failure_category = _infer_backend_failure_category(latest_backend)
+        failure_candidates: list[tuple[str, str, str]] = []
+        if latest_backend and backend_failure_category:
+            failure_candidates.append(
+                (
+                    _row_timestamp(latest_backend),
+                    backend_failure_category,
+                    str(latest_backend.get("error") or latest_backend.get("outcome_summary") or ""),
+                )
+            )
+        if latest_degradation:
+            failure_candidates.append(
+                (
+                    _row_timestamp(latest_degradation),
+                    str(latest_degradation.get("failure_category") or "degraded"),
+                    str(latest_degradation.get("reason") or ""),
+                )
+            )
+        if latest_blocked:
+            failure_candidates.append(
+                (
+                    _row_timestamp(latest_blocked),
+                    "governance_blocked",
+                    str(latest_blocked.get("reason") or ""),
+                )
+            )
+        if task.last_error:
+            failure_candidates.append((task.updated_at or task.created_at or "", "task_error", task.last_error))
+        failure_candidates.sort(key=lambda row: row[0], reverse=True)
+        last_failure_category = failure_candidates[0][1] if failure_candidates else ""
+        last_failure_reason = failure_candidates[0][2] if failure_candidates else ""
+        if last_failure_category:
+            failure_category_counts[last_failure_category] = failure_category_counts.get(last_failure_category, 0) + 1
+
+        rows.append(
+            {
+                "task_id": task.task_id,
+                "source_front_door": "discord",
+                "source_lane": task.source_lane,
+                "source_channel": task.source_channel,
+                "source_message_id": task.source_message_id,
+                "status": task.status,
+                "lifecycle_state": task.lifecycle_state,
+                "task_type": task.task_type,
+                "execution_backend": task.execution_backend,
+                "provider_id": routing_meta.get("provider_id"),
+                "selected_model_name": task.assigned_model or routing_meta.get("model_name"),
+                "selected_node_role": routing_meta.get("selected_node_role"),
+                "selected_host_name": routing_meta.get("selected_host_name"),
+                "workload_type": routing_meta.get("workload_type"),
+                "routing_decision_id": routing_meta.get("routing_decision_id"),
+                "last_failure_category": last_failure_category,
+                "last_failure_reason": last_failure_reason,
+                "backend_failure_category": backend_failure_category,
+                "backend_execution_status": (latest_backend or {}).get("status"),
+                "backend_execution_result_id": (latest_backend or {}).get("backend_execution_result_id"),
+                "degradation_event_id": (latest_degradation or {}).get("degradation_event_id"),
+                "degradation_mode": (latest_degradation or {}).get("degradation_mode"),
+                "degraded_failure_category": (latest_degradation or {}).get("failure_category"),
+                "degraded_fallback_action": fallback_action,
+                "degraded_fallback_attempted": bool(fallback_action and fallback_action != "no_local_fallback" and fallback_allowed is not False),
+                "degraded_fallback_blocked": fallback_allowed is False,
+                "degraded_fallback_legality_reasons": list(degradation_refs.get("fallback_legality_reasons") or []),
+                "governance_blocked_action_id": (latest_blocked or {}).get("blocked_action_id"),
+                "governance_block_reason": (latest_blocked or {}).get("reason"),
+                "updated_at": task.updated_at,
+            }
+        )
+
+    return {
+        "discord_origin_task_count": len(rows),
+        "active_discord_task_count": sum(1 for row in rows if row.get("status") in active_statuses),
+        "failure_category_counts": failure_category_counts,
+        "recent_discord_tasks": rows[:10],
+        "latest_discord_task": rows[0] if rows else None,
+        "latest_discord_routing_refusal": latest_discord_routing_refusal,
+    }
 
 
 def _task_summary(task: TaskRecord, events_by_task: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
@@ -245,6 +426,7 @@ def build_status(root: Path) -> dict[str, Any]:
     backend_assignments = _load_jsons(root / "state" / "backend_assignments")
     backend_execution_requests = _load_jsons(root / "state" / "backend_execution_requests")
     backend_execution_results = _load_jsons(root / "state" / "backend_execution_results")
+    degradation_events = _load_jsons(root / "state" / "degradation_events")
     candidate_records = _load_jsons(root / "state" / "candidate_records")
     candidate_validations = _load_jsons(root / "state" / "candidate_validations")
     promotion_decisions = _load_jsons(root / "state" / "promotion_decisions")
@@ -338,6 +520,14 @@ def build_status(root: Path) -> dict[str, Any]:
         voice_route_safety_summary=voice_route_safety_summary,
     )
     control_summary = build_control_summary(root=root)
+    discord_live_ops_summary = build_discord_live_ops_summary(
+        root=root,
+        tasks=tasks,
+        routing_summary=routing_summary,
+        backend_execution_results=backend_execution_results,
+        degradation_events=degradation_events,
+        blocked_actions=blocked_control_actions,
+    )
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
     if current_action_pack_path.exists():
@@ -661,6 +851,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "finished_recently": finished_recently,
         "candidate_artifacts": candidate_artifacts,
         "routing_summary": routing_summary,
+        "discord_live_ops_summary": discord_live_ops_summary,
         "backend_assignment_summary": backend_assignment_summary,
         "execution_contract_summary": execution_contract_summary,
         "token_budget_summary": token_budget_summary,
