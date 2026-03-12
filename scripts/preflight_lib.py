@@ -27,6 +27,7 @@ from runtime.core.heartbeat_reports import build_node_health_summary
 from runtime.core.node_registry import ensure_default_nodes
 from runtime.core.task_lease import build_task_lease_summary
 from runtime.memory.vault_export import build_vault_export_summary
+from runtime.researchlab.experiment_store import build_experiment_summary
 from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 
@@ -98,6 +99,7 @@ REQUIRED_DIRS = [
     "state/nodes",
     "state/worker_heartbeats",
     "state/task_leases",
+    "state/experiments",
     "state/skills",
     "state/skill_candidates",
     "state/ui_views",
@@ -286,6 +288,8 @@ REQUIRED_FILES = [
     "runtime/evals/trace_store.py",
     "runtime/evals/replay_runner.py",
     "runtime/evals/scorers.py",
+    "runtime/researchlab/experiment_store.py",
+    "runtime/researchlab/optimizer.py",
     "runtime/ralph/consolidator.py",
     "runtime/memory/governance.py",
     "runtime/core/review_store.py",
@@ -332,6 +336,8 @@ KEY_MODULES = [
     "runtime.evals.trace_store",
     "runtime.evals.replay_runner",
     "runtime.evals.scorers",
+    "runtime.researchlab.experiment_store",
+    "runtime.researchlab.optimizer",
     "runtime.ralph.consolidator",
     "runtime.memory.governance",
     "runtime.core.publish_complete",
@@ -578,6 +584,7 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     task_lease_summary = build_task_lease_summary(root=root)
     skill_scheduler_summary = build_skill_scheduler_summary(root=root)
     vault_summary = build_vault_export_summary(root=root)
+    experiment_summary = build_experiment_summary(root=root)
 
     if backend_health["snapshot_count"]:
         _add(findings, "pass", "runtime_prep", "Backend health scaffolding is present.")
@@ -651,6 +658,16 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
         details=(
             f"exports={vault_summary['export_count']} "
             f"exportable_artifacts={vault_summary['exportable_artifact_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "experiments",
+        "Self-optimization experiment scaffolding is present.",
+        details=(
+            f"experiments={experiment_summary['experiment_count']} "
+            f"frontier_size={experiment_summary['frontier_size']}"
         ),
     )
 

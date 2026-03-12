@@ -33,6 +33,7 @@ from runtime.browser.reporting import build_browser_action_summary
 from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
 from runtime.integrations.notification_adapter import build_notification_summary
 from runtime.evals.replay_runner import build_eval_run_summary
+from runtime.researchlab.experiment_store import build_experiment_summary
 from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
 from runtime.dashboard.status_names import normalize_status_name
 
@@ -523,6 +524,7 @@ def build_state_export(root: Path) -> dict:
     summary["task_lease_summary"] = build_task_lease_summary(root=root)
     summary["skill_scheduler_summary"] = build_skill_scheduler_summary(root=root)
     summary["vault_summary"] = build_vault_export_summary(root=root)
+    summary["experiment_summary"] = build_experiment_summary(root=root)
     summary["trajectory_summary"] = build_trajectory_summary(root=root)
     summary["operator_profile_summary"] = build_operator_profile_summary(root=root)
     summary["security_validation_summary"] = build_security_validation_summary(root=root)
