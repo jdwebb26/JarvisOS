@@ -15,6 +15,7 @@ from runtime.core.status import summarize_status
 from runtime.dashboard.status_names import normalize_status_summary
 from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
 from runtime.core.task_lease import build_task_lease_summary
+from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 
 
@@ -45,6 +46,7 @@ def build_operator_snapshot(root: Path) -> dict:
     runtime_5_2_prep = build_runtime_5_2_prep_summary(root=root)
     eval_scaffolding_summary = build_eval_run_summary(root=root)
     task_lease_summary = build_task_lease_summary(root=root)
+    skill_scheduler_summary = build_skill_scheduler_summary(root=root)
     reviews = _load_json_files(root / "state" / "reviews")
     approvals = _load_json_files(root / "state" / "approvals")
     flowstate_index = _load_flowstate_index(root)
@@ -168,6 +170,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "browser_action_summary": status.get("browser_action_summary", {}),
         "voice_session_summary": status.get("voice_session_summary", {}),
         "task_lease_summary": task_lease_summary,
+        "skill_scheduler_summary": skill_scheduler_summary,
         "task_envelope_summary": status.get("task_envelope_summary", {}),
         "candidate_promotion_summary": status.get("candidate_promotion_summary", {}),
         "provenance_summary": status.get("provenance_summary", {}),
@@ -269,6 +272,8 @@ def build_operator_snapshot(root: Path) -> dict:
             "task_leases": task_lease_summary.get("task_lease_count", 0),
             "active_task_leases": task_lease_summary.get("active_task_lease_count", 0),
             "expired_task_leases": task_lease_summary.get("expired_task_lease_count", 0),
+            "approved_skills": skill_scheduler_summary.get("registry_summary", {}).get("approved_skill_count", 0),
+            "skill_candidates": skill_scheduler_summary.get("registry_summary", {}).get("skill_candidate_summary", {}).get("skill_candidate_count", 0),
         },
     }
 

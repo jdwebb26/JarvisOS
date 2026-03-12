@@ -24,6 +24,7 @@ from runtime.core.routing import build_model_registry_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.task_lease import build_task_lease_summary
 from runtime.core.token_budget import build_token_budget_summary
+from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.browser.reporting import build_browser_action_summary
@@ -518,6 +519,7 @@ def build_state_export(root: Path) -> dict:
     summary["browser_action_summary"] = build_browser_action_summary(root=root)
     summary["voice_session_summary"] = build_voice_session_summary(root=root)
     summary["task_lease_summary"] = build_task_lease_summary(root=root)
+    summary["skill_scheduler_summary"] = build_skill_scheduler_summary(root=root)
     summary["trajectory_summary"] = build_trajectory_summary(root=root)
     summary["operator_profile_summary"] = build_operator_profile_summary(root=root)
     summary["security_validation_summary"] = build_security_validation_summary(root=root)

@@ -2256,6 +2256,82 @@ class TaskLeaseRecord:
 
 
 @dataclass
+class ApprovedSkillRecord:
+    skill_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    skill_name: str
+    description: str = ""
+    status: str = "approved"
+    task_classes: list[str] = field(default_factory=list)
+    allowed_backends: list[str] = field(default_factory=list)
+    required_eval_profiles: list[str] = field(default_factory=list)
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ApprovedSkillRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("description", "")
+        data.setdefault("status", "approved")
+        data.setdefault("task_classes", [])
+        data.setdefault("allowed_backends", [])
+        data.setdefault("required_eval_profiles", [])
+        data.setdefault("source_refs", {})
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
+class SkillCandidateRecord:
+    skill_candidate_id: str
+    created_at: str
+    updated_at: str
+    actor: str
+    lane: str
+    skill_name: str
+    description: str = ""
+    status: str = "candidate"
+    source_task_id: Optional[str] = None
+    source_trace_id: Optional[str] = None
+    source_eval_result_id: Optional[str] = None
+    failure_fingerprint: str = ""
+    task_classes: list[str] = field(default_factory=list)
+    review_status: str = "pending"
+    eval_status: str = "pending"
+    source_refs: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "SkillCandidateRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("description", "")
+        data.setdefault("status", "candidate")
+        data.setdefault("source_task_id", None)
+        data.setdefault("source_trace_id", None)
+        data.setdefault("source_eval_result_id", None)
+        data.setdefault("failure_fingerprint", "")
+        data.setdefault("task_classes", [])
+        data.setdefault("review_status", "pending")
+        data.setdefault("eval_status", "pending")
+        data.setdefault("source_refs", {})
+        data.setdefault("metadata", {})
+        return cls(**data)
+
+
+@dataclass
 class BackendAssignmentRecord:
     backend_assignment_id: str
     task_id: str

@@ -26,6 +26,7 @@ from runtime.dashboard.runtime_5_2_prep import (
 from runtime.core.heartbeat_reports import build_node_health_summary
 from runtime.core.node_registry import ensure_default_nodes
 from runtime.core.task_lease import build_task_lease_summary
+from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 
 ROOT = resolve_repo_root(Path(__file__).resolve().parents[1])
@@ -46,6 +47,7 @@ REQUIRED_DIRS = [
     "runtime/evals",
     "runtime/ralph",
     "runtime/memory",
+    "runtime/skills",
     "scripts",
     "state",
     "state/approvals",
@@ -93,6 +95,8 @@ REQUIRED_DIRS = [
     "state/nodes",
     "state/worker_heartbeats",
     "state/task_leases",
+    "state/skills",
+    "state/skill_candidates",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -250,6 +254,10 @@ REQUIRED_FILES = [
     "runtime/core/backend_assignments.py",
     "runtime/core/node_registry.py",
     "runtime/core/task_lease.py",
+    "runtime/skills/registry.py",
+    "runtime/skills/skill_store.py",
+    "runtime/skills/skill_candidate.py",
+    "runtime/skills/skill_scheduler.py",
     "runtime/core/provenance_store.py",
     "runtime/core/replay_store.py",
     "runtime/core/modality_contracts.py",
@@ -288,6 +296,10 @@ KEY_MODULES = [
     "runtime.core.routing",
     "runtime.core.node_registry",
     "runtime.core.task_lease",
+    "runtime.skills.registry",
+    "runtime.skills.skill_store",
+    "runtime.skills.skill_candidate",
+    "runtime.skills.skill_scheduler",
     "runtime.core.candidate_store",
     "runtime.core.rollback_store",
     "runtime.core.approval_sessions",
@@ -545,6 +557,7 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     degraded_state = build_degraded_state_summary(root=root)
     node_health = build_node_health_summary(root=root)
     task_lease_summary = build_task_lease_summary(root=root)
+    skill_scheduler_summary = build_skill_scheduler_summary(root=root)
 
     if backend_health["snapshot_count"]:
         _add(findings, "pass", "runtime_prep", "Backend health scaffolding is present.")
@@ -597,6 +610,17 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             f"active={task_lease_summary['active_task_lease_count']} "
             f"expired={task_lease_summary['expired_task_lease_count']} "
             f"requeued={task_lease_summary['requeued_task_lease_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "runtime_prep",
+        "Skills scaffolding is present.",
+        details=(
+            f"approved_skills={skill_scheduler_summary['registry_summary']['approved_skill_count']} "
+            f"skill_candidates={skill_scheduler_summary['registry_summary']['skill_candidate_summary']['skill_candidate_count']} "
+            f"schedule_ready={skill_scheduler_summary['scheduler_readiness']['schedule_ready_skill_count']}"
         ),
     )
 
@@ -730,6 +754,7 @@ def build_doctor_report(root: Path) -> dict:
     degraded_state = build_degraded_state_summary(root=root)
     node_health = build_node_health_summary(root=root)
     task_lease_summary = build_task_lease_summary(root=root)
+    skill_scheduler_summary = build_skill_scheduler_summary(root=root)
 
     _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count} run_traces={run_traces_count} eval_results={eval_results_count} consolidation_runs={consolidation_runs_count} memory_retrievals={memory_retrievals_count}")
     _add(
@@ -743,7 +768,9 @@ def build_doctor_report(root: Path) -> dict:
             f"eval_runs={eval_run_summary['eval_run_count']} "
             f"registered_nodes={node_health['registered_node_count']} "
             f"online_nodes={node_health['online_node_count']} "
-            f"task_leases={task_lease_summary['task_lease_count']}"
+            f"task_leases={task_lease_summary['task_lease_count']} "
+            f"approved_skills={skill_scheduler_summary['registry_summary']['approved_skill_count']} "
+            f"skill_candidates={skill_scheduler_summary['registry_summary']['skill_candidate_summary']['skill_candidate_count']}"
         ),
     )
     if backend_health["unhealthy_lane_count"]:
@@ -786,6 +813,13 @@ def build_doctor_report(root: Path) -> dict:
             "runtime_prep",
             "Expired task leases are present and may need reclaim handling.",
             "Inspect task_lease_summary in operator surfaces before enabling any future burst-worker execution flow.",
+        )
+    if skill_scheduler_summary["registry_summary"]["skill_candidate_summary"]["skill_candidate_count"]:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Skill candidates are present and remain bounded behind review/eval gating.",
         )
 
     state_export = root / "state" / "logs" / "state_export.json"
@@ -845,6 +879,8 @@ def build_doctor_report(root: Path) -> dict:
             "registered_nodes": node_health["registered_node_count"],
             "online_nodes": node_health["online_node_count"],
             "task_leases": task_lease_summary["task_lease_count"],
+            "approved_skills": skill_scheduler_summary["registry_summary"]["approved_skill_count"],
+            "skill_candidates": skill_scheduler_summary["registry_summary"]["skill_candidate_summary"]["skill_candidate_count"],
         },
         "groups": grouped,
         "next_actions": next_actions,
@@ -867,7 +903,9 @@ def render_doctor_report(report: dict) -> str:
             f"eval_runs={report['summary'].get('eval_runs', 0)} "
             f"nodes={report['summary'].get('registered_nodes', 0)} "
             f"online_nodes={report['summary'].get('online_nodes', 0)} "
-            f"task_leases={report['summary'].get('task_leases', 0)}"
+            f"task_leases={report['summary'].get('task_leases', 0)} "
+            f"approved_skills={report['summary'].get('approved_skills', 0)} "
+            f"skill_candidates={report['summary'].get('skill_candidates', 0)}"
         ),
     ]
     for category, items in report["groups"].items():
