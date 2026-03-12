@@ -26,6 +26,7 @@ from runtime.dashboard.runtime_5_2_prep import (
 from runtime.core.heartbeat_reports import build_node_health_summary
 from runtime.core.node_registry import ensure_default_nodes
 from runtime.core.task_lease import build_task_lease_summary
+from runtime.memory.vault_export import build_vault_export_summary
 from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 
@@ -169,6 +170,9 @@ REQUIRED_DIRS = [
     "state/operator_incident_snapshots",
     "state/tasks",
     "workspace",
+    "workspace/vault",
+    "workspace/vault/artifacts",
+    "workspace/vault/briefs",
     "workspace/inbox",
     "workspace/out",
     "workspace/work",
@@ -264,6 +268,9 @@ REQUIRED_FILES = [
     "runtime/ui/a2ui_schema.py",
     "runtime/ui/component_catalog.py",
     "runtime/dashboard/renderers/a2ui_renderer.py",
+    "runtime/memory/vault_export.py",
+    "runtime/memory/vault_index.py",
+    "runtime/memory/brief_builder.py",
     "runtime/core/provenance_store.py",
     "runtime/core/replay_store.py",
     "runtime/core/modality_contracts.py",
@@ -309,6 +316,9 @@ KEY_MODULES = [
     "runtime.ui.a2ui_schema",
     "runtime.ui.component_catalog",
     "runtime.dashboard.renderers.a2ui_renderer",
+    "runtime.memory.vault_export",
+    "runtime.memory.vault_index",
+    "runtime.memory.brief_builder",
     "runtime.core.candidate_store",
     "runtime.core.rollback_store",
     "runtime.core.approval_sessions",
@@ -553,7 +563,7 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             else:
                 _add(findings, "pass", "config", "config/channels.yaml includes the expected operator channel names.")
 
-    for rel in ["state/logs", "workspace/out"]:
+    for rel in ["state/logs", "workspace/out", "workspace/vault"]:
         error = _write_probe(root / rel)
         if error is None:
             _add(findings, "pass", "filesystem", f"Directory `{rel}` is writable.")
@@ -567,6 +577,7 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     node_health = build_node_health_summary(root=root)
     task_lease_summary = build_task_lease_summary(root=root)
     skill_scheduler_summary = build_skill_scheduler_summary(root=root)
+    vault_summary = build_vault_export_summary(root=root)
 
     if backend_health["snapshot_count"]:
         _add(findings, "pass", "runtime_prep", "Backend health scaffolding is present.")
@@ -630,6 +641,16 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             f"approved_skills={skill_scheduler_summary['registry_summary']['approved_skill_count']} "
             f"skill_candidates={skill_scheduler_summary['registry_summary']['skill_candidate_summary']['skill_candidate_count']} "
             f"schedule_ready={skill_scheduler_summary['scheduler_readiness']['schedule_ready_skill_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "vault",
+        "Knowledge vault export scaffolding is present and non-authoritative.",
+        details=(
+            f"exports={vault_summary['export_count']} "
+            f"exportable_artifacts={vault_summary['exportable_artifact_count']}"
         ),
     )
 

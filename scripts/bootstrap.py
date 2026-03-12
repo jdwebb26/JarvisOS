@@ -15,6 +15,7 @@ if str(DEFAULT_ROOT) not in sys.path:
 from runtime.dashboard.runtime_5_2_prep import ensure_runtime_5_2_prep_state
 from runtime.core.heartbeat_reports import write_node_heartbeat
 from runtime.core.node_registry import ensure_default_nodes
+from runtime.memory.vault_export import ensure_vault_scaffold
 
 ROOT_MARKERS = [
     "AGENTS.md",
@@ -166,6 +167,9 @@ REQUIRED_DIRS = [
     "state/operator_incident_reports",
     "state/operator_incident_snapshots",
     "workspace",
+    "workspace/vault",
+    "workspace/vault/artifacts",
+    "workspace/vault/briefs",
     "workspace/inbox",
     "workspace/work",
     "workspace/out",
@@ -292,6 +296,9 @@ AUTO_CREATE_DIRS = [
     "state/operator_incident_reports",
     "state/operator_incident_snapshots",
     "workspace",
+    "workspace/vault",
+    "workspace/vault/artifacts",
+    "workspace/vault/briefs",
     "workspace/inbox",
     "workspace/work",
     "workspace/out",
@@ -375,6 +382,7 @@ def ensure_foundation(root: Path, *, force: bool = False) -> dict[str, object]:
     copied_configs = ensure_config_skeletons(resolved_root, force=force)
     runtime_prep = ensure_runtime_5_2_prep_state(root=resolved_root)
     default_nodes = ensure_default_nodes(root=resolved_root)
+    vault_scaffold = ensure_vault_scaffold(root=resolved_root)
     write_node_heartbeat(
         node_name="NIMO",
         actor="system",
@@ -392,6 +400,7 @@ def ensure_foundation(root: Path, *, force: bool = False) -> dict[str, object]:
         "copied_configs": copied_configs,
         "runtime_5_2_prep": runtime_prep,
         "default_nodes": [row.to_dict() for row in default_nodes],
+        "vault_scaffold": vault_scaffold,
     }
 
 
@@ -421,6 +430,7 @@ def main() -> int:
     copied_configs = ensure_config_skeletons(root, force=args.force)
     runtime_prep = ensure_runtime_5_2_prep_state(root=root)
     default_nodes = ensure_default_nodes(root=root)
+    vault_scaffold = ensure_vault_scaffold(root=root)
     write_node_heartbeat(
         node_name="NIMO",
         actor="system",
@@ -444,6 +454,7 @@ def main() -> int:
         "copied_configs": copied_configs,
         "runtime_5_2_prep": runtime_prep,
         "default_nodes": [row.to_dict() for row in default_nodes],
+        "vault_scaffold": vault_scaffold,
     }
 
     report_path = root / "state" / "logs" / "bootstrap_report.json"

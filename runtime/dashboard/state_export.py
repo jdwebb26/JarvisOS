@@ -23,6 +23,7 @@ from runtime.core.prompt_caching_policy import build_prompt_caching_policy_summa
 from runtime.core.routing import build_model_registry_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.task_lease import build_task_lease_summary
+from runtime.memory.vault_export import build_vault_export_summary
 from runtime.core.token_budget import build_token_budget_summary
 from runtime.dashboard.renderers.a2ui_renderer import render_operator_views
 from runtime.skills.skill_scheduler import build_skill_scheduler_summary
@@ -521,6 +522,7 @@ def build_state_export(root: Path) -> dict:
     summary["voice_session_summary"] = build_voice_session_summary(root=root)
     summary["task_lease_summary"] = build_task_lease_summary(root=root)
     summary["skill_scheduler_summary"] = build_skill_scheduler_summary(root=root)
+    summary["vault_summary"] = build_vault_export_summary(root=root)
     summary["trajectory_summary"] = build_trajectory_summary(root=root)
     summary["operator_profile_summary"] = build_operator_profile_summary(root=root)
     summary["security_validation_summary"] = build_security_validation_summary(root=root)
