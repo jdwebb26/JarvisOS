@@ -25,6 +25,7 @@ from runtime.dashboard.runtime_5_2_prep import (
 )
 from runtime.core.heartbeat_reports import build_node_health_summary
 from runtime.core.node_registry import ensure_default_nodes
+from runtime.core.task_lease import build_task_lease_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 
 ROOT = resolve_repo_root(Path(__file__).resolve().parents[1])
@@ -91,6 +92,7 @@ REQUIRED_DIRS = [
     "state/accelerators",
     "state/nodes",
     "state/worker_heartbeats",
+    "state/task_leases",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -247,6 +249,7 @@ REQUIRED_FILES = [
     "runtime/core/execution_contracts.py",
     "runtime/core/backend_assignments.py",
     "runtime/core/node_registry.py",
+    "runtime/core/task_lease.py",
     "runtime/core/provenance_store.py",
     "runtime/core/replay_store.py",
     "runtime/core/modality_contracts.py",
@@ -284,6 +287,7 @@ KEY_MODULES = [
     "runtime.core.decision_router",
     "runtime.core.routing",
     "runtime.core.node_registry",
+    "runtime.core.task_lease",
     "runtime.core.candidate_store",
     "runtime.core.rollback_store",
     "runtime.core.approval_sessions",
@@ -540,6 +544,7 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     eval_run_summary = build_eval_run_summary(root=root)
     degraded_state = build_degraded_state_summary(root=root)
     node_health = build_node_health_summary(root=root)
+    task_lease_summary = build_task_lease_summary(root=root)
 
     if backend_health["snapshot_count"]:
         _add(findings, "pass", "runtime_prep", "Backend health scaffolding is present.")
@@ -581,6 +586,19 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
         _add(findings, "pass", "runtime_prep", "At least one burst node heartbeat is present.")
     else:
         _add(findings, "pass", "runtime_prep", "No burst node is currently online; optional burst capacity remains non-critical.")
+
+    _add(
+        findings,
+        "pass",
+        "runtime_prep",
+        "Task lease scaffolding is present.",
+        details=(
+            f"leases={task_lease_summary['task_lease_count']} "
+            f"active={task_lease_summary['active_task_lease_count']} "
+            f"expired={task_lease_summary['expired_task_lease_count']} "
+            f"requeued={task_lease_summary['requeued_task_lease_count']}"
+        ),
+    )
 
     if degraded_state["degraded_backend_count"]:
         _add(
@@ -711,6 +729,7 @@ def build_doctor_report(root: Path) -> dict:
     eval_run_summary = build_eval_run_summary(root=root)
     degraded_state = build_degraded_state_summary(root=root)
     node_health = build_node_health_summary(root=root)
+    task_lease_summary = build_task_lease_summary(root=root)
 
     _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count} run_traces={run_traces_count} eval_results={eval_results_count} consolidation_runs={consolidation_runs_count} memory_retrievals={memory_retrievals_count}")
     _add(
@@ -723,7 +742,8 @@ def build_doctor_report(root: Path) -> dict:
             f"accelerator_summaries={accelerator_summary['summary_count']} "
             f"eval_runs={eval_run_summary['eval_run_count']} "
             f"registered_nodes={node_health['registered_node_count']} "
-            f"online_nodes={node_health['online_node_count']}"
+            f"online_nodes={node_health['online_node_count']} "
+            f"task_leases={task_lease_summary['task_lease_count']}"
         ),
     )
     if backend_health["unhealthy_lane_count"]:
@@ -758,6 +778,14 @@ def build_doctor_report(root: Path) -> dict:
             "runtime_prep",
             "Node registry is readable; some optional nodes are offline or stale.",
             details=", ".join(row["node_name"] for row in node_health["stale_nodes"][:5]),
+        )
+    if task_lease_summary["expired_task_lease_count"]:
+        _add(
+            findings,
+            "warn",
+            "runtime_prep",
+            "Expired task leases are present and may need reclaim handling.",
+            "Inspect task_lease_summary in operator surfaces before enabling any future burst-worker execution flow.",
         )
 
     state_export = root / "state" / "logs" / "state_export.json"
@@ -816,6 +844,7 @@ def build_doctor_report(root: Path) -> dict:
             "eval_runs": eval_run_summary["eval_run_count"],
             "registered_nodes": node_health["registered_node_count"],
             "online_nodes": node_health["online_node_count"],
+            "task_leases": task_lease_summary["task_lease_count"],
         },
         "groups": grouped,
         "next_actions": next_actions,
@@ -837,7 +866,8 @@ def render_doctor_report(report: dict) -> str:
             f"backend_health={report['summary'].get('backend_health_snapshots', 0)} "
             f"eval_runs={report['summary'].get('eval_runs', 0)} "
             f"nodes={report['summary'].get('registered_nodes', 0)} "
-            f"online_nodes={report['summary'].get('online_nodes', 0)}"
+            f"online_nodes={report['summary'].get('online_nodes', 0)} "
+            f"task_leases={report['summary'].get('task_leases', 0)}"
         ),
     ]
     for category, items in report["groups"].items():

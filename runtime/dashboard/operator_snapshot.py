@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 from runtime.core.status import summarize_status
 from runtime.dashboard.status_names import normalize_status_summary
 from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
+from runtime.core.task_lease import build_task_lease_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 
 
@@ -43,6 +44,7 @@ def build_operator_snapshot(root: Path) -> dict:
     status = normalize_status_summary(summarize_status(root=root))
     runtime_5_2_prep = build_runtime_5_2_prep_summary(root=root)
     eval_scaffolding_summary = build_eval_run_summary(root=root)
+    task_lease_summary = build_task_lease_summary(root=root)
     reviews = _load_json_files(root / "state" / "reviews")
     approvals = _load_json_files(root / "state" / "approvals")
     flowstate_index = _load_flowstate_index(root)
@@ -165,6 +167,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "browser_control_allowlist_summary": status.get("browser_control_allowlist_summary", {}),
         "browser_action_summary": status.get("browser_action_summary", {}),
         "voice_session_summary": status.get("voice_session_summary", {}),
+        "task_lease_summary": task_lease_summary,
         "task_envelope_summary": status.get("task_envelope_summary", {}),
         "candidate_promotion_summary": status.get("candidate_promotion_summary", {}),
         "provenance_summary": status.get("provenance_summary", {}),
@@ -263,6 +266,9 @@ def build_operator_snapshot(root: Path) -> dict:
             "registered_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_registry_summary", {}) or {}).get("registered_node_count", 0),
             "online_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_health_summary", {}) or {}).get("online_node_count", 0),
             "burst_online_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_health_summary", {}) or {}).get("burst_online_count", 0),
+            "task_leases": task_lease_summary.get("task_lease_count", 0),
+            "active_task_leases": task_lease_summary.get("active_task_lease_count", 0),
+            "expired_task_leases": task_lease_summary.get("expired_task_lease_count", 0),
         },
     }
 
