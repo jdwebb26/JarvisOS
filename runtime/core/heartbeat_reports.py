@@ -165,6 +165,8 @@ def build_node_health_summary(*, root: Optional[Path] = None, stale_after_second
     status_counts: dict[str, int] = {}
     role_counts: dict[str, int] = {}
     stale_nodes: list[dict[str, Any]] = []
+    optional_offline_nodes: list[dict[str, Any]] = []
+    primary_outage_nodes: list[dict[str, Any]] = []
     node_rows: list[dict[str, Any]] = []
     for node in nodes:
         role_counts[node.node_role] = role_counts.get(node.node_role, 0) + 1
@@ -199,12 +201,56 @@ def build_node_health_summary(*, root: Optional[Path] = None, stale_after_second
                     "optional": row["optional"],
                 }
             )
+            if row["optional"]:
+                optional_offline_nodes.append(
+                    {
+                        "node_name": node.node_name,
+                        "node_role": node.node_role,
+                        "last_seen_at": row["last_seen_at"],
+                    }
+                )
+        if node.node_role == NodeRole.PRIMARY.value and derived_status in {
+            NodeStatus.UNREACHABLE.value,
+            NodeStatus.STOPPED.value,
+        }:
+            primary_outage_nodes.append(
+                {
+                    "node_name": node.node_name,
+                    "registered_status": node.status,
+                    "effective_status": derived_status,
+                    "last_seen_at": row["last_seen_at"],
+                }
+            )
     primary_online = [row for row in online_nodes if row.get("node_role") == NodeRole.PRIMARY.value]
     burst_online = [row for row in online_nodes if row.get("node_role") == NodeRole.BURST.value]
+    optional_burst_offline_nodes = [
+        row for row in optional_offline_nodes if str(row.get("node_role") or "") == NodeRole.BURST.value
+    ]
+    topology_posture = "healthy"
+    topology_notes: list[str] = []
+    if primary_outage_nodes:
+        topology_posture = "primary_outage"
+        topology_notes.append("Primary runtime node is offline or stale.")
+    elif optional_burst_offline_nodes:
+        topology_posture = "healthy_optional_burst_offline"
+        topology_notes.append("Primary runtime remains healthy; optional burst capacity is offline.")
+    elif optional_offline_nodes:
+        topology_posture = "healthy_optional_capacity_reduced"
+        topology_notes.append("Primary runtime remains healthy; some optional capacity is offline.")
+    else:
+        topology_notes.append("Primary runtime and local support topology are available.")
     return {
         "registered_node_count": len(nodes),
         "online_node_count": len(online_nodes),
         "stale_heartbeat_count": len(stale_nodes),
+        "optional_offline_count": len(optional_offline_nodes),
+        "optional_offline_nodes": optional_offline_nodes,
+        "optional_burst_offline_count": len(optional_burst_offline_nodes),
+        "optional_burst_offline_nodes": optional_burst_offline_nodes,
+        "primary_outage_count": len(primary_outage_nodes),
+        "primary_outage_nodes": primary_outage_nodes,
+        "topology_posture": topology_posture,
+        "topology_notes": topology_notes,
         "node_role_counts": role_counts,
         "node_status_counts": status_counts,
         "primary_online_count": len(primary_online),

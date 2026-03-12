@@ -90,24 +90,54 @@ def ensure_runtime_5_2_prep_state(*, root: Optional[Path] = None) -> dict[str, l
                 ],
                 "nodes": [
                     {
-                        "node_id": "local-qwen-node",
-                        "label": "local-qwen-node",
+                        "node_id": "NIMO",
+                        "label": "NIMO",
                         "status": "healthy",
                         "active": True,
-                        "available_backends": ["qwen_policy_default"],
+                        "role": "primary",
+                        "available_backends": ["qwen_executor", "qwen_planner", "operator"],
+                        "accelerators": ["gpu"],
+                        "notes": ["bootstrap_seed_primary_runtime"],
+                    },
+                    {
+                        "node_id": "LOCAL",
+                        "label": "LOCAL",
+                        "status": "healthy",
+                        "active": True,
+                        "role": "local",
+                        "available_backends": ["memory_spine", "evaluation_spine", "operator"],
                         "accelerators": ["cpu"],
-                        "notes": ["bootstrap_seed"],
+                        "notes": ["bootstrap_seed_local_embeddings"],
+                    },
+                    {
+                        "node_id": "Koolkidclub",
+                        "label": "Koolkidclub",
+                        "status": "stopped",
+                        "active": False,
+                        "role": "burst",
+                        "available_backends": ["hermes_adapter", "autoresearch_adapter"],
+                        "accelerators": [],
+                        "notes": ["bootstrap_seed_optional_burst_not_default"],
                     }
                 ],
                 "lanes": [
                     {
                         "lane": lane,
-                        "backend": "qwen_policy_default",
+                        "backend": "qwen_executor",
                         "status": "healthy",
-                        "node_id": "local-qwen-node",
-                        "notes": ["bootstrap_seed_qwen_first"],
+                        "node_id": "NIMO",
+                        "notes": ["bootstrap_seed_primary_qwen_first"],
                     }
                     for lane in DEFAULT_LANES
+                ]
+                + [
+                    {
+                        "lane": "embeddings",
+                        "backend": "memory_spine",
+                        "status": "healthy",
+                        "node_id": "LOCAL",
+                        "notes": ["bootstrap_seed_local_embeddings_only"],
+                    }
                 ],
             },
             root=resolved_root,

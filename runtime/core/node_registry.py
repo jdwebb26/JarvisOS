@@ -34,12 +34,12 @@ DEFAULT_NODE_PROFILES = [
             BackendRuntime.OPERATOR.value,
         ],
         "accelerator_refs": ["local_scaffolding_accelerator"],
-        "labels": ["live_primary", "scaffolding_seed"],
+        "labels": ["live_primary", "always_on_runtime", "qwen_first_default"],
         "metadata": {
             "scaffolding_only": True,
             "backend_summary": ["qwen_planner", "qwen_executor", "operator"],
             "model_family_summary": ["qwen"],
-            "notes": ["Primary durable node scaffold for 5.2 prep visibility."],
+            "notes": ["Primary always-on runtime host for Jarvis and Scout live serving."],
         },
     },
     {
@@ -49,13 +49,13 @@ DEFAULT_NODE_PROFILES = [
         "authority_class": AuthorityClass.SUGGEST_ONLY.value,
         "available_backends": [],
         "accelerator_refs": [],
-        "labels": ["optional_burst", "scaffolding_seed"],
+        "labels": ["optional_burst", "not_default_route", "side_worker_only"],
         "metadata": {
             "scaffolding_only": True,
             "optional": True,
             "backend_summary": [],
             "model_family_summary": [],
-            "notes": ["Optional burst worker scaffold. Not part of the critical path."],
+            "notes": ["Optional burst worker for Hermes/autoresearch side work. Not part of the primary chat runtime."],
         },
     },
     {
@@ -69,12 +69,12 @@ DEFAULT_NODE_PROFILES = [
             BackendRuntime.OPERATOR.value,
         ],
         "accelerator_refs": [],
-        "labels": ["live_local_support", "routing_local_only"],
+        "labels": ["live_local_support", "routing_local_only", "embeddings_path"],
         "metadata": {
             "scaffolding_only": False,
             "backend_summary": ["memory_spine", "evaluation_spine", "operator"],
             "model_family_summary": ["local"],
-            "notes": ["Local support node for local-only workloads such as embeddings."],
+            "notes": ["Local support node for the distinct local embeddings and support path."],
         },
     },
 ]

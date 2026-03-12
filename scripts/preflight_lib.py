@@ -986,7 +986,7 @@ def build_doctor_report(root: Path) -> dict:
             "Degraded backend posture is present in runtime-prep summaries.",
             "Use operator snapshot / handoff summaries to inspect degraded lanes before migration work.",
         )
-    if not node_health["primary_online_count"]:
+    if node_health.get("primary_outage_count", 0):
         _add(
             findings,
             "warn",
@@ -994,12 +994,20 @@ def build_doctor_report(root: Path) -> dict:
             "Primary node heartbeat is missing or stale.",
             "Rebuild the heartbeat report or rerun bootstrap before taking node-aware migration tickets.",
         )
+    elif node_health.get("optional_burst_offline_count", 0):
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Primary runtime remains healthy while the optional burst worker is offline.",
+            details=", ".join(row["node_name"] for row in node_health["optional_burst_offline_nodes"][:5]),
+        )
     elif node_health["stale_heartbeat_count"]:
         _add(
             findings,
             "pass",
             "runtime_prep",
-            "Node registry is readable; some optional nodes are offline or stale.",
+            "Node registry is readable; some non-primary optional nodes are offline or stale.",
             details=", ".join(row["node_name"] for row in node_health["stale_nodes"][:5]),
         )
     if task_lease_summary["expired_task_lease_count"]:
