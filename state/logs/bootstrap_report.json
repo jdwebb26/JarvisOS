@@ -1,10 +1,23 @@
 {
   "ok": true,
-  "timestamp_utc": "2026-03-10T16:48:43.354833+00:00",
+  "timestamp_utc": "2026-03-12T00:42:50.825373+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
-  "requested_root": "/home/rollan/.openclaw/workspace",
-  "created_dirs": [],
-  "existing_dirs_count": 32,
+  "requested_root": "/home/rollan/.openclaw/workspace/jarvis-v5",
+  "created_dirs": [
+    "runtime/auditor",
+    "runtime/reporter",
+    "services",
+    "services/discord",
+    "services/models",
+    "services/tools",
+    "services/memory",
+    "services/approvals",
+    "state/eval_runs",
+    "state/backend_health",
+    "state/accelerators",
+    "systemd"
+  ],
+  "existing_dirs_count": 127,
   "copy_examples_enabled": true,
   "copy_examples_requested": false,
   "copied_configs": {
@@ -12,5 +25,11 @@
     "config/channels.yaml": "kept_existing",
     "config/models.yaml": "kept_existing",
     "config/policies.yaml": "kept_existing"
+  },
+  "runtime_5_2_prep": {
+    "seeded_files": [
+      "state/backend_health/backend_health_bootstrap_seed.json",
+      "state/accelerators/accelerator_summary_bootstrap_seed.json"
+    ]
   }
 }

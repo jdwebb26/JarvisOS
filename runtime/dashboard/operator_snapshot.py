@@ -13,6 +13,8 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.status import summarize_status
 from runtime.dashboard.status_names import normalize_status_summary
+from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
+from runtime.evals.replay_runner import build_eval_run_summary
 
 
 def _load_json_files(folder: Path) -> list[dict]:
@@ -39,6 +41,8 @@ def _load_flowstate_index(root: Path) -> dict:
 
 def build_operator_snapshot(root: Path) -> dict:
     status = normalize_status_summary(summarize_status(root=root))
+    runtime_5_2_prep = build_runtime_5_2_prep_summary(root=root)
+    eval_scaffolding_summary = build_eval_run_summary(root=root)
     reviews = _load_json_files(root / "state" / "reviews")
     approvals = _load_json_files(root / "state" / "approvals")
     flowstate_index = _load_flowstate_index(root)
@@ -172,6 +176,12 @@ def build_operator_snapshot(root: Path) -> dict:
         "trajectory_summary": status.get("trajectory_summary", {}),
         "operator_profile_summary": status.get("operator_profile_summary", {}),
         "policy_surface_summary": status.get("policy_surface_summary", {}),
+        "active_nodes_summary": runtime_5_2_prep["active_nodes_summary"],
+        "backend_health_summary": runtime_5_2_prep["backend_health_summary"],
+        "accelerator_summary": runtime_5_2_prep["accelerator_summary"],
+        "degraded_state_summary": runtime_5_2_prep["degraded_state_summary"],
+        "reroute_summary": runtime_5_2_prep["reroute_summary"],
+        "eval_scaffolding_summary": eval_scaffolding_summary,
         "latest_reply_ingress": (status.get("operator_control_plane", {}) or {}).get("latest_reply_ingress"),
         "latest_reply_ingress_run": (status.get("operator_control_plane", {}) or {}).get("latest_reply_ingress_run"),
         "latest_reply_transport_cycle": (status.get("operator_control_plane", {}) or {}).get("latest_reply_transport_cycle"),
@@ -245,6 +255,9 @@ def build_operator_snapshot(root: Path) -> dict:
             "operator_control_plane_checkpoints": status.get("counts", {}).get("operator_control_plane_checkpoints", 0),
             "operator_incident_reports": status.get("counts", {}).get("operator_incident_reports", 0),
             "operator_incident_snapshots": status.get("counts", {}).get("operator_incident_snapshots", 0),
+            "backend_health": runtime_5_2_prep["backend_health_summary"]["snapshot_count"],
+            "accelerators": runtime_5_2_prep["accelerator_summary"]["summary_count"],
+            "eval_runs": eval_scaffolding_summary["eval_run_count"],
         },
     }
 

@@ -4,11 +4,16 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
+if str(DEFAULT_ROOT) not in sys.path:
+    sys.path.insert(0, str(DEFAULT_ROOT))
+
+from runtime.dashboard.runtime_5_2_prep import ensure_runtime_5_2_prep_state
+
 ROOT_MARKERS = [
     "AGENTS.md",
     "scripts/bootstrap.py",
@@ -65,6 +70,7 @@ REQUIRED_DIRS = [
     "state/lab_run_results",
     "state/strategy_diversity_maps",
     "state/run_traces",
+    "state/eval_runs",
     "state/eval_cases",
     "state/eval_results",
     "state/eval_outcomes",
@@ -79,6 +85,8 @@ REQUIRED_DIRS = [
     "state/backend_assignments",
     "state/backend_execution_requests",
     "state/backend_execution_results",
+    "state/backend_health",
+    "state/accelerators",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -182,6 +190,7 @@ AUTO_CREATE_DIRS = [
     "state/lab_run_results",
     "state/strategy_diversity_maps",
     "state/run_traces",
+    "state/eval_runs",
     "state/eval_cases",
     "state/eval_results",
     "state/eval_outcomes",
@@ -196,6 +205,8 @@ AUTO_CREATE_DIRS = [
     "state/backend_assignments",
     "state/backend_execution_requests",
     "state/backend_execution_results",
+    "state/backend_health",
+    "state/accelerators",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -345,11 +356,13 @@ def ensure_foundation(root: Path, *, force: bool = False) -> dict[str, object]:
     resolved_root = resolve_repo_root(root)
     created_dirs, existing_dirs = ensure_dirs(resolved_root, AUTO_CREATE_DIRS)
     copied_configs = ensure_config_skeletons(resolved_root, force=force)
+    runtime_prep = ensure_runtime_5_2_prep_state(root=resolved_root)
     return {
         "root": str(resolved_root),
         "created_dirs": created_dirs,
         "existing_dirs_count": len(existing_dirs),
         "copied_configs": copied_configs,
+        "runtime_5_2_prep": runtime_prep,
     }
 
 
@@ -377,6 +390,7 @@ def main() -> int:
 
     created_dirs, existing_dirs = ensure_dirs(root, REQUIRED_DIRS)
     copied_configs = ensure_config_skeletons(root, force=args.force)
+    runtime_prep = ensure_runtime_5_2_prep_state(root=root)
 
     report = {
         "ok": True,
@@ -388,6 +402,7 @@ def main() -> int:
         "copy_examples_enabled": True,
         "copy_examples_requested": args.copy_examples,
         "copied_configs": copied_configs,
+        "runtime_5_2_prep": runtime_prep,
     }
 
     report_path = root / "state" / "logs" / "bootstrap_report.json"

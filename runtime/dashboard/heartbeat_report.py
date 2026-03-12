@@ -13,6 +13,8 @@ if str(ROOT) not in sys.path:
 from runtime.core.heartbeat_reports import build_heartbeat_report_summary, save_heartbeat_report
 from runtime.core.models import HeartbeatReportRecord, HeartbeatStatus, new_id, now_iso
 from runtime.core.status import summarize_status
+from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
+from runtime.evals.replay_runner import build_eval_run_summary
 
 
 def _folder_counts(path: Path) -> dict:
@@ -157,6 +159,8 @@ def build_heartbeat_report(root: Path) -> dict:
     logs_dir = root / "state" / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     status = summarize_status(root)
+    runtime_5_2_prep = build_runtime_5_2_prep_summary(root=root)
+    eval_scaffolding_summary = build_eval_run_summary(root=root)
 
     subsystems = {
         "tasks": _folder_counts(root / "state" / "tasks"),
@@ -167,6 +171,9 @@ def build_heartbeat_report(root: Path) -> dict:
         "artifacts": _folder_counts(root / "state" / "artifacts"),
         "outputs": _folder_counts(root / "workspace" / "out"),
         "logs": _folder_counts(logs_dir),
+        "backend_health": _folder_counts(root / "state" / "backend_health"),
+        "accelerators": _folder_counts(root / "state" / "accelerators"),
+        "eval_runs": _folder_counts(root / "state" / "eval_runs"),
     }
 
     degraded_signals: list[str] = []
@@ -202,6 +209,12 @@ def build_heartbeat_report(root: Path) -> dict:
         "degraded_signals": degraded_signals,
         "status_counts": status.get("counts", {}),
         "control_state": status.get("control_state", {}),
+        "active_nodes_summary": runtime_5_2_prep["active_nodes_summary"],
+        "backend_health_summary": runtime_5_2_prep["backend_health_summary"],
+        "accelerator_summary": runtime_5_2_prep["accelerator_summary"],
+        "degraded_state_summary": runtime_5_2_prep["degraded_state_summary"],
+        "reroute_summary": runtime_5_2_prep["reroute_summary"],
+        "eval_scaffolding_summary": eval_scaffolding_summary,
         "subsystems": subsystems,
         "subsystem_heartbeats": [row.to_dict() for row in subsystem_heartbeats],
         "heartbeat_summary": heartbeat_summary,

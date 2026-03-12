@@ -1,23 +1,26 @@
 {
   "ok": true,
   "strict": false,
-  "timestamp_utc": "2026-03-11T18:38:39.220122+00:00",
+  "timestamp_utc": "2026-03-12T00:43:41.080030+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "requested_root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "summary": {
-    "pass": 277,
+    "pass": 291,
     "warn": 0,
     "fail": 0
   },
   "foundation": {
     "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
     "created_dirs": [],
-    "existing_dirs_count": 112,
+    "existing_dirs_count": 115,
     "copied_configs": {
       "config/app.yaml": "kept_existing",
       "config/channels.yaml": "kept_existing",
       "config/models.yaml": "kept_existing",
       "config/policies.yaml": "kept_existing"
+    },
+    "runtime_5_2_prep": {
+      "seeded_files": []
     }
   },
   "findings": [
@@ -240,6 +243,11 @@
     {
       "status": "pass",
       "category": "filesystem",
+      "message": "Directory `state/eval_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
       "message": "Directory `state/eval_cases` is present."
     },
     {
@@ -306,6 +314,16 @@
       "status": "pass",
       "category": "filesystem",
       "message": "Directory `state/backend_execution_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/backend_health` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/accelerators` is present."
     },
     {
       "status": "pass",
@@ -1040,6 +1058,11 @@
     {
       "status": "pass",
       "category": "files",
+      "message": "File `docs/jarvis_5_2_runtime_migration.md` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
       "message": "File `runtime/core/intake.py` is present."
     },
     {
@@ -1130,6 +1153,16 @@
     {
       "status": "pass",
       "category": "files",
+      "message": "File `runtime/evals/replay_runner.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/evals/scorers.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
       "message": "File `runtime/ralph/consolidator.py` is present."
     },
     {
@@ -1196,6 +1229,11 @@
       "status": "pass",
       "category": "files",
       "message": "File `runtime/dashboard/operator_snapshot.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/dashboard/runtime_5_2_prep.py` is present."
     },
     {
       "status": "pass",
@@ -1266,6 +1304,26 @@
       "status": "pass",
       "category": "filesystem",
       "message": "Directory `workspace/out` is writable."
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Backend health scaffolding is present."
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Accelerator scaffolding is present."
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Eval run scaffolding directory is present."
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Backend health scaffolding reports no degraded lanes."
     },
     {
       "status": "pass",
@@ -1340,6 +1398,16 @@
     {
       "status": "pass",
       "category": "imports",
+      "message": "Module `runtime.evals.replay_runner` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.evals.scorers` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
       "message": "Module `runtime.ralph.consolidator` imports cleanly."
     },
     {
@@ -1406,6 +1474,11 @@
       "status": "pass",
       "category": "operator",
       "message": "Operator snapshot log exists."
+    },
+    {
+      "status": "pass",
+      "category": "operator",
+      "message": "Operator handoff pack includes 5.2-prep runtime summaries."
     }
   ],
   "next_actions": []

@@ -15,6 +15,7 @@ from runtime.dashboard.operator_snapshot import build_operator_snapshot
 from runtime.dashboard.state_export import build_state_export
 from runtime.dashboard.task_board import build_task_board
 from runtime.gateway.review_inbox import build_review_inbox
+from runtime.evals.replay_runner import build_eval_run_summary
 from scripts.operator_action_ledger import (
     latest_failed_action_for_task,
     latest_successful_action_for_task,
@@ -564,6 +565,17 @@ def _build_markdown(pack: dict[str, Any]) -> str:
         lines.append(
             f"- {row['eval_result_id']}: passed={row['passed']} score={row['score']} task={row['task_id']} summary={row['summary']}"
         )
+    lines.extend(["", "## 5.2 Prep Runtime Summary"])
+    backend_health = pack.get("backend_health_summary", {})
+    active_nodes = pack.get("active_nodes_summary", {})
+    degraded = pack.get("degraded_state_summary", {})
+    eval_scaffolding = pack.get("eval_scaffolding_summary", {})
+    lines.append(
+        f"- backend_snapshots={backend_health.get('snapshot_count')} unhealthy_lanes={backend_health.get('unhealthy_lane_count')} active_nodes={active_nodes.get('active_node_count')}"
+    )
+    lines.append(
+        f"- degraded_backends={degraded.get('degraded_backend_count')} eval_runs={eval_scaffolding.get('eval_run_count')} reroute_scaffolding_only={((pack.get('reroute_summary') or {}).get('scaffolding_only'))}"
+    )
 
     lines.extend(["", "## Recent Operator Actions"])
     for row in pack["recent_operator_action_executions"]:
@@ -713,6 +725,7 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
     task_board = build_task_board(root)
     review_inbox = build_review_inbox(root)
     state_export = build_state_export(root)
+    eval_scaffolding_summary = build_eval_run_summary(root=root)
 
     artifacts = _load_jsons(root / "state" / "artifacts")
     run_traces = _load_jsons(root / "state" / "run_traces")
@@ -870,10 +883,16 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "token_budget_summary": snapshot.get("token_budget_summary", {}),
         "degradation_summary": snapshot.get("degradation_summary", {}),
         "heartbeat_summary": snapshot.get("heartbeat_summary", {}),
+        "active_nodes_summary": snapshot.get("active_nodes_summary", {}),
+        "backend_health_summary": snapshot.get("backend_health_summary", {}),
+        "accelerator_summary": snapshot.get("accelerator_summary", {}),
+        "degraded_state_summary": snapshot.get("degraded_state_summary", {}),
+        "reroute_summary": snapshot.get("reroute_summary", {}),
         "hermes_summary": snapshot.get("hermes_summary", {}),
         "autoresearch_summary": snapshot.get("autoresearch_summary", {}),
         "eval_outcome_summary": snapshot.get("eval_outcome_summary", {}),
         "eval_profile_summary": snapshot.get("eval_profile_summary", {}),
+        "eval_scaffolding_summary": eval_scaffolding_summary,
         "browser_control_allowlist_summary": snapshot.get("browser_control_allowlist_summary", {}),
         "voice_session_summary": snapshot.get("voice_session_summary", {}),
         "task_envelope_summary": snapshot.get("task_envelope_summary", {}),

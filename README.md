@@ -134,3 +134,18 @@ Remaining work is in the category of:
 - tracker cleanup
 - optional broader validation
 - future features beyond required bounded v5.1 closure
+
+## Runtime posture: live vs 5.2 target
+
+Current live runtime posture:
+- Qwen-default / Qwen-first
+- bounded provider-agnostic architecture
+- explicit `task:` execution boundary
+- no silent widening of execution authority
+
+5.2 target posture:
+- multi-model, policy-routed runtime
+- richer backend health and accelerator visibility
+- replay/scoring scaffolding expanded into deeper routing evaluation
+
+This repo does not claim that the 5.2 target posture is already implemented. Current 5.2 work in this branch is scaffolding only unless a later routing-core ticket says otherwise.

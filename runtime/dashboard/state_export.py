@@ -26,7 +26,9 @@ from runtime.core.token_budget import build_token_budget_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.browser.reporting import build_browser_action_summary
+from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
 from runtime.integrations.notification_adapter import build_notification_summary
+from runtime.evals.replay_runner import build_eval_run_summary
 from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
 from runtime.dashboard.status_names import normalize_status_name
 
@@ -90,6 +92,7 @@ def build_state_export(root: Path) -> dict:
     lab_run_results = _load_jsons(root / "state" / "lab_run_results")
     strategy_diversity_maps = _load_jsons(root / "state" / "strategy_diversity_maps")
     run_traces = _load_jsons(root / "state" / "run_traces")
+    eval_runs = _load_jsons(root / "state" / "eval_runs")
     eval_cases = _load_jsons(root / "state" / "eval_cases")
     eval_results = _load_jsons(root / "state" / "eval_results")
     eval_outcomes = _load_jsons(root / "state" / "eval_outcomes")
@@ -173,6 +176,10 @@ def build_state_export(root: Path) -> dict:
     operator_control_plane_checkpoints = _load_jsons(root / "state" / "operator_control_plane_checkpoints")
     operator_incident_reports = _load_jsons(root / "state" / "operator_incident_reports")
     operator_incident_snapshots = _load_jsons(root / "state" / "operator_incident_snapshots")
+    backend_health = _load_jsons(root / "state" / "backend_health")
+    accelerators = _load_jsons(root / "state" / "accelerators")
+    runtime_5_2_prep = build_runtime_5_2_prep_summary(root=root)
+    eval_scaffolding_summary = build_eval_run_summary(root=root)
 
     summary = {
         "counts": {
@@ -197,6 +204,7 @@ def build_state_export(root: Path) -> dict:
             "lab_run_results": len(lab_run_results),
             "strategy_diversity_maps": len(strategy_diversity_maps),
             "run_traces": len(run_traces),
+            "eval_runs": len(eval_runs),
             "eval_cases": len(eval_cases),
             "eval_results": len(eval_results),
             "eval_outcomes": len(eval_outcomes),
@@ -211,6 +219,8 @@ def build_state_export(root: Path) -> dict:
             "backend_assignments": len(backend_assignments),
             "backend_execution_requests": len(backend_execution_requests),
             "backend_execution_results": len(backend_execution_results),
+            "backend_health": len(backend_health),
+            "accelerators": len(accelerators),
             "token_budgets": len(token_budgets),
             "degradation_policies": len(degradation_policies),
             "degradation_events": len(degradation_events),
@@ -526,6 +536,12 @@ def build_state_export(root: Path) -> dict:
         voice_route_capability_summary=summary["voice_route_capability_summary"],
         voice_route_safety_summary=summary["voice_route_safety_summary"],
     )
+    summary["active_nodes_summary"] = runtime_5_2_prep["active_nodes_summary"]
+    summary["backend_health_summary"] = runtime_5_2_prep["backend_health_summary"]
+    summary["accelerator_summary"] = runtime_5_2_prep["accelerator_summary"]
+    summary["degraded_state_summary"] = runtime_5_2_prep["degraded_state_summary"]
+    summary["reroute_summary"] = runtime_5_2_prep["reroute_summary"]
+    summary["eval_scaffolding_summary"] = eval_scaffolding_summary
     summary["task_envelope_summary"] = {
         "task_envelope_task_count": sum(1 for row in tasks if row.get("task_envelope")),
         "autonomy_mode_counts": dict(summary.get("autonomy_mode_counts", {})),

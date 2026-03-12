@@ -36,7 +36,23 @@ def build_task_board(root: Path) -> dict:
                 "priority": t.priority,
                 "risk_level": t.risk_level,
                 "execution_backend": t.execution_backend,
+                "producer_backend": t.execution_backend,
                 "assigned_model": t.assigned_model,
+                "producer_metadata": {
+                    "assigned_model": t.assigned_model,
+                    "backend_run_id": getattr(t, "backend_run_id", None),
+                    "source_lane": t.source_lane,
+                    "future_reroute_ready": bool((getattr(t, "backend_metadata", {}) or {}).get("routing")),
+                },
+                "evidence_metadata": {
+                    "candidate_artifact_count": len(t.candidate_artifact_ids or []),
+                    "promoted_artifact_present": bool(t.promoted_artifact_id),
+                    "impacted_output_count": len(t.impacted_output_ids or []),
+                },
+                "provenance_metadata": {
+                    "review_link_count": len(t.related_review_ids or []),
+                    "approval_link_count": len(t.related_approval_ids or []),
+                },
                 "review_required": t.review_required,
                 "approval_required": t.approval_required,
                 "promoted_artifact_id": t.promoted_artifact_id,

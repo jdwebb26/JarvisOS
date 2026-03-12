@@ -119,6 +119,16 @@ Promotion requires policy, review, and where appropriate evaluation evidence.
 - new orchestration frameworks
 - Discord voice bot support beyond roadmap planning
 
+### 5.3 5.2 migration delta note
+Post-v5.1 work may add safe-first migration scaffolding for:
+- backend and accelerator health visibility
+- replay/scoring prep for future routing changes
+- operator cockpit fields for multi-model readiness
+- entrypoint/preflight awareness of new scaffolding state
+
+This does not by itself change the live v5.1 runtime posture.
+Until routing-core migration tickets land, live behavior remains Qwen-first by policy with the existing explicit task/doctrine boundaries intact.
+
 ---
 
 ## 6. Provider policy and model routing
