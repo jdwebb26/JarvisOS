@@ -238,6 +238,7 @@ class BackendRuntime(StrEnum):
 class NodeRole(StrEnum):
     PRIMARY = "primary"
     BURST = "burst"
+    LOCAL = "local"
     RESEARCH = "research"
     EVAL = "eval"
     OPERATOR = "operator"
@@ -1909,6 +1910,10 @@ class ModelRegistryEntryRecord:
     policy_tags: list[str] = field(default_factory=list)
     priority_rank: int = 100
     default_execution_backend: str = "unassigned"
+    host_role: str = NodeRole.PRIMARY.value
+    host_name: Optional[str] = None
+    workload_tags: list[str] = field(default_factory=list)
+    local_only: bool = False
     active: bool = True
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
@@ -1923,6 +1928,10 @@ class ModelRegistryEntryRecord:
         data.setdefault("policy_tags", [])
         data.setdefault("priority_rank", 100)
         data.setdefault("default_execution_backend", "unassigned")
+        data.setdefault("host_role", NodeRole.PRIMARY.value)
+        data.setdefault("host_name", None)
+        data.setdefault("workload_tags", [])
+        data.setdefault("local_only", False)
         data.setdefault("active", True)
         return cls(**data)
 
@@ -2024,7 +2033,9 @@ class RoutingDecisionRecord:
     selected_provider_id: str
     selected_model_name: str
     selected_execution_backend: str
-    selection_reason: str
+    selected_node_role: str = NodeRole.PRIMARY.value
+    selected_host_name: Optional[str] = None
+    selection_reason: str = ""
     candidate_model_names: list[str] = field(default_factory=list)
     policy_constraints: dict[str, Any] = field(default_factory=dict)
     status: str = "selected"
@@ -2038,6 +2049,8 @@ class RoutingDecisionRecord:
     def from_dict(cls, payload: dict[str, Any]) -> "RoutingDecisionRecord":
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
         data.setdefault("candidate_model_names", [])
+        data.setdefault("selected_node_role", NodeRole.PRIMARY.value)
+        data.setdefault("selected_host_name", None)
         data.setdefault("policy_constraints", {})
         data.setdefault("status", "selected")
         return cls(**data)
@@ -2345,6 +2358,8 @@ class BackendAssignmentRecord:
     provider_id: str
     model_name: str
     execution_backend: str
+    selected_node_role: str = NodeRole.PRIMARY.value
+    selected_host_name: Optional[str] = None
     model_registry_entry_id: Optional[str] = None
     capability_profile_id: Optional[str] = None
     assignment_reason: str = ""
@@ -2360,6 +2375,8 @@ class BackendAssignmentRecord:
     def from_dict(cls, payload: dict[str, Any]) -> "BackendAssignmentRecord":
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
         data.setdefault("provider_adapter_result_id", None)
+        data.setdefault("selected_node_role", NodeRole.PRIMARY.value)
+        data.setdefault("selected_host_name", None)
         data.setdefault("model_registry_entry_id", None)
         data.setdefault("capability_profile_id", None)
         data.setdefault("assignment_reason", "")
@@ -3299,6 +3316,8 @@ class RoutingProvenanceRecord:
     selected_provider_id: str
     selected_model_name: str
     selected_execution_backend: str
+    selected_node_role: str = NodeRole.PRIMARY.value
+    selected_host_name: Optional[str] = None
     source_refs: dict[str, Any] = field(default_factory=dict)
     replay_input: dict[str, Any] = field(default_factory=dict)
     schema_version: str = CORE_SCHEMA_VERSION
@@ -3311,6 +3330,8 @@ class RoutingProvenanceRecord:
     def from_dict(cls, payload: dict[str, Any]) -> "RoutingProvenanceRecord":
         data = _apply_record_defaults(_extract_known_fields(cls, payload))
         data.setdefault("source_refs", {})
+        data.setdefault("selected_node_role", NodeRole.PRIMARY.value)
+        data.setdefault("selected_host_name", None)
         data.setdefault("replay_input", {})
         return cls(**data)
 

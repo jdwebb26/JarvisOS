@@ -58,6 +58,25 @@ DEFAULT_NODE_PROFILES = [
             "notes": ["Optional burst worker scaffold. Not part of the critical path."],
         },
     },
+    {
+        "node_name": "LOCAL",
+        "node_role": NodeRole.LOCAL.value,
+        "status": NodeStatus.HEALTHY.value,
+        "authority_class": AuthorityClass.SUGGEST_ONLY.value,
+        "available_backends": [
+            BackendRuntime.MEMORY_SPINE.value,
+            BackendRuntime.EVALUATION_SPINE.value,
+            BackendRuntime.OPERATOR.value,
+        ],
+        "accelerator_refs": [],
+        "labels": ["live_local_support", "routing_local_only"],
+        "metadata": {
+            "scaffolding_only": False,
+            "backend_summary": ["memory_spine", "evaluation_spine", "operator"],
+            "model_family_summary": ["local"],
+            "notes": ["Local support node for local-only workloads such as embeddings."],
+        },
+    },
 ]
 
 
@@ -205,4 +224,3 @@ def ensure_default_nodes(*, root: Optional[Path] = None) -> list[NodeProfile]:
             )
         )
     return created_or_existing
-

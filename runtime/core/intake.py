@@ -172,6 +172,8 @@ def create_task_from_message(
         priority=priority,
         actor=user,
         lane=lane,
+        agent_id=lane,
+        channel=channel,
         root=root_path,
     )
     routing_decision = route_contract["decision"]
