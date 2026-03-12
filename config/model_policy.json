@@ -1,0 +1,180 @@
+{
+  "schema_version": "v5.2_policy_scaffold",
+  "live_runtime_posture": {
+    "mode": "qwen_first",
+    "rollout_stage": "scaffolding_only",
+    "notes": [
+      "A2 policy scaffold only. Live routing remains Qwen-first until later routing-core tickets land."
+    ]
+  },
+  "authority_min_tier": {
+    "observe_only": "routing",
+    "suggest_only": "general",
+    "review_required": "heavy_reasoning",
+    "approval_required": "heavy_reasoning",
+    "execute_bounded": "general"
+  },
+  "task_class_policies": {
+    "general": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "general",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-35B-A3B",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": [
+        {
+          "family": "qwen",
+          "tier": "routing",
+          "backend_runtime": "qwen_planner",
+          "model_name": "Qwen3.5-9B"
+        }
+      ]
+    },
+    "code": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "coder",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3-Coder-Next",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": [
+        {
+          "family": "qwen",
+          "tier": "general",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-35B-A3B"
+        }
+      ]
+    },
+    "deploy": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "heavy_reasoning",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-122B-A10B",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": []
+    },
+    "research": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "heavy_reasoning",
+          "backend_runtime": "hermes_adapter",
+          "model_name": "Qwen3.5-122B-A10B",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": [
+        {
+          "family": "qwen",
+          "tier": "general",
+          "backend_runtime": "autoresearch_adapter",
+          "model_name": "Qwen3.5-35B-A3B"
+        }
+      ]
+    },
+    "review": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "heavy_reasoning",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-122B-A10B",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": []
+    },
+    "approval": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "heavy_reasoning",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-122B-A10B",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": []
+    },
+    "flowstate": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "flowstate",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-35B-A3B",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": [
+        {
+          "family": "qwen",
+          "tier": "general",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-35B-A3B"
+        }
+      ]
+    },
+    "output": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "general",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-35B-A3B",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": []
+    },
+    "multimodal": {
+      "allowed_models": [
+        {
+          "family": "qwen",
+          "tier": "multimodal",
+          "backend_runtime": "qwen_executor",
+          "model_name": "Qwen3.5-35B-A3B",
+          "shadow_eval_eligible": false
+        }
+      ],
+      "fallback_chain": []
+    }
+  },
+  "shadow_eval_policy": {
+    "enabled": true,
+    "requires_explicit_opt_in": true,
+    "allowed_families": [
+      "qwen"
+    ]
+  },
+  "forbidden_downgrades": {
+    "review_required": [
+      "routing",
+      "general"
+    ],
+    "approval_required": [
+      "routing",
+      "general"
+    ],
+    "deploy": [
+      "routing",
+      "general"
+    ],
+    "review": [
+      "routing",
+      "general"
+    ]
+  }
+}
