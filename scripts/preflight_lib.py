@@ -26,8 +26,10 @@ from runtime.dashboard.runtime_5_2_prep import (
 from runtime.core.heartbeat_reports import build_node_health_summary
 from runtime.core.node_registry import ensure_default_nodes
 from runtime.core.task_lease import build_task_lease_summary
+from runtime.integrations.research_backends import build_research_backend_summary
 from runtime.memory.vault_export import build_vault_export_summary
 from runtime.researchlab.experiment_store import build_experiment_summary
+from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
 from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 
@@ -75,6 +77,8 @@ REQUIRED_DIRS = [
     "state/experiment_runs",
     "state/metric_results",
     "state/research_recommendations",
+    "state/research_queries",
+    "state/evidence_bundles",
     "state/lab_run_requests",
     "state/lab_run_results",
     "state/strategy_diversity_maps",
@@ -284,7 +288,11 @@ REQUIRED_FILES = [
     "runtime/controls/control_store.py",
     "runtime/integrations/hermes_adapter.py",
     "runtime/integrations/autoresearch_adapter.py",
+    "runtime/integrations/research_backends.py",
+    "runtime/integrations/searxng_client.py",
+    "runtime/integrations/search_normalizer.py",
     "runtime/researchlab/runner.py",
+    "runtime/researchlab/evidence_bundle.py",
     "runtime/evals/trace_store.py",
     "runtime/evals/replay_runner.py",
     "runtime/evals/scorers.py",
@@ -332,7 +340,11 @@ KEY_MODULES = [
     "runtime.controls.control_store",
     "runtime.integrations.hermes_adapter",
     "runtime.integrations.autoresearch_adapter",
+    "runtime.integrations.research_backends",
+    "runtime.integrations.searxng_client",
+    "runtime.integrations.search_normalizer",
     "runtime.researchlab.runner",
+    "runtime.researchlab.evidence_bundle",
     "runtime.evals.trace_store",
     "runtime.evals.replay_runner",
     "runtime.evals.scorers",
@@ -585,6 +597,8 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     skill_scheduler_summary = build_skill_scheduler_summary(root=root)
     vault_summary = build_vault_export_summary(root=root)
     experiment_summary = build_experiment_summary(root=root)
+    research_backend_summary = build_research_backend_summary(root=root)
+    evidence_bundle_summary = build_evidence_bundle_summary(root=root)
 
     if backend_health["snapshot_count"]:
         _add(findings, "pass", "runtime_prep", "Backend health scaffolding is present.")
@@ -668,6 +682,17 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
         details=(
             f"experiments={experiment_summary['experiment_count']} "
             f"frontier_size={experiment_summary['frontier_size']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "research",
+        "Research backend abstraction and evidence bundle scaffolding are present.",
+        details=(
+            f"backends={research_backend_summary['research_backend_count']} "
+            f"healthy_backends={research_backend_summary['healthy_research_backend_count']} "
+            f"evidence_bundles={evidence_bundle_summary['evidence_bundle_count']}"
         ),
     )
 

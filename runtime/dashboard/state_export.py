@@ -23,6 +23,7 @@ from runtime.core.prompt_caching_policy import build_prompt_caching_policy_summa
 from runtime.core.routing import build_model_registry_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.task_lease import build_task_lease_summary
+from runtime.integrations.research_backends import build_research_backend_summary
 from runtime.memory.vault_export import build_vault_export_summary
 from runtime.core.token_budget import build_token_budget_summary
 from runtime.dashboard.renderers.a2ui_renderer import render_operator_views
@@ -34,6 +35,7 @@ from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
 from runtime.integrations.notification_adapter import build_notification_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 from runtime.researchlab.experiment_store import build_experiment_summary
+from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
 from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
 from runtime.dashboard.status_names import normalize_status_name
 
@@ -523,6 +525,8 @@ def build_state_export(root: Path) -> dict:
     summary["voice_session_summary"] = build_voice_session_summary(root=root)
     summary["task_lease_summary"] = build_task_lease_summary(root=root)
     summary["skill_scheduler_summary"] = build_skill_scheduler_summary(root=root)
+    summary["research_backend_summary"] = build_research_backend_summary(root=root)
+    summary["evidence_bundle_summary"] = build_evidence_bundle_summary(root=root)
     summary["vault_summary"] = build_vault_export_summary(root=root)
     summary["experiment_summary"] = build_experiment_summary(root=root)
     summary["trajectory_summary"] = build_trajectory_summary(root=root)

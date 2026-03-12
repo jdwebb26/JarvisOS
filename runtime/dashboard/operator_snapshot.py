@@ -16,8 +16,10 @@ from runtime.dashboard.renderers.a2ui_renderer import render_operator_views
 from runtime.dashboard.status_names import normalize_status_summary
 from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
 from runtime.core.task_lease import build_task_lease_summary
+from runtime.integrations.research_backends import build_research_backend_summary
 from runtime.memory.vault_export import build_vault_export_summary
 from runtime.researchlab.experiment_store import build_experiment_summary
+from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
 from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.evals.replay_runner import build_eval_run_summary
 
@@ -174,6 +176,8 @@ def build_operator_snapshot(root: Path) -> dict:
         "voice_session_summary": status.get("voice_session_summary", {}),
         "task_lease_summary": task_lease_summary,
         "skill_scheduler_summary": skill_scheduler_summary,
+        "research_backend_summary": build_research_backend_summary(root=root),
+        "evidence_bundle_summary": build_evidence_bundle_summary(root=root),
         "vault_summary": build_vault_export_summary(root=root),
         "experiment_summary": build_experiment_summary(root=root),
         "task_envelope_summary": status.get("task_envelope_summary", {}),

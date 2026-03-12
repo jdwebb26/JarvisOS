@@ -35,10 +35,13 @@ from runtime.core.degradation_policy import (
 from runtime.core.models import ApprovalStatus, ReviewStatus, TaskStatus, new_id, now_iso
 from runtime.core.models import HermesTaskRequestRecord as HermesTaskRequest
 from runtime.core.models import HermesTaskResultRecord as HermesTaskResult
+from runtime.core.provenance_store import attach_evidence_bundle_refs
 from runtime.core.review_store import latest_review_for_task, save_review
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_store import load_task, save_task, transition_task
 from runtime.evals.trace_store import record_run_trace
+from runtime.integrations.search_normalizer import build_source_records
+from runtime.researchlab.evidence_bundle import write_evidence_bundle
 
 
 HERMES_BACKEND_ID = "hermes_adapter"
@@ -363,6 +366,42 @@ def _record_failed_result(
     return result
 
 
+def _build_hermes_evidence_bundle(
+    *,
+    result: HermesTaskResult,
+    actor: str,
+    lane: str,
+    root: Path,
+) -> dict[str, Any] | None:
+    source_records = build_source_records(
+        list(result.citations or []) or list((result.raw_response or {}).get("sources") or []) or list((result.raw_response or {}).get("search_results") or []),
+        backend_id=HERMES_BACKEND_ID,
+        query_text=result.summary or result.title or "",
+    )
+    if not source_records:
+        return None
+    result_records = [
+        {
+            "run_id": result.run_id,
+            "result_id": result.result_id,
+            "title": result.title,
+            "summary": result.summary,
+            "model_name": result.model_name,
+            "family": result.family,
+        }
+    ]
+    return write_evidence_bundle(
+        actor=actor,
+        lane=lane,
+        evidence_kind="research_citations",
+        source_records=source_records,
+        result_records=result_records,
+        root=root,
+        provenance_refs={"hermes_result_id": result.result_id, "backend": HERMES_BACKEND_ID},
+        metadata={"non_fabricated": True, "source_count": len(source_records)},
+    )
+
+
 def execute_hermes_task(
     *,
     task_id: str,
@@ -521,13 +560,25 @@ def execute_hermes_task(
         raise ValueError(f"Task disappeared during Hermes execution: {task_id}")
     _update_task_for_hermes(task, request=request, result=result)
 
+    evidence_bundle = None
     if result.status == SUCCESS_STATUS:
+        evidence_bundle = _build_hermes_evidence_bundle(result=result, actor=actor, lane=lane, root=root_path)
+        if evidence_bundle is not None:
+            result.raw_response = attach_evidence_bundle_refs(
+                dict(result.raw_response or {}),
+                [evidence_bundle["bundle_id"]],
+            )
+
+    if result.status == SUCCESS_STATUS:
+        artifact_content = result.content
+        if evidence_bundle is not None:
+            artifact_content = artifact_content.rstrip() + f"\n\nEvidence bundle: {evidence_bundle['bundle_id']}\n"
         artifact = write_text_artifact(
             task_id=task_id,
             artifact_type="report",
             title=result.title,
             summary=result.summary,
-            content=result.content,
+            content=artifact_content,
             actor="hermes",
             lane=lane,
             root=root_path,
@@ -548,6 +599,9 @@ def execute_hermes_task(
         save_hermes_result(result, root=root_path)
         _update_task_for_hermes(task, request=request, result=result)
         task.checkpoint_summary = f"Hermes candidate stored: {artifact['artifact_id']}"
+        if evidence_bundle is not None:
+            task.backend_metadata.setdefault("hermes", {})
+            task.backend_metadata["hermes"]["evidence_bundle_refs"] = [evidence_bundle["bundle_id"]]
         save_task(task, root=root_path)
         _link_candidate_to_pending_records(task_id=task_id, artifact_id=artifact["artifact_id"], root=root_path)
 
@@ -676,6 +730,7 @@ def execute_hermes_task(
         source_refs={
             "request_id": request.request_id,
             "result_id": result.result_id,
+            "evidence_bundle_id": evidence_bundle["bundle_id"] if evidence_bundle is not None else None,
         },
         candidate_artifact_id=result.candidate_artifact_id,
         error=result.error,
@@ -703,6 +758,7 @@ def execute_hermes_task(
             "provider_adapter_result_id": routing_meta.get("provider_adapter_result_id"),
             "hermes_request_id": request.request_id,
             "hermes_result_id": result.result_id,
+            "evidence_bundle_id": evidence_bundle["bundle_id"] if evidence_bundle is not None else None,
         },
         metadata={
             "family": result.family,
@@ -712,6 +768,7 @@ def execute_hermes_task(
                 ((final_task.backend_metadata if final_task else {}) or {}).get("degradation", {})
             ).get("degradation_policy_id"),
             "token_usage": dict(result.token_usage),
+            "evidence_bundle_refs": [evidence_bundle["bundle_id"]] if evidence_bundle is not None else [],
         },
         root=root_path,
     )
