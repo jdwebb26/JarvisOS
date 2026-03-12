@@ -22,7 +22,11 @@ from runtime.core.models import (
     new_id,
     now_iso,
 )
-from runtime.core.promotion_governance import assert_artifact_publish_allowed
+from runtime.core.promotion_governance import (
+    GovernanceBlockedError,
+    assert_artifact_publish_allowed,
+    raise_structured_governance_block_if_available,
+)
 from runtime.core.provenance_store import save_publish_provenance
 from runtime.core.task_events import make_event
 from runtime.core.task_runtime import append_task_event
@@ -142,13 +146,21 @@ def publish_artifact(
     allow_duplicate: bool = False,
 ) -> dict:
     root_path = Path(root or ROOT).resolve()
-    assert_artifact_publish_allowed(
-        task_id=task_id,
-        artifact_id=artifact_id,
-        actor=actor,
-        lane=lane,
-        root=root_path,
-    )
+    try:
+        assert_artifact_publish_allowed(
+            task_id=task_id,
+            artifact_id=artifact_id,
+            actor=actor,
+            lane=lane,
+            root=root_path,
+        )
+    except ValueError as exc:
+        raise_structured_governance_block_if_available(
+            task_id=task_id,
+            action="publish_output",
+            reason=str(exc),
+            root=root_path,
+        )
 
     task = load_task(task_id, root=root_path)
     artifact = load_artifact(artifact_id, root=root_path)
@@ -293,6 +305,7 @@ def publish_artifact(
     )
 
     return {
+        "ok": True,
         "output_id": out_id,
         "task_id": task_id,
         "artifact_id": artifact_id,
@@ -305,6 +318,18 @@ def publish_artifact(
     }
 
 
+def publish_artifact_result(**kwargs) -> dict:
+    try:
+        return publish_artifact(**kwargs)
+    except GovernanceBlockedError as exc:
+        return {
+            "ok": False,
+            "error_type": "governance_blocked",
+            "message": str(exc),
+            "blocked": dict(exc.blocked),
+        }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Publish a linked artifact into the outputs lane.")
     parser.add_argument("--root", default=str(ROOT), help="Project root path")
@@ -315,7 +340,7 @@ def main() -> int:
     parser.add_argument("--allow-duplicate", action="store_true", help="Allow duplicate output records")
     args = parser.parse_args()
 
-    result = publish_artifact(
+    result = publish_artifact_result(
         task_id=args.task_id,
         artifact_id=args.artifact_id,
         actor=args.actor,
@@ -324,7 +349,7 @@ def main() -> int:
         allow_duplicate=args.allow_duplicate,
     )
     print(json.dumps(result, indent=2))
-    return 0
+    return 0 if result.get("ok", True) else 1
 
 
 if __name__ == "__main__":

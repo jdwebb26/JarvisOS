@@ -6,7 +6,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,7 +24,7 @@ from runtime.core.models import (
     now_iso,
 )
 from runtime.core.provenance_store import save_task_provenance
-from runtime.core.routing import route_task_intent
+from runtime.core.routing import build_routing_failure_summary, latest_failed_routing_request, route_task_intent
 from runtime.core.task_dedupe import find_active_duplicate_task
 from runtime.core.task_store import create_task, load_task
 from runtime.controls.control_store import assert_control_allows
@@ -36,6 +36,12 @@ class ParsedIntent:
     trigger_type: str
     raw_request: str
     normalized_request: str
+
+
+class TaskCreationRefusalError(ValueError):
+    def __init__(self, message: str, *, refusal: dict[str, Any]):
+        super().__init__(message)
+        self.refusal = refusal
 
 
 def parse_explicit_task(text: str) -> ParsedIntent:
@@ -111,6 +117,23 @@ def approval_required(task_type: str, risk_level: str) -> bool:
     return False
 
 
+def normalize_workload_type(
+    *,
+    lane: str,
+    channel: str,
+    explicit_workload_type: Optional[str],
+) -> str:
+    if explicit_workload_type:
+        return str(explicit_workload_type).strip()
+    normalized_channel = str(channel or "").strip().lower()
+    normalized_lane = str(lane or "").strip().lower()
+    if normalized_channel == "local_embeddings":
+        return "embeddings"
+    if normalized_lane == "scout":
+        return "research"
+    return "general"
+
+
 def create_task_from_message(
     *,
     text: str,
@@ -118,6 +141,7 @@ def create_task_from_message(
     lane: str,
     channel: str,
     message_id: str,
+    workload_type: Optional[str] = None,
     autonomy_mode: str = "step_mode",
     task_envelope: Optional[dict] = None,
     parent_task_id: Optional[str] = None,
@@ -156,6 +180,11 @@ def create_task_from_message(
     task_type = infer_task_type(parsed.normalized_request)
     priority = infer_priority(parsed.normalized_request)
     risk = infer_risk(task_type, parsed.normalized_request)
+    normalized_workload_type = normalize_workload_type(
+        lane=lane,
+        channel=channel,
+        explicit_workload_type=workload_type,
+    )
     assert_control_allows(
         action="task_create",
         root=root_path,
@@ -164,18 +193,46 @@ def create_task_from_message(
     )
 
     task_id = new_id("task")
-    route_contract = route_task_intent(
-        task_id=task_id,
-        normalized_request=parsed.normalized_request,
-        task_type=task_type,
-        risk_level=risk,
-        priority=priority,
-        actor=user,
-        lane=lane,
-        agent_id=lane,
-        channel=channel,
-        root=root_path,
-    )
+    try:
+        route_contract = route_task_intent(
+            task_id=task_id,
+            normalized_request=parsed.normalized_request,
+            task_type=task_type,
+            risk_level=risk,
+            priority=priority,
+            actor=user,
+            lane=lane,
+            agent_id=lane,
+            channel=channel,
+            workload_type=normalized_workload_type,
+            root=root_path,
+        )
+    except ValueError as exc:
+        failed_request = latest_failed_routing_request(root=root_path)
+        failed_payload = failed_request.to_dict() if failed_request and failed_request.task_id == task_id else None
+        refusal = build_routing_failure_summary(failed_payload) or {
+            "routing_request_id": None,
+            "task_id": task_id,
+            "lane": lane,
+            "channel": channel,
+            "workload_type": normalized_workload_type,
+            "task_type": task_type,
+            "risk_level": risk,
+            "preferred_provider": None,
+            "preferred_model": None,
+            "preferred_host_role": None,
+            "allowed_host_roles": [],
+            "forbidden_host_roles": [],
+            "allowed_fallbacks": [],
+            "eligible_provider_ids": [],
+            "failure_code": "routing_refused_before_summary",
+            "failure_reason": str(exc),
+            "status": "failed",
+        }
+        raise TaskCreationRefusalError(
+            "Task creation refused because routing found no legal candidate.",
+            refusal=refusal,
+        ) from exc
     routing_decision = route_contract["decision"]
     provider_adapter_result = route_contract["provider_adapter_result"]
     backend_assignment = route_contract["backend_assignment"]
@@ -208,8 +265,11 @@ def create_task_from_message(
                 "backend_assignment_id": backend_assignment["backend_assignment_id"],
                 "provider_id": routing_decision["selected_provider_id"],
                 "model_name": routing_decision["selected_model_name"],
+                "selected_node_role": routing_decision["selected_node_role"],
+                "selected_host_name": routing_decision["selected_host_name"],
                 "model_registry_entry_id": routing_decision["selected_model_registry_entry_id"],
                 "capability_profile_id": routing_decision["selected_capability_profile_id"],
+                "workload_type": route_contract["request"]["policy_constraints"].get("workload_type"),
                 "required_capabilities": list(route_contract["request"]["required_capabilities"]),
                 "policy_constraints": dict(route_contract["request"]["policy_constraints"]),
             },
@@ -265,6 +325,7 @@ def create_task_from_message(
 
     return {
         "kind": "task_created",
+        "ok": True,
         "task_created": True,
         "task_id": record.task_id,
         "short_summary": record.normalized_request,
@@ -284,6 +345,19 @@ def create_task_from_message(
     }
 
 
+def create_task_from_message_result(**kwargs: Any) -> dict[str, Any]:
+    try:
+        return create_task_from_message(**kwargs)
+    except TaskCreationRefusalError as exc:
+        return {
+            "ok": False,
+            "task_created": False,
+            "error_type": "routing_refused",
+            "message": str(exc),
+            "refusal": dict(exc.refusal),
+        }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Parse explicit task requests into durable task records.")
     parser.add_argument("--root", default=str(ROOT), help="Project root path")
@@ -294,7 +368,7 @@ def main() -> int:
     parser.add_argument("--message-id", default="manual_cli", help="Source message id")
     args = parser.parse_args()
 
-    result = create_task_from_message(
+    result = create_task_from_message_result(
         text=args.text,
         user=args.user,
         lane=args.lane,
@@ -303,7 +377,7 @@ def main() -> int:
         root=Path(args.root).resolve(),
     )
     print(json.dumps(result, indent=2))
-    return 0
+    return 0 if result.get("ok", True) else 1
 
 
 if __name__ == "__main__":

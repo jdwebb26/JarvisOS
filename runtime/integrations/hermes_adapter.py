@@ -28,11 +28,12 @@ from runtime.core.execution_contracts import (
     save_backend_execution_request,
 )
 from runtime.core.degradation_policy import (
+    fallback_allowed as degradation_fallback_allowed,
     ensure_default_degradation_policies,
     load_degradation_policy_for_subsystem,
     record_degradation_event,
 )
-from runtime.core.models import ApprovalStatus, ReviewStatus, TaskStatus, new_id, now_iso
+from runtime.core.models import ApprovalStatus, AuthorityClass, ReviewStatus, TaskStatus, new_id, now_iso
 from runtime.core.models import HermesTaskRequestRecord as HermesTaskRequest
 from runtime.core.models import HermesTaskResultRecord as HermesTaskResult
 from runtime.core.provenance_store import attach_evidence_bundle_refs
@@ -64,6 +65,14 @@ class HermesTransportUnreachableError(ConnectionError):
 
 class HermesResponseMalformedError(ValueError):
     pass
+
+
+def _task_authority_class(task) -> str:
+    if bool(getattr(task, "approval_required", False)):
+        return AuthorityClass.APPROVAL_REQUIRED.value
+    if bool(getattr(task, "review_required", False)):
+        return AuthorityClass.REVIEW_REQUIRED.value
+    return AuthorityClass.SUGGEST_ONLY.value
 
 
 def _serialize(instance: Any) -> dict[str, Any]:
@@ -639,10 +648,14 @@ def execute_hermes_task(
     else:
         degradation_policy = load_degradation_policy_for_subsystem(HERMES_BACKEND_ID, root=root_path)
         failure_category = result.failure_category or "backend_failure"
-        fallback_allowed = bool(
-            degradation_policy
-            and degradation_policy.fallback_action in {"local_fallback_allowed", "local_fallback"}
+        fallback_legality = degradation_fallback_allowed(
+            subsystem=HERMES_BACKEND_ID,
+            authority_class=_task_authority_class(task),
+            degradation_mode=degradation_policy.degradation_mode if degradation_policy else None,
+            fallback_action=degradation_policy.fallback_action if degradation_policy else None,
+            root=root_path,
         )
+        fallback_allowed = bool(fallback_legality["allowed"])
         degradation_reason = (
             f"Hermes degradation applied: {failure_category}; "
             f"fallback_action={degradation_policy.fallback_action if degradation_policy else 'none'}; "
@@ -660,6 +673,8 @@ def execute_hermes_task(
                 "hermes_request_id": request.request_id,
                 "hermes_result_id": result.result_id,
                 "fallback_allowed": fallback_allowed,
+                "fallback_legality_reasons": list(fallback_legality.get("reasons") or []),
+                "authority_class": fallback_legality.get("authority_class"),
             },
             status="applied",
             root=root_path,
@@ -672,6 +687,8 @@ def execute_hermes_task(
             "degradation_event_id": degradation_event.degradation_event_id,
             "fallback_action": degradation_event.fallback_action,
             "fallback_allowed": fallback_allowed,
+            "fallback_legality_reasons": list(fallback_legality.get("reasons") or []),
+            "authority_class": fallback_legality.get("authority_class"),
             "retry_policy": dict(degradation_event.retry_policy),
             "requires_operator_notification": degradation_event.requires_operator_notification,
         }

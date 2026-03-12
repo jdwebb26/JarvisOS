@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.output_store import publish_artifact
+from runtime.core.promotion_governance import GovernanceBlockedError
 from runtime.core.task_runtime import complete_task
 
 
@@ -37,13 +38,21 @@ def publish_and_complete(
                 f"Task {task_id} is {task_before.get('status')}, so publish+complete requires a running, completed, or shipped task."
             )
     
-        publish_result = publish_artifact(
-            task_id=task_id,
-            artifact_id=artifact_id,
-            actor=actor,
-            lane=lane,
-            root=root,
-        )
+        try:
+            publish_result = publish_artifact(
+                task_id=task_id,
+                artifact_id=artifact_id,
+                actor=actor,
+                lane=lane,
+                root=root,
+            )
+        except GovernanceBlockedError as exc:
+            return {
+                "ok": False,
+                "error_type": "governance_blocked",
+                "message": str(exc),
+                "blocked": dict(exc.blocked),
+            }
     
         if task_before.get("status") == "completed":
             complete_result = {
@@ -89,6 +98,7 @@ def publish_and_complete(
             }
     
         return {
+            "ok": True,
             "publish_result": publish_result,
             "complete_result": complete_result,
             "rebuild_result": rebuild_result,
@@ -115,7 +125,7 @@ def main() -> int:
         root=Path(args.root).resolve(),
     )
     print(json.dumps(result, indent=2))
-    return 0
+    return 0 if result.get("ok", True) else 1
 
 
 if __name__ == "__main__":

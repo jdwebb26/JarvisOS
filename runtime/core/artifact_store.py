@@ -25,7 +25,7 @@ from runtime.core.models import (
     new_id,
 )
 from runtime.core.output_store import mark_outputs_impacted
-from runtime.core.promotion_governance import assert_artifact_promotion_allowed
+from runtime.core.promotion_governance import assert_artifact_promotion_allowed, raise_structured_governance_block_if_available
 from runtime.core.provenance_store import save_artifact_provenance, save_decision_provenance, save_promotion_provenance
 from runtime.core.task_events import append_event, make_event
 from runtime.core.task_runtime import load_task
@@ -284,12 +284,20 @@ def promote_artifact(
 ) -> ArtifactRecord:
     root_path = Path(root or ROOT).resolve()
     artifact = load_artifact(artifact_id, root=root_path)
-    assert_artifact_promotion_allowed(
-        artifact=artifact,
-        actor=actor,
-        lane=lane,
-        root=root_path,
-    )
+    try:
+        assert_artifact_promotion_allowed(
+            artifact=artifact,
+            actor=actor,
+            lane=lane,
+            root=root_path,
+        )
+    except ValueError as exc:
+        raise_structured_governance_block_if_available(
+            task_id=artifact.task_id,
+            action="promote_artifact",
+            reason=str(exc),
+            root=root_path,
+        )
     previous_state = artifact.lifecycle_state
 
     artifact.lifecycle_state = RecordLifecycleState.PROMOTED.value

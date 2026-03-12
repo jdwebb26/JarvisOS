@@ -12,15 +12,189 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime.controls.control_store import assert_control_allows, build_control_summary
+from runtime.controls.control_store import assert_control_allows, build_control_summary, list_blocked_actions
 from runtime.core.candidate_store import find_candidate_for_artifact, list_candidates
-from runtime.core.models import RecordLifecycleState
+from runtime.core.models import ApprovalStatus, ControlBlockedActionRecord, ControlRunState, RecordLifecycleState, ReviewStatus, new_id, now_iso
 from runtime.core.task_store import load_task, task_dependency_summary
+from runtime.controls.control_store import save_blocked_action
 
 
 def _provider_id_for_task(task) -> Optional[str]:
     routing = ((task.backend_metadata if task else {}) or {}).get("routing", {})
     return routing.get("provider_id")
+
+
+class GovernanceBlockedError(ValueError):
+    def __init__(self, message: str, *, blocked: dict[str, object]) -> None:
+        super().__init__(message)
+        self.blocked = blocked
+
+
+def build_governance_blocked_contract(record: ControlBlockedActionRecord) -> dict[str, object]:
+    return {
+        "blocked_action_id": record.blocked_action_id,
+        "action": record.action,
+        "task_id": record.task_id,
+        "provider_id": record.provider_id,
+        "subsystem": record.subsystem,
+        "reason": record.reason,
+        "metadata": dict(record.metadata or {}),
+    }
+
+
+def latest_governance_block_for_task_action(
+    *,
+    task_id: str,
+    action: str,
+    root: Optional[Path] = None,
+) -> Optional[dict[str, object]]:
+    for record in list_blocked_actions(root=root):
+        if record.task_id != task_id or record.action != action:
+            continue
+        return build_governance_blocked_contract(record)
+    return None
+
+
+def raise_structured_governance_block_if_available(
+    *,
+    task_id: str,
+    action: str,
+    reason: str,
+    root: Optional[Path] = None,
+) -> None:
+    blocked = latest_governance_block_for_task_action(task_id=task_id, action=action, root=root)
+    if blocked is not None and str(blocked.get("reason") or "") == reason:
+        raise GovernanceBlockedError(reason, blocked=blocked)
+    raise ValueError(reason)
+
+
+def _record_governance_block(
+    *,
+    action: str,
+    task_id: str,
+    actor: str,
+    lane: str,
+    provider_id: Optional[str],
+    execution_backend: Optional[str],
+    reason: str,
+    metadata: Optional[dict] = None,
+    root: Optional[Path] = None,
+) -> None:
+    save_blocked_action(
+        ControlBlockedActionRecord(
+            blocked_action_id=new_id("ctlblk"),
+            created_at=now_iso(),
+            action=action,
+            task_id=task_id,
+            subsystem=execution_backend,
+            provider_id=provider_id,
+            actor=actor,
+            lane=lane,
+            effective_status=ControlRunState.ACTIVE.value,
+            reason=reason,
+            metadata=dict(metadata or {}),
+        ),
+        root=root,
+    )
+    raise ValueError(reason)
+
+
+def _assert_review_and_approval_gates_cleared(
+    *,
+    action: str,
+    task,
+    actor: str,
+    lane: str,
+    root: Optional[Path] = None,
+) -> None:
+    provider_id = _provider_id_for_task(task)
+    execution_backend = task.execution_backend or lane
+
+    if task.review_required:
+        from runtime.core.review_store import latest_review_for_task
+
+        latest_review = latest_review_for_task(task.task_id, root=root)
+        if latest_review is None:
+            _record_governance_block(
+                action=action,
+                task_id=task.task_id,
+                actor=actor,
+                lane=lane,
+                provider_id=provider_id,
+                execution_backend=execution_backend,
+                reason="Review-required output cannot be promoted or published without an approved review record.",
+                metadata={
+                    "policy_block_kind": "review_gate_uncleared",
+                    "review_required": True,
+                    "latest_review_id": None,
+                    "latest_review_status": None,
+                },
+                root=root,
+            )
+        if latest_review.status != ReviewStatus.APPROVED.value:
+            _record_governance_block(
+                action=action,
+                task_id=task.task_id,
+                actor=actor,
+                lane=lane,
+                provider_id=provider_id,
+                execution_backend=execution_backend,
+                reason=(
+                    "Review-required output cannot be promoted or published while the reviewer lane is unavailable "
+                    f"or uncleared: latest_review_status={latest_review.status}."
+                ),
+                metadata={
+                    "policy_block_kind": "review_gate_uncleared",
+                    "review_required": True,
+                    "latest_review_id": latest_review.review_id,
+                    "latest_review_status": latest_review.status,
+                    "reviewer_role": latest_review.reviewer_role,
+                },
+                root=root,
+            )
+
+    if task.approval_required:
+        from runtime.core.approval_store import latest_approval_for_task
+
+        latest_approval = latest_approval_for_task(task.task_id, root=root)
+        if latest_approval is None:
+            _record_governance_block(
+                action=action,
+                task_id=task.task_id,
+                actor=actor,
+                lane=lane,
+                provider_id=provider_id,
+                execution_backend=execution_backend,
+                reason="Approval-required output cannot be promoted or published without an approved approval record.",
+                metadata={
+                    "policy_block_kind": "approval_gate_uncleared",
+                    "approval_required": True,
+                    "latest_approval_id": None,
+                    "latest_approval_status": None,
+                },
+                root=root,
+            )
+        if latest_approval.status != ApprovalStatus.APPROVED.value:
+            _record_governance_block(
+                action=action,
+                task_id=task.task_id,
+                actor=actor,
+                lane=lane,
+                provider_id=provider_id,
+                execution_backend=execution_backend,
+                reason=(
+                    "Approval-required output cannot be promoted or published while the auditor lane is unavailable "
+                    f"or uncleared: latest_approval_status={latest_approval.status}."
+                ),
+                metadata={
+                    "policy_block_kind": "approval_gate_uncleared",
+                    "approval_required": True,
+                    "latest_approval_id": latest_approval.approval_id,
+                    "latest_approval_status": latest_approval.status,
+                    "requested_reviewer": latest_approval.requested_reviewer,
+                },
+                root=root,
+            )
 
 
 def assert_artifact_promotion_allowed(
@@ -56,6 +230,13 @@ def assert_artifact_promotion_allowed(
             raise ValueError(f"Artifact candidate {candidate.candidate_id} is rejected and cannot be promoted.")
         if candidate.latest_validation_id is None:
             raise ValueError(f"Artifact candidate {candidate.candidate_id} has no validation record.")
+    _assert_review_and_approval_gates_cleared(
+        action="promote_artifact",
+        task=task,
+        actor=actor,
+        lane=lane,
+        root=root_path,
+    )
     dependency_state = task_dependency_summary(task.task_id, root=root_path)
     if dependency_state["hard_block"] or dependency_state["speculative_only"]:
         raise ValueError(str(dependency_state["reason"]))
@@ -90,6 +271,13 @@ def assert_artifact_publish_allowed(
         provider_id=_provider_id_for_task(task),
         actor=actor,
         lane=lane,
+    )
+    _assert_review_and_approval_gates_cleared(
+        action="publish_output",
+        task=task,
+        actor=actor,
+        lane=lane,
+        root=root_path,
     )
     dependency_state = task_dependency_summary(task.task_id, root=root_path)
     if dependency_state["hard_block"] or dependency_state["speculative_only"]:

@@ -32,6 +32,12 @@ from runtime.researchlab.experiment_store import build_experiment_summary
 from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
 from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.evals.replay_runner import build_eval_run_summary
+from runtime.core.routing import (
+    legal_candidate_pool_for_runtime_policy_block,
+    load_runtime_routing_policy,
+    resolve_runtime_route_policy,
+    runtime_routing_policy_path,
+)
 
 ROOT = resolve_repo_root(Path(__file__).resolve().parents[1])
 WORKSPACE = ROOT / "workspace"
@@ -435,6 +441,119 @@ def _config_text(root: Path, rel: str) -> str:
     return _read_text(path)
 
 
+def validate_runtime_routing_policy_config(root: Path) -> list[Finding]:
+    findings: list[Finding] = []
+    path = runtime_routing_policy_path(root=root)
+    if not path.exists():
+        _add(
+            findings,
+            "pass",
+            "config",
+            "Optional runtime routing policy file is absent; built-in routing defaults remain active.",
+            details=str(path),
+        )
+        return findings
+    try:
+        payload = load_runtime_routing_policy(root=root)
+    except Exception as exc:
+        _add(
+            findings,
+            "fail",
+            "config",
+            "Runtime routing policy config is invalid.",
+            "Fix `config/runtime_routing_policy.json` so validate can confirm routing policy before runtime use.",
+            str(exc),
+        )
+        return findings
+    _add(
+        findings,
+        "pass",
+        "config",
+        "Runtime routing policy config is valid.",
+        details=f"path={path} schema_version={payload.get('schema_version')}",
+    )
+    semantic_blocks: list[tuple[str, Optional[str], Optional[str], str]] = [
+        ("defaults", None, None, "general"),
+    ]
+    semantic_blocks.extend(("workload", None, None, name) for name in sorted((payload.get("workload_policies") or {}).keys()))
+    semantic_blocks.extend(("agent", name, None, "general") for name in sorted((payload.get("agent_policies") or {}).keys()))
+    semantic_blocks.extend(("channel", None, name, "general") for name in sorted((payload.get("channel_overrides") or {}).keys()))
+    for kind, agent_id, channel, workload_type in semantic_blocks:
+        resolved = resolve_runtime_route_policy(
+            agent_id=agent_id,
+            channel=channel,
+            workload_type=workload_type,
+            root=root,
+        )
+        allowed_families = list(resolved.get("allowed_families") or ["qwen3.5"])
+        pool = legal_candidate_pool_for_runtime_policy_block(
+            runtime_route_policy=resolved,
+            allowed_families=allowed_families,
+            root=root,
+        )
+        label = (
+            f"{kind}:{agent_id}"
+            if agent_id
+            else f"{kind}:{channel}"
+            if channel
+            else f"{kind}:{workload_type}"
+        )
+        if not pool["legal_entries"]:
+            _add(
+                findings,
+                "fail",
+                "config",
+                f"Runtime routing policy block `{label}` has no legal candidate pool.",
+                "Adjust preferred provider/model/family/host-role constraints so at least one legal candidate remains.",
+                (
+                    f"workload_type={workload_type} preferred_provider={resolved.get('preferred_provider')} "
+                    f"preferred_model={resolved.get('preferred_model')} allowed_families={allowed_families} "
+                    f"allowed_host_roles={resolved.get('allowed_host_roles')} forbidden_host_roles={resolved.get('forbidden_host_roles')}"
+                ),
+            )
+            continue
+        preferred_model = resolved.get("preferred_model")
+        if preferred_model and not pool["preferred_model_entries"] and not resolved.get("allowed_fallbacks"):
+            _add(
+                findings,
+                "fail",
+                "config",
+                f"Runtime routing policy block `{label}` names a preferred model with no legal candidate.",
+                "Pick a preferred model that exists in the active legal candidate pool or define legal fallbacks.",
+                f"preferred_model={preferred_model} legal_model_names={pool['legal_model_names']}",
+            )
+        preferred_provider = resolved.get("preferred_provider")
+        if preferred_provider and not pool["preferred_provider_entries"]:
+            _add(
+                findings,
+                "fail",
+                "config",
+                f"Runtime routing policy block `{label}` names a preferred provider with no legal candidate.",
+                "Pick a preferred provider that has legal candidates under the current family/host-role policy.",
+                f"preferred_provider={preferred_provider} legal_provider_ids={pool['legal_provider_ids']}",
+            )
+        if resolved.get("local_only") and not any(str(row.host_role or "") == "local" for row in pool["legal_entries"]):
+            _add(
+                findings,
+                "fail",
+                "config",
+                f"Runtime routing policy block `{label}` is local_only but has no legal local candidate.",
+                "Keep at least one active local candidate for local_only policy blocks.",
+                f"legal_model_names={pool['legal_model_names']}",
+            )
+        allowed_fallbacks = list(resolved.get("allowed_fallbacks") or [])
+        if allowed_fallbacks and not pool["fallback_entries"]:
+            _add(
+                findings,
+                "fail",
+                "config",
+                f"Runtime routing policy block `{label}` names fallbacks that are not legal candidates.",
+                "Keep fallback models present in the active legal candidate pool and within host-role boundaries.",
+                f"allowed_fallbacks={allowed_fallbacks} legal_model_names={pool['legal_model_names']}",
+            )
+    return findings
+
+
 def _non_localhost_urls(text: str) -> list[str]:
     hosts: list[str] = []
     for match in _URL_RE.findall(text or ""):
@@ -580,6 +699,8 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
                 _add(findings, "warn", "config", f"config/channels.yaml is missing channel keys: {', '.join(missing)}.", "Add the missing channel mappings before live Discord deployment.")
             else:
                 _add(findings, "pass", "config", "config/channels.yaml includes the expected operator channel names.")
+
+    findings.extend(validate_runtime_routing_policy_config(root))
 
     for rel in ["state/logs", "workspace/out", "workspace/vault"]:
         error = _write_probe(root / rel)

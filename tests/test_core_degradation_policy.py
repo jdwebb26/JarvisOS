@@ -13,15 +13,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from runtime.core.degradation_policy import (
     assert_no_forbidden_authority_downgrade,
+    ensure_default_degradation_policies,
     fallback_allowed,
     list_degradation_events,
     list_active_degradation_modes,
     load_degradation_policy_for_subsystem,
+    save_degradation_policy,
 )
 from runtime.core.models import AuthorityClass
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
 from runtime.core.status import build_status
-from runtime.core.task_store import create_task, load_task
+from runtime.core.task_store import create_task, load_task, save_task
 from runtime.dashboard.operator_snapshot import build_operator_snapshot
 from runtime.dashboard.state_export import build_state_export
 from runtime.integrations.hermes_adapter import HERMES_BACKEND_ID, execute_hermes_task
@@ -78,7 +80,48 @@ def test_hermes_timeout_applies_degradation_policy_and_fails_task(tmp_path: Path
     assert degradation_events[-1].requires_operator_notification is True
     assert degradation_events[-1].retry_policy["strategy"] == "manual_retry"
     assert stored_task.backend_metadata["degradation"]["degradation_event_id"] == degradation_events[-1].degradation_event_id
+    assert stored_task.backend_metadata["degradation"]["fallback_allowed"] is False
+    assert stored_task.backend_metadata["degradation"]["authority_class"] == AuthorityClass.SUGGEST_ONLY.value
     assert any('"event_type": "hermes_degradation_applied"' in payload for payload in event_payloads)
+
+
+def test_hermes_degradation_fallback_legality_respects_sensitive_authority(tmp_path: Path):
+    ensure_default_degradation_policies(root=tmp_path)
+    task = _make_task(
+        tmp_path,
+        task_id="task_degradation_sensitive",
+        status=TaskStatus.RUNNING.value,
+    )
+    task.review_required = True
+    save_task(task, root=tmp_path)
+
+    policy = load_degradation_policy_for_subsystem(HERMES_BACKEND_ID, root=tmp_path)
+    assert policy is not None
+    policy.degradation_mode = "FALLBACK_SUMMARY_ONLY"
+    policy.fallback_action = "summary_only_if_allowed"
+
+    save_degradation_policy(policy, root=tmp_path)
+
+    result = execute_hermes_task(
+        task_id=task.task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: (_ for _ in ()).throw(TimeoutError("Hermes request exceeded timeout budget.")),
+    )
+
+    stored_task = load_task(task.task_id, root=tmp_path)
+    degradation_events = list_degradation_events(root=tmp_path)
+
+    assert result["result"]["status"] == "timeout"
+    assert stored_task is not None
+    assert stored_task.status == TaskStatus.FAILED.value
+    assert stored_task.backend_metadata["degradation"]["fallback_allowed"] is False
+    assert stored_task.backend_metadata["degradation"]["authority_class"] == AuthorityClass.REVIEW_REQUIRED.value
+    assert "sensitive_authority" in " ".join(stored_task.backend_metadata["degradation"]["fallback_legality_reasons"])
+    assert degradation_events[-1].source_refs["fallback_allowed"] is False
+    assert degradation_events[-1].source_refs["authority_class"] == AuthorityClass.REVIEW_REQUIRED.value
+    assert "sensitive_authority" in " ".join(degradation_events[-1].source_refs["fallback_legality_reasons"])
 
 
 def test_degradation_summary_surfaces_in_core_reporting(tmp_path: Path):
@@ -149,9 +192,11 @@ def _run_as_script() -> int:
     with TemporaryDirectory() as tmp_one:
         test_hermes_timeout_applies_degradation_policy_and_fails_task(Path(tmp_one))
     with TemporaryDirectory() as tmp_two:
-        test_degradation_summary_surfaces_in_core_reporting(Path(tmp_two))
+        test_hermes_degradation_fallback_legality_respects_sensitive_authority(Path(tmp_two))
     with TemporaryDirectory() as tmp_three:
-        test_degraded_fallback_legality_stays_sensitive_to_authority(Path(tmp_three))
+        test_degradation_summary_surfaces_in_core_reporting(Path(tmp_three))
+    with TemporaryDirectory() as tmp_four:
+        test_degraded_fallback_legality_stays_sensitive_to_authority(Path(tmp_four))
     return 0
 
 

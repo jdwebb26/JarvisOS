@@ -4,15 +4,18 @@ import sys
 from pathlib import Path
 
 from runtime.core.approval_store import load_approval, record_approval_decision, request_approval
+from runtime.core.artifact_store import write_text_artifact
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
 from runtime.core.review_store import request_review
 from runtime.core.review_store import latest_review_for_task, record_review_verdict
+from runtime.core.task_runtime import save_task
 from runtime.core.task_store import create_task
 from runtime.evals.trace_store import replay_trace_to_eval
 from runtime.integrations.hermes_adapter import execute_hermes_task, load_hermes_result
 from runtime.memory.governance import list_memory_candidates_for_task, load_memory_candidate, save_memory_candidate
 from runtime.ralph.consolidator import execute_consolidation
 from scripts.operator_action_ledger import latest_successful_action_for_action_id
+from scripts.operator_action_executor import execute_selected_action
 from scripts.operator_checkpoint_action_pack import with_action_pack_provenance
 
 
@@ -547,6 +550,131 @@ def test_operator_action_executor_logs_failed_execution(tmp_path: Path):
     assert record["failure"] is True
     assert record["return_code"] != 0
     assert "cannot be promoted without approved review" in record["stderr_snapshot"]
+
+
+def test_operator_action_executor_preserves_structured_routing_refusal(tmp_path: Path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "runtime_routing_policy.json").write_text(
+        """{
+  "defaults": {
+    "preferred_provider": "qwen",
+    "preferred_host_role": "primary",
+    "allowed_host_roles": ["primary"],
+    "forbidden_host_roles": ["burst"],
+    "burst_allowed": false,
+    "allowed_fallbacks": ["Burst-Qwen-35B"]
+  },
+  "workload_policies": {
+    "general": {
+      "preferred_model": "Missing-Primary-Qwen",
+      "allowed_fallbacks": ["Burst-Qwen-35B"]
+    }
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    action = {
+        "action_id": "custom:intake:routing_refusal",
+        "command": {
+            "argv": [
+                sys.executable,
+                str(ROOT / "runtime" / "core" / "intake.py"),
+                "--root",
+                str(tmp_path),
+                "--text",
+                "task: write a short reply",
+                "--user",
+                "tester",
+                "--lane",
+                "tests",
+                "--channel",
+                "tests",
+                "--message-id",
+                "msg_structured_refusal",
+            ],
+            "command": "",
+        },
+    }
+
+    result, exit_code = execute_selected_action(
+        tmp_path,
+        action_id=action["action_id"],
+        action=action,
+        action_pack_path=tmp_path / "dummy_action_pack.json",
+    )
+
+    assert exit_code == 1
+    assert result["ok"] is False
+    assert result["error_type"] == "routing_refused"
+    assert result["failure"]["kind"] == "routing_refused"
+    assert result["refusal"]["failure_code"] in {"routing_refused_before_summary", "no_legal_routing_candidate"}
+    record = _latest_execution_record(tmp_path)
+    assert record["failure_kind"] == "routing_refused"
+    assert record["failure_reason"]
+
+
+def test_operator_action_executor_preserves_structured_governance_block(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_action_executor_structured_publish")
+    task.approval_required = True
+    save_task(tmp_path, task)
+    artifact = write_text_artifact(
+        task_id=task.task_id,
+        artifact_type="report",
+        title="Promoted publish block",
+        summary="promoted",
+        content="body",
+        actor="operator",
+        lane="artifacts",
+        root=tmp_path,
+    )
+    request_approval(
+        task_id=task.task_id,
+        approval_type="deploy",
+        requested_by="tester",
+        requested_reviewer="operator",
+        lane="review",
+        summary="pending approval for structured publish block",
+        root=tmp_path,
+    )
+    action = {
+        "action_id": "custom:publish:governance_block",
+        "command": {
+            "argv": [
+                sys.executable,
+                str(ROOT / "runtime" / "core" / "output_store.py"),
+                "--root",
+                str(tmp_path),
+                "--task-id",
+                task.task_id,
+                "--artifact-id",
+                artifact["artifact_id"],
+                "--actor",
+                "operator",
+                "--lane",
+                "outputs",
+            ],
+            "command": "",
+        },
+    }
+
+    result, exit_code = execute_selected_action(
+        tmp_path,
+        action_id=action["action_id"],
+        action=action,
+        action_pack_path=tmp_path / "dummy_action_pack.json",
+    )
+
+    assert exit_code == 1
+    assert result["ok"] is False
+    assert result["error_type"] == "governance_blocked"
+    assert result["failure"]["kind"] == "governance_blocked"
+    assert result["blocked"]["action"] == "publish_output"
+    assert result["blocked"]["metadata"]["policy_block_kind"] == "approval_gate_uncleared"
+    record = _latest_execution_record(tmp_path)
+    assert record["failure_kind"] == "governance_blocked"
+    assert record["failure_reason"]
 
 
 def test_operator_action_executor_refuses_already_successful_action_without_force(tmp_path: Path):

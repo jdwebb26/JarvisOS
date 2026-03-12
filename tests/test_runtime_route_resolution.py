@@ -6,7 +6,16 @@ import tempfile
 from pathlib import Path
 
 from runtime.core.models import CapabilityProfileRecord, ModelRegistryEntryRecord, RoutingPolicyRecord, now_iso
-from runtime.core.routing import route_task_intent, save_capability_profile, save_model_registry_entry, save_routing_policy
+from runtime.core.routing import (
+    list_routing_requests,
+    route_task_intent,
+    save_capability_profile,
+    save_model_registry_entry,
+    save_routing_policy,
+)
+from runtime.core.status import build_status
+from runtime.dashboard.operator_snapshot import build_operator_snapshot
+from runtime.dashboard.state_export import build_state_export
 
 
 def _write_runtime_policy(root: Path, payload: dict) -> None:
@@ -55,6 +64,24 @@ def test_scout_resolves_to_nimo_preferred_route(tmp_path: Path) -> None:
     assert result["decision"]["selected_model_name"] == "Qwen3.5-35B"
     assert result["decision"]["selected_node_role"] == "primary"
     assert result["decision"]["selected_host_name"] == "NIMO"
+
+
+def test_jarvis_does_not_prefer_9b_when_profile_cannot_cover_code_risk(tmp_path: Path) -> None:
+    result = route_task_intent(
+        task_id="task_jarvis_code_risky",
+        normalized_request="fix this python bug and patch the tests",
+        task_type="code",
+        risk_level="risky",
+        priority="normal",
+        actor="tester",
+        lane="jarvis",
+        agent_id="jarvis",
+        channel="discord_jarvis",
+        root=tmp_path,
+    )
+
+    assert result["decision"]["selected_model_name"] == "Qwen3.5-35B"
+    assert result["decision"]["selected_execution_backend"] == "qwen_executor"
 
 
 def test_embeddings_workloads_stay_local(tmp_path: Path) -> None:
@@ -162,9 +189,48 @@ def test_fallback_does_not_cross_forbidden_host_role_boundaries(tmp_path: Path) 
             root=tmp_path,
         )
     except ValueError as exc:
-        assert "allowed provider/host-role policy" in str(exc)
+        assert "No routing candidate survived policy" in str(exc)
     else:  # pragma: no cover - script mode failure path
         raise AssertionError("Expected routing to refuse burst-only fallback across forbidden host-role boundaries.")
+
+    requests = list_routing_requests(root=tmp_path)
+    assert len(requests) == 1
+    failed_request = requests[0]
+    assert failed_request.status == "failed"
+    assert failed_request.policy_constraints["failure_code"] == "no_legal_routing_candidate"
+    assert failed_request.policy_constraints["failure_reason"] == (
+        "No routing candidate survived policy, host-role, provider, backend, and capability legality filters."
+    )
+    assert failed_request.policy_constraints["workload_type"] == "general"
+    assert failed_request.policy_constraints["preferred_provider"] == "qwen"
+    assert failed_request.policy_constraints["preferred_host_role"] == "primary"
+    assert failed_request.policy_constraints["allowed_host_roles"] == ["primary"]
+    assert "burst" in failed_request.policy_constraints["forbidden_host_roles"]
+    assert failed_request.policy_constraints["allowed_fallbacks"] == ["Burst-Qwen-35B"]
+    assert failed_request.policy_constraints["eligible_provider_ids"] == ["qwen"]
+
+    status = build_status(tmp_path)
+    snapshot = build_operator_snapshot(tmp_path)
+    export_payload = build_state_export(tmp_path)
+
+    expected = status["routing_summary"]["latest_failed_routing_request"]
+    assert status["routing_summary"]["failed_routing_request_count"] == 1
+    assert expected["lane"] == "tests"
+    assert expected["channel"] == "tests"
+    assert expected["workload_type"] == "general"
+    assert expected["task_type"] == "general"
+    assert expected["risk_level"] == "normal"
+    assert expected["preferred_provider"] == "qwen"
+    assert expected["preferred_model"] == "Missing-Primary-Qwen"
+    assert expected["preferred_host_role"] == "primary"
+    assert expected["allowed_host_roles"] == ["primary"]
+    assert "burst" in expected["forbidden_host_roles"]
+    assert expected["allowed_fallbacks"] == ["Burst-Qwen-35B"]
+    assert expected["eligible_provider_ids"] == ["qwen"]
+    assert expected["failure_code"] == "no_legal_routing_candidate"
+    assert "No routing candidate survived policy" in expected["failure_reason"]
+    assert snapshot["routing_summary"]["latest_failed_routing_request"]["failure_code"] == "no_legal_routing_candidate"
+    assert export_payload["routing_summary"]["latest_failed_routing_request"]["preferred_host_role"] == "primary"
 
 
 def test_channel_override_beats_defaults_when_allowed(tmp_path: Path) -> None:
@@ -231,16 +297,62 @@ def test_forbidden_channel_override_is_ignored_with_explicit_reason(tmp_path: Pa
     assert ignored
     assert ignored[0]["reason"] == "channel_override_conflicts_with_agent_host_policy"
 
+    status = build_status(tmp_path)
+    snapshot = build_operator_snapshot(tmp_path)
+    export_payload = build_state_export(tmp_path)
+
+    expected = status["routing_summary"]["latest_runtime_route_resolution"]
+    assert expected["selected_provider_id"] == "qwen"
+    assert expected["selected_model_name"] == "Qwen3.5-9B"
+    assert expected["selected_node_role"] == "primary"
+    assert expected["agent_id"] == "jarvis"
+    assert expected["channel"] == "discord_burst_attempt"
+    assert expected["ignored_overrides"][0]["reason"] == "channel_override_conflicts_with_agent_host_policy"
+    assert snapshot["routing_summary"]["latest_runtime_route_resolution"]["ignored_overrides"][0]["reason"] == expected["ignored_overrides"][0]["reason"]
+    assert export_payload["routing_summary"]["latest_runtime_route_resolution"]["selected_host_name"] == "NIMO"
+
+
+def test_invalid_runtime_policy_shape_fails_explicitly(tmp_path: Path) -> None:
+    _write_runtime_policy(
+        tmp_path,
+        {
+            "defaults": {
+                "preferred_host_role": "primary",
+                "allowed_host_roles": ["primary", "not_a_real_role"],
+            }
+        },
+    )
+
+    try:
+        route_task_intent(
+            task_id="task_invalid_policy_shape",
+            normalized_request="write a short reply",
+            task_type="general",
+            risk_level="normal",
+            priority="normal",
+            actor="tester",
+            lane="jarvis",
+            agent_id="jarvis",
+            channel="discord_jarvis",
+            root=tmp_path,
+        )
+    except ValueError as exc:
+        assert "unknown host roles" in str(exc)
+    else:  # pragma: no cover - script mode failure path
+        raise AssertionError("Expected invalid runtime routing policy shape to fail explicitly.")
+
 
 def main() -> int:
     temp_root = Path(tempfile.mkdtemp(prefix="runtime_route_resolution_")).resolve()
     try:
         test_jarvis_resolves_to_9b_on_primary_not_burst(temp_root / "jarvis")
         test_scout_resolves_to_nimo_preferred_route(temp_root / "scout")
+        test_jarvis_does_not_prefer_9b_when_profile_cannot_cover_code_risk(temp_root / "jarvis_code")
         test_embeddings_workloads_stay_local(temp_root / "embeddings")
         test_fallback_does_not_cross_forbidden_host_role_boundaries(temp_root / "fallback")
         test_channel_override_beats_defaults_when_allowed(temp_root / "channel_ok")
         test_forbidden_channel_override_is_ignored_with_explicit_reason(temp_root / "channel_forbidden")
+        test_invalid_runtime_policy_shape_fails_explicitly(temp_root / "invalid_shape")
     except AssertionError as exc:
         print(f"runtime route resolution test failed: {exc}", file=sys.stderr)
         return 1

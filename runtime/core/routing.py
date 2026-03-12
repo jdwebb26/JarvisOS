@@ -245,17 +245,149 @@ def runtime_routing_policy_path(root: Optional[Path] = None) -> Path:
     return Path(root or ROOT).resolve() / "config" / "runtime_routing_policy.json"
 
 
+def _ensure_mapping(value: Any, *, context: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Invalid runtime routing policy: {context} must be a JSON object.")
+    return dict(value)
+
+
+def _ensure_string_list(value: Any, *, context: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"Invalid runtime routing policy: {context} must be a list of non-empty strings.")
+    return [item.strip() for item in value]
+
+
+def _ensure_optional_string(value: Any, *, context: str) -> Optional[str]:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Invalid runtime routing policy: {context} must be a non-empty string when provided.")
+    return value.strip()
+
+
+def _ensure_optional_bool(value: Any, *, context: str) -> Optional[bool]:
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise ValueError(f"Invalid runtime routing policy: {context} must be a boolean when provided.")
+    return value
+
+
+def _validate_host_role_list(roles: list[str], *, context: str) -> list[str]:
+    invalid = [role for role in roles if role not in NodeRole.values()]
+    if invalid:
+        raise ValueError(
+            f"Invalid runtime routing policy: {context} contains unknown host roles {sorted(invalid)}."
+        )
+    seen: list[str] = []
+    for role in roles:
+        if role not in seen:
+            seen.append(role)
+    return seen
+
+
+def _validate_runtime_route_policy_block(block: dict[str, Any], *, context: str) -> dict[str, Any]:
+    allowed_keys = {
+        "preferred_provider",
+        "preferred_model",
+        "preferred_host_role",
+        "allowed_host_roles",
+        "forbidden_host_roles",
+        "allowed_fallbacks",
+        "allowed_families",
+        "burst_allowed",
+        "local_only",
+    }
+    unknown_keys = sorted(set(block) - allowed_keys)
+    if unknown_keys:
+        raise ValueError(f"Invalid runtime routing policy: {context} contains unknown keys {unknown_keys}.")
+    normalized: dict[str, Any] = {}
+    preferred_provider = _ensure_optional_string(block.get("preferred_provider"), context=f"{context}.preferred_provider")
+    preferred_model = _ensure_optional_string(block.get("preferred_model"), context=f"{context}.preferred_model")
+    preferred_host_role = _ensure_optional_string(block.get("preferred_host_role"), context=f"{context}.preferred_host_role")
+    if preferred_host_role is not None and preferred_host_role not in NodeRole.values():
+        raise ValueError(
+            f"Invalid runtime routing policy: {context}.preferred_host_role must be one of {sorted(NodeRole.values())}."
+        )
+    if preferred_provider is not None:
+        normalized["preferred_provider"] = preferred_provider
+    if preferred_model is not None:
+        normalized["preferred_model"] = preferred_model
+    if preferred_host_role is not None:
+        normalized["preferred_host_role"] = preferred_host_role
+
+    allowed_host_roles = _validate_host_role_list(
+        _ensure_string_list(block.get("allowed_host_roles"), context=f"{context}.allowed_host_roles"),
+        context=f"{context}.allowed_host_roles",
+    )
+    forbidden_host_roles = _validate_host_role_list(
+        _ensure_string_list(block.get("forbidden_host_roles"), context=f"{context}.forbidden_host_roles"),
+        context=f"{context}.forbidden_host_roles",
+    )
+    if allowed_host_roles:
+        normalized["allowed_host_roles"] = allowed_host_roles
+    if forbidden_host_roles:
+        normalized["forbidden_host_roles"] = forbidden_host_roles
+
+    allowed_fallbacks = _ensure_string_list(block.get("allowed_fallbacks"), context=f"{context}.allowed_fallbacks")
+    allowed_families = _ensure_string_list(block.get("allowed_families"), context=f"{context}.allowed_families")
+    if allowed_fallbacks:
+        normalized["allowed_fallbacks"] = allowed_fallbacks
+    if allowed_families:
+        normalized["allowed_families"] = allowed_families
+
+    burst_allowed = _ensure_optional_bool(block.get("burst_allowed"), context=f"{context}.burst_allowed")
+    local_only = _ensure_optional_bool(block.get("local_only"), context=f"{context}.local_only")
+    if burst_allowed is not None:
+        normalized["burst_allowed"] = burst_allowed
+    if local_only is not None:
+        normalized["local_only"] = local_only
+
+    return normalized
+
+
+def validate_runtime_routing_policy(payload: dict[str, Any]) -> dict[str, Any]:
+    policy = _ensure_mapping(payload, context="runtime_routing_policy")
+    validated: dict[str, Any] = {
+        "schema_version": str(policy.get("schema_version") or DEFAULT_RUNTIME_ROUTING_POLICY["schema_version"]),
+        "defaults": _validate_runtime_route_policy_block(
+            _ensure_mapping(policy.get("defaults"), context="defaults"),
+            context="defaults",
+        ),
+        "workload_policies": {},
+        "agent_policies": {},
+        "channel_overrides": {},
+    }
+    for section in ("workload_policies", "agent_policies", "channel_overrides"):
+        raw_section = _ensure_mapping(policy.get(section), context=section)
+        validated_section: dict[str, Any] = {}
+        for key, value in raw_section.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError(f"Invalid runtime routing policy: {section} keys must be non-empty strings.")
+            validated_section[key.strip()] = _validate_runtime_route_policy_block(
+                _ensure_mapping(value, context=f"{section}.{key}"),
+                context=f"{section}.{key}",
+            )
+        validated[section] = validated_section
+    return validated
+
+
 def load_runtime_routing_policy(root: Optional[Path] = None) -> dict[str, Any]:
     path = runtime_routing_policy_path(root=root)
     if not path.exists():
         return json.loads(json.dumps(DEFAULT_RUNTIME_ROUTING_POLICY))
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return json.loads(json.dumps(DEFAULT_RUNTIME_ROUTING_POLICY))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid runtime routing policy JSON at {path}: {exc}") from exc
     merged = json.loads(json.dumps(DEFAULT_RUNTIME_ROUTING_POLICY))
+    validated = validate_runtime_routing_policy(payload)
     for key in ("defaults", "workload_policies", "agent_policies", "channel_overrides"):
-        merged[key].update(dict(payload.get(key) or {}))
+        merged[key].update(validated.get(key) or {})
     for key, value in payload.items():
         if key not in merged:
             merged[key] = value
@@ -423,6 +555,12 @@ def list_routing_decisions(root: Optional[Path] = None) -> list[RoutingDecisionR
     return rows
 
 
+def list_routing_requests(root: Optional[Path] = None) -> list[RoutingRequestRecord]:
+    rows = [RoutingRequestRecord.from_dict(row) for row in _load_rows(routing_requests_dir(root))]
+    rows.sort(key=lambda row: row.updated_at, reverse=True)
+    return rows
+
+
 def list_routing_policies(root: Optional[Path] = None) -> list[RoutingPolicyRecord]:
     rows = [RoutingPolicyRecord.from_dict(row) for row in _load_rows(routing_policies_dir(root))]
     rows.sort(key=lambda row: row.updated_at, reverse=True)
@@ -438,6 +576,13 @@ def list_routing_overrides(root: Optional[Path] = None) -> list[RoutingOverrideR
 def latest_routing_decision(root: Optional[Path] = None) -> Optional[RoutingDecisionRecord]:
     rows = list_routing_decisions(root=root)
     return rows[0] if rows else None
+
+
+def latest_failed_routing_request(root: Optional[Path] = None) -> Optional[RoutingRequestRecord]:
+    for row in list_routing_requests(root=root):
+        if row.status == "failed":
+            return row
+    return None
 
 
 def latest_routing_policy(root: Optional[Path] = None) -> Optional[RoutingPolicyRecord]:
@@ -600,11 +745,55 @@ def _candidate_entry_pool(
     ]
 
 
-def _profile_score(profile: CapabilityProfileRecord, required_capabilities: list[str], task_type: str, risk_level: str) -> tuple[int, int, int]:
+def legal_candidate_pool_for_runtime_policy_block(
+    *,
+    runtime_route_policy: dict[str, Any],
+    allowed_families: list[str],
+    root: Path,
+) -> dict[str, Any]:
+    entries = _candidate_entry_pool(allowed_families=allowed_families, root=root)
+    available_nodes = _available_nodes_by_role(root)
+    preferred_provider = str(runtime_route_policy.get("preferred_provider") or "")
+    preferred_model = str(runtime_route_policy.get("preferred_model") or "")
+    allowed_host_roles = list(runtime_route_policy.get("allowed_host_roles") or [])
+    forbidden_host_roles = set(runtime_route_policy.get("forbidden_host_roles") or [])
+    local_only = bool(runtime_route_policy.get("local_only", False))
+    allowed_fallbacks = list(runtime_route_policy.get("allowed_fallbacks") or [])
+
+    legal_entries: list[ModelRegistryEntryRecord] = []
+    for entry in entries:
+        entry_role = str(entry.host_role or NodeRole.PRIMARY.value)
+        entry_host = str(entry.host_name or "")
+        if allowed_host_roles and entry_role not in allowed_host_roles:
+            continue
+        if entry_role in forbidden_host_roles:
+            continue
+        if local_only and entry_role != NodeRole.LOCAL.value:
+            continue
+        if entry_host and entry_host not in available_nodes.get(entry_role, []):
+            continue
+        legal_entries.append(entry)
+
+    fallback_entries = [row for row in legal_entries if row.model_name in allowed_fallbacks] if allowed_fallbacks else []
+    preferred_model_entries = [row for row in legal_entries if row.model_name == preferred_model] if preferred_model else []
+    preferred_provider_entries = [row for row in legal_entries if row.provider_id == preferred_provider] if preferred_provider else []
+    return {
+        "legal_entries": legal_entries,
+        "legal_model_names": sorted({row.model_name for row in legal_entries}),
+        "legal_provider_ids": sorted({row.provider_id for row in legal_entries}),
+        "preferred_model_entries": preferred_model_entries,
+        "preferred_provider_entries": preferred_provider_entries,
+        "fallback_entries": fallback_entries,
+    }
+
+
+def _profile_coverage(profile: CapabilityProfileRecord, required_capabilities: list[str], task_type: str, risk_level: str) -> dict[str, Any]:
     matched_capabilities = len(set(required_capabilities).intersection(profile.capabilities))
-    covers_task_type = 1 if task_type in profile.supported_task_types else 0
-    covers_risk = 1 if risk_level in profile.supported_risk_levels else 0
-    return (matched_capabilities, covers_task_type, covers_risk)
+    return {
+        "matched_capabilities": matched_capabilities,
+        "covers_task_type": task_type in profile.supported_task_types,
+        "covers_risk": risk_level in profile.supported_risk_levels,
+    }
 
 
 def _choose_entry(
@@ -648,41 +837,101 @@ def _choose_entry(
     if not filtered_entries:
         raise ValueError("No routing candidates available within the allowed provider/host-role policy.")
 
-    ranked: list[tuple[tuple[int, int, int, int], ModelRegistryEntryRecord, CapabilityProfileRecord]] = []
+    candidate_rows: list[dict[str, Any]] = []
     for entry in filtered_entries:
         for profile_id in entry.capability_profile_ids:
             profile = profiles_by_id.get(profile_id)
             if profile is None:
                 continue
-            score = _profile_score(profile, required_capabilities, task_type, risk_level)
+            coverage = _profile_coverage(profile, required_capabilities, task_type, risk_level)
             preferred_family_bonus = 1 if entry.model_family == preferred_family else 0
             preferred_provider_bonus = 1 if preferred_provider and entry.provider_id == preferred_provider else 0
             preferred_model_bonus = 1 if preferred_model and entry.model_name == preferred_model else 0
             preferred_host_bonus = 1 if preferred_host_role and str(entry.host_role or "") == preferred_host_role else 0
-            ranked.append(
-                (
-                    (
+            candidate_rows.append(
+                {
+                    "entry": entry,
+                    "profile": profile,
+                    "coverage": coverage,
+                    "rank": (
                         preferred_model_bonus,
                         preferred_provider_bonus,
                         preferred_host_bonus,
-                        *score,
+                        coverage["matched_capabilities"],
+                        1 if coverage["covers_task_type"] else 0,
+                        1 if coverage["covers_risk"] else 0,
                         preferred_family_bonus,
-                        -entry.priority_rank,
+                        entry.priority_rank,
                     ),
-                    entry,
-                    profile,
-                )
+                }
             )
-    if not ranked:
+    if not candidate_rows:
         raise ValueError("No active routing candidates were available for the current routing policy.")
-    ranked.sort(key=lambda item: item[0], reverse=True)
-    selected_entry, selected_profile = ranked[0][1], ranked[0][2]
-    candidate_model_names = [item[1].model_name for item in ranked]
+    if any(row["coverage"]["covers_task_type"] and row["coverage"]["covers_risk"] for row in candidate_rows):
+        candidate_rows = [
+            row
+            for row in candidate_rows
+            if row["coverage"]["covers_task_type"] and row["coverage"]["covers_risk"]
+        ]
+    candidate_rows.sort(key=lambda item: item["rank"], reverse=True)
+    selected_entry, selected_profile = candidate_rows[0]["entry"], candidate_rows[0]["profile"]
+    candidate_model_names = [item["entry"].model_name for item in candidate_rows]
     seen: list[str] = []
     for model_name in candidate_model_names:
         if model_name not in seen:
             seen.append(model_name)
     return selected_entry, selected_profile, seen
+
+
+def _latest_runtime_route_resolution(decision: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    if not decision:
+        return None
+    constraints = dict(decision.get("policy_constraints") or {})
+    return {
+        "routing_decision_id": decision.get("routing_decision_id"),
+        "selected_provider_id": decision.get("selected_provider_id"),
+        "selected_model_name": decision.get("selected_model_name"),
+        "selected_execution_backend": decision.get("selected_execution_backend"),
+        "selected_node_role": decision.get("selected_node_role"),
+        "selected_host_name": decision.get("selected_host_name"),
+        "workload_type": constraints.get("workload_type"),
+        "agent_id": constraints.get("agent_id"),
+        "channel": constraints.get("channel"),
+        "preferred_provider": constraints.get("preferred_provider"),
+        "preferred_model": constraints.get("preferred_model"),
+        "preferred_host_role": constraints.get("preferred_host_role"),
+        "allowed_host_roles": list(constraints.get("allowed_host_roles") or []),
+        "forbidden_host_roles": list(constraints.get("forbidden_host_roles") or []),
+        "allowed_fallbacks": list(constraints.get("allowed_fallbacks") or []),
+        "ignored_overrides": list(constraints.get("ignored_overrides") or []),
+        "selection_reason": decision.get("selection_reason", ""),
+    }
+
+
+def build_routing_failure_summary(request: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    if not request:
+        return None
+    constraints = dict(request.get("policy_constraints") or {})
+    return {
+        "routing_request_id": request.get("routing_request_id"),
+        "task_id": request.get("task_id"),
+        "lane": request.get("lane"),
+        "channel": constraints.get("channel"),
+        "workload_type": constraints.get("workload_type"),
+        "task_type": request.get("task_type"),
+        "risk_level": request.get("risk_level"),
+        "preferred_provider": constraints.get("preferred_provider"),
+        "preferred_model": constraints.get("preferred_model"),
+        "preferred_host_role": constraints.get("preferred_host_role"),
+        "allowed_host_roles": list(constraints.get("allowed_host_roles") or []),
+        "forbidden_host_roles": list(constraints.get("forbidden_host_roles") or []),
+        "allowed_fallbacks": list(constraints.get("allowed_fallbacks") or []),
+        "eligible_provider_ids": list(constraints.get("eligible_provider_ids") or []),
+        "required_capabilities": list(request.get("required_capabilities") or []),
+        "failure_reason": constraints.get("failure_reason", ""),
+        "failure_code": constraints.get("failure_code"),
+        "status": request.get("status"),
+    }
 
 
 def route_task_intent(
@@ -771,20 +1020,38 @@ def route_task_intent(
             priority=priority,
             required_capabilities=required_capabilities,
             policy_constraints=policy_constraints,
-            status="completed",
+            status="pending",
         ),
         root=root_path,
     )
-    entry, profile, candidate_model_names = _choose_entry(
-        required_capabilities=required_capabilities,
-        task_type=task_type,
-        risk_level=risk_level,
-        allowed_families=allowed_families,
-        preferred_family=preferred_family,
-        runtime_route_policy=runtime_route_policy,
-        root=root_path,
-    )
     eligible_provider_ids = sorted({row.provider_id for row in _candidate_entry_pool(allowed_families=allowed_families, root=root_path)})
+    try:
+        entry, profile, candidate_model_names = _choose_entry(
+            required_capabilities=required_capabilities,
+            task_type=task_type,
+            risk_level=risk_level,
+            allowed_families=allowed_families,
+            preferred_family=preferred_family,
+            runtime_route_policy=runtime_route_policy,
+            root=root_path,
+        )
+    except ValueError as exc:
+        request.status = "failed"
+        request.policy_constraints = {
+            **dict(request.policy_constraints or {}),
+            "eligible_provider_ids": eligible_provider_ids,
+            "failure_code": "no_legal_routing_candidate",
+            "failure_reason": (
+                "No routing candidate survived policy, host-role, provider, backend, and capability legality filters."
+            ),
+        }
+        save_routing_request(request, root=root_path)
+        raise ValueError(
+            f"{request.policy_constraints['failure_reason']} Original error: {exc}"
+        ) from exc
+    request.status = "completed"
+    request.policy_constraints = {**dict(request.policy_constraints or {}), "eligible_provider_ids": eligible_provider_ids}
+    save_routing_request(request, root=root_path)
     decision = save_routing_decision(
         RoutingDecisionRecord(
             routing_decision_id=new_id("rdec"),
@@ -807,7 +1074,7 @@ def route_task_intent(
                 f"using profile {profile.profile_name}."
             ),
             candidate_model_names=candidate_model_names,
-            policy_constraints={**policy_constraints, "eligible_provider_ids": eligible_provider_ids},
+            policy_constraints=dict(request.policy_constraints or {}),
             status="selected",
         ),
         root=root_path,
@@ -892,7 +1159,7 @@ def route_task_intent(
                 "workload_type": resolved_workload_type,
                 "normalized_request": normalized_request,
                 "required_capabilities": list(required_capabilities),
-                "policy_constraints": {**dict(policy_constraints), "eligible_provider_ids": eligible_provider_ids},
+                "policy_constraints": dict(request.policy_constraints or {}),
             },
         ),
         root=root_path,
@@ -949,11 +1216,16 @@ def build_model_registry_summary(root: Optional[Path] = None) -> dict:
         and row.default_execution_backend not in disabled_backends
     ]
     decisions = list_routing_decisions(root_path)
+    requests = list_routing_requests(root_path)
     latest = decisions[0].to_dict() if decisions else None
+    latest_failed_request = latest_failed_routing_request(root=root_path)
+    runtime_policy = load_runtime_routing_policy(root=root_path)
     backend_assignment_summary = build_backend_assignment_summary(root=root_path)
     return {
         "provider_policy": "qwen_only" if allowed_families == ["qwen3.5"] else "policy_override",
         "architecture_mode": "provider_agnostic",
+        "runtime_routing_policy_path": str(runtime_routing_policy_path(root=root_path)),
+        "runtime_routing_policy_schema_version": runtime_policy.get("schema_version"),
         "routing_policy_id": policy.routing_policy_id,
         "default_family": preferred_family,
         "allowed_families": list(allowed_families),
@@ -963,11 +1235,14 @@ def build_model_registry_summary(root: Optional[Path] = None) -> dict:
         "provider_ids": sorted({row.provider_id for row in entries}),
         "active_model_names": [row.model_name for row in sorted(entries, key=lambda row: row.priority_rank, reverse=True)],
         "active_model_count": len(entries),
+        "failed_routing_request_count": sum(1 for row in requests if row.status == "failed"),
         "enabled_input_modalities": list(modality_summary.get("enabled_input_modalities", [])),
         "multimodal_runtime_enabled": False,
         "disabled_provider_ids": get_effective_control_state(root=root_path).get("disabled_provider_ids", []),
         "disabled_execution_backends": get_effective_control_state(root=root_path).get("disabled_execution_backends", []),
         "latest_routing_decision": latest,
+        "latest_runtime_route_resolution": _latest_runtime_route_resolution(latest),
+        "latest_failed_routing_request": build_routing_failure_summary(latest_failed_request.to_dict() if latest_failed_request else None),
         "backend_assignment_summary": backend_assignment_summary,
     }
 

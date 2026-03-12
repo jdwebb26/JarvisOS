@@ -3,10 +3,12 @@ from pathlib import Path
 import pytest
 
 from runtime.controls.control_store import set_emergency_control
-from runtime.core.artifact_store import load_artifact, revoke_artifact, write_text_artifact
+from runtime.core.approval_store import request_approval
+from runtime.core.artifact_store import load_artifact, promote_artifact, revoke_artifact, write_text_artifact
 from runtime.core.intake import create_task_from_message
 from runtime.core.models import ControlScopeType, RecordLifecycleState, TaskRecord, TaskStatus, now_iso
 from runtime.core.output_store import publish_artifact
+from runtime.core.review_store import request_review
 from runtime.core.routing import route_task_intent
 from runtime.core.status import build_status
 from runtime.core.task_store import create_task
@@ -271,6 +273,125 @@ def test_memory_candidate_validation_promotion_and_upstream_revocation(tmp_path:
     assert stored.eligibility_status == "revoked_upstream"
     assert stored.lifecycle_state == RecordLifecycleState.DEMOTED.value
     assert revocations
+
+
+def test_review_required_promotion_is_blocked_until_review_clears_and_is_operator_visible(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_review_gate_hold")
+    task.review_required = True
+    from runtime.core.task_runtime import save_task
+    save_task(tmp_path, task)
+    candidate = write_text_artifact(
+        task_id=task.task_id,
+        artifact_type="report",
+        title="Candidate review gate",
+        summary="candidate",
+        content="body",
+        actor="hermes",
+        lane="research",
+        root=tmp_path,
+        producer_kind="backend",
+        execution_backend="qwen_executor",
+    )
+
+    request_review(
+        task_id=task.task_id,
+        reviewer_role="operator",
+        requested_by="tester",
+        lane="review",
+        summary="review required before promotion",
+        root=tmp_path,
+    )
+
+    with pytest.raises(ValueError, match="reviewer lane is unavailable or uncleared"):
+        promote_artifact(
+            artifact_id=candidate["artifact_id"],
+            actor="operator",
+            lane="review",
+            root=tmp_path,
+        )
+
+    status = build_status(tmp_path)
+    snapshot = build_operator_snapshot(tmp_path)
+    export_payload = build_state_export(tmp_path)
+    handoff = build_operator_handoff_pack(tmp_path)["pack"]
+    latest_blocked = status["control_state"]["latest_blocked_action"]
+
+    assert latest_blocked is not None
+    assert latest_blocked["action"] == "promote_artifact"
+    assert latest_blocked["metadata"]["policy_block_kind"] == "review_gate_uncleared"
+    assert latest_blocked["metadata"]["latest_review_status"] == "pending"
+    assert "reviewer lane is unavailable or uncleared" in latest_blocked["reason"]
+    assert snapshot["control_state"]["latest_blocked_action"]["metadata"]["policy_block_kind"] == "review_gate_uncleared"
+    assert export_payload["promotion_governance_summary"]["latest_blocked_action"]["metadata"]["policy_block_kind"] == "review_gate_uncleared"
+    assert handoff["promotion_governance_summary"]["latest_blocked_action"]["metadata"]["policy_block_kind"] == "review_gate_uncleared"
+
+
+def test_non_review_required_promotion_behavior_is_unchanged(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_no_review_gate")
+    candidate = write_text_artifact(
+        task_id=task.task_id,
+        artifact_type="report",
+        title="Candidate no review",
+        summary="candidate",
+        content="body",
+        actor="hermes",
+        lane="research",
+        root=tmp_path,
+        producer_kind="backend",
+        execution_backend="qwen_executor",
+    )
+
+    promoted = promote_artifact(
+        artifact_id=candidate["artifact_id"],
+        actor="operator",
+        lane="review",
+        root=tmp_path,
+    )
+
+    assert promoted.lifecycle_state == RecordLifecycleState.PROMOTED.value
+
+
+def test_approval_required_promotion_is_blocked_until_approval_clears(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_approval_gate_hold")
+    task.approval_required = True
+    from runtime.core.task_runtime import save_task
+    save_task(tmp_path, task)
+    candidate = write_text_artifact(
+        task_id=task.task_id,
+        artifact_type="report",
+        title="Candidate approval gate",
+        summary="candidate",
+        content="body",
+        actor="hermes",
+        lane="research",
+        root=tmp_path,
+        producer_kind="backend",
+        execution_backend="qwen_executor",
+    )
+
+    request_approval(
+        task_id=task.task_id,
+        approval_type="deploy",
+        requested_by="tester",
+        requested_reviewer="anton",
+        lane="review",
+        summary="approval required before promotion",
+        root=tmp_path,
+    )
+
+    with pytest.raises(ValueError, match="auditor lane is unavailable or uncleared"):
+        promote_artifact(
+            artifact_id=candidate["artifact_id"],
+            actor="operator",
+            lane="review",
+            root=tmp_path,
+        )
+
+    status = build_status(tmp_path)
+    latest_blocked = status["control_state"]["latest_blocked_action"]
+    assert latest_blocked is not None
+    assert latest_blocked["metadata"]["policy_block_kind"] == "approval_gate_uncleared"
+    assert latest_blocked["metadata"]["latest_approval_status"] == "pending"
 
 
 def test_reporting_surfaces_controls_memory_and_governance_summaries(tmp_path: Path):

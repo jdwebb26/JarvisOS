@@ -112,6 +112,7 @@ def _execute_action(action: dict[str, Any]) -> dict[str, Any]:
                     "returncode": completed.returncode,
                     "stdout": stdout_text,
                     "stderr": stderr_text,
+                    "stdout_payload": stdout_payload,
                 }
             )
         )
@@ -124,6 +125,25 @@ def _execute_action(action: dict[str, Any]) -> dict[str, Any]:
         "stderr_text": stderr_text,
         "ack_summary": ack_summary,
         "return_code": completed.returncode,
+    }
+
+
+def _structured_failure_contract(detail_payload: dict[str, Any]) -> dict[str, Any] | None:
+    stdout_payload = detail_payload.get("stdout_payload")
+    if not isinstance(stdout_payload, dict):
+        return None
+    if stdout_payload.get("ok", True) is not False:
+        return None
+    error_type = stdout_payload.get("error_type")
+    message = stdout_payload.get("message")
+    if not isinstance(error_type, str) or not error_type.strip():
+        return None
+    return {
+        "ok": False,
+        "error_type": error_type,
+        "message": str(message or ""),
+        "refusal": stdout_payload.get("refusal"),
+        "blocked": stdout_payload.get("blocked"),
     }
 
 
@@ -296,16 +316,25 @@ def execute_selected_action(
             detail_payload = json.loads(detail)
         except Exception:
             detail_payload = {"error": detail}
+        structured_failure = _structured_failure_contract(detail_payload)
         _complete_record(
             record,
             success=False,
             return_code=int(detail_payload.get("returncode", 1)),
-            ack_summary="",
+            ack_summary="" if structured_failure is None else str(structured_failure.get("message") or ""),
             stdout_snapshot=str(detail_payload.get("stdout", "")),
             stderr_snapshot=str(detail_payload.get("stderr", "")),
         )
-        record["failure_kind"] = "command_failed"
-        record["failure_reason"] = str(detail_payload.get("stderr", "") or detail_payload.get("stdout", "") or detail_payload)
+        record["failure_kind"] = (
+            str(structured_failure.get("error_type"))
+            if structured_failure is not None
+            else "command_failed"
+        )
+        record["failure_reason"] = (
+            str(structured_failure.get("message") or "")
+            if structured_failure is not None
+            else str(detail_payload.get("stderr", "") or detail_payload.get("stdout", "") or detail_payload)
+        )
         save_execution_record(root, record)
         payload = {
             "ok": False,
@@ -316,6 +345,14 @@ def execute_selected_action(
             "failure": detail_payload,
             "execution_record": record,
         }
+        if structured_failure is not None:
+            payload.update(structured_failure)
+            payload["failure"] = {
+                "kind": structured_failure["error_type"],
+                "error": structured_failure["message"],
+                "refusal": structured_failure.get("refusal"),
+                "blocked": structured_failure.get("blocked"),
+            }
         return payload, 1
 
     _complete_record(
