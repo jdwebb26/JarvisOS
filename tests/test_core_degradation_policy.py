@@ -12,9 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from runtime.core.degradation_policy import (
+    assert_no_forbidden_authority_downgrade,
+    fallback_allowed,
     list_degradation_events,
+    list_active_degradation_modes,
     load_degradation_policy_for_subsystem,
 )
+from runtime.core.models import AuthorityClass
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
 from runtime.core.status import build_status
 from runtime.core.task_store import create_task, load_task
@@ -101,11 +105,53 @@ def test_degradation_summary_surfaces_in_core_reporting(tmp_path: Path):
     assert handoff["degradation_summary"]["latest_degradation_event"]["fallback_action"] == "no_local_fallback"
 
 
+def test_degraded_fallback_legality_stays_sensitive_to_authority(tmp_path: Path):
+    summary_only = fallback_allowed(
+        subsystem="research_backend",
+        authority_class=AuthorityClass.SUGGEST_ONLY.value,
+        root=tmp_path,
+    )
+    assert summary_only["allowed"] is True
+    assert summary_only["fallback_action"] == "summary_only_if_allowed"
+
+    sensitive = fallback_allowed(
+        subsystem="research_backend",
+        authority_class=AuthorityClass.APPROVAL_REQUIRED.value,
+        root=tmp_path,
+    )
+    assert sensitive["allowed"] is False
+    assert "summary_only_fallback_forbidden_for_sensitive_authority" in sensitive["reasons"]
+
+    if pytest is None:
+        try:
+            assert_no_forbidden_authority_downgrade(
+                subsystem="research_backend",
+                authority_class=AuthorityClass.APPROVAL_REQUIRED.value,
+                root=tmp_path,
+            )
+        except ValueError:
+            pass
+        else:  # pragma: no cover - script-mode fallback assertion
+            raise AssertionError("Expected forbidden authority downgrade to raise ValueError.")
+    else:
+        with pytest.raises(ValueError):
+            assert_no_forbidden_authority_downgrade(
+                subsystem="research_backend",
+                authority_class=AuthorityClass.APPROVAL_REQUIRED.value,
+                root=tmp_path,
+            )
+
+    active_before = list_active_degradation_modes(root=tmp_path)
+    assert active_before == []
+
+
 def _run_as_script() -> int:
     with TemporaryDirectory() as tmp_one:
         test_hermes_timeout_applies_degradation_policy_and_fails_task(Path(tmp_one))
     with TemporaryDirectory() as tmp_two:
         test_degradation_summary_surfaces_in_core_reporting(Path(tmp_two))
+    with TemporaryDirectory() as tmp_three:
+        test_degraded_fallback_legality_stays_sensitive_to_authority(Path(tmp_three))
     return 0
 
 
