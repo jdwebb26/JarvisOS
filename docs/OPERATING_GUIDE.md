@@ -1,0 +1,705 @@
+# Jarvis v5.1 Operating Guide
+
+## Overview
+
+Jarvis v5.1 is a bounded operator-supervised runtime for task execution, approvals, browser actions, voice routing, Hermes-assisted candidate generation, and autoresearch / Strategy Lab style experimentation.
+
+This guide is the practical operator manual for the live v5.1 repo state. It is written for day-to-day use, not as a replacement for the master spec.
+
+**What this guide is for**
+
+* starting and validating the runtime
+* understanding the major subsystems
+* running common operator workflows
+* knowing where state is written
+* understanding review, approval, cancellation, and bounded execution behavior
+* troubleshooting normal failures without guessing
+
+**What this guide is not**
+
+* not the authority over the master spec
+* not a historical design log
+* not a promise of post-v5.1 features that are not yet implemented
+
+---
+
+## Current v5.1 state
+
+The repo has reached required bounded v5.1 runtime closure for the audited master-spec scope.
+
+Bounded v5.1 closure includes:
+
+* task / event / artifact durable state flow
+* review and approval-connected candidate handling
+* voice-session and voice-route safety surfaces
+* browser policy enforcement and bounded browser request flow
+* operator-visible browser cancel / interrupt path for pending or accepted browser requests
+* Hermes adapter request/result hardening with fail-closed validation
+* autoresearch adapter request/result hardening with fail-closed validation
+* Strategy Lab standard run outputs materialized per run
+* status / export / operator snapshot surfaces for live operational visibility
+
+This means the repo is no longer primarily in “missing required runtime slice” mode. It is in operator hardening, documentation, usability, and future-feature mode.
+
+---
+
+## Core operating model
+
+Jarvis v5.1 is built around a bounded-execution philosophy.
+
+The system is designed to:
+
+* preserve durable records for important actions
+* fail closed when request contracts are underspecified
+* keep review and approval steps explicit
+* expose operator-visible summaries for what the runtime is doing
+* prevent hidden widening of capability at trust boundaries
+
+In practice, that means:
+
+* browser actions are requested, reviewed, accepted, stubbed, or cancelled through records
+* voice actions route through explicit session and safety logic
+* Hermes and autoresearch use request/result contract records instead of loose ad hoc calls
+* important decisions become visible through status, state export, and operator snapshot surfaces
+
+---
+
+## Repo layout
+
+This is the practical mental map of the repo.
+
+### `runtime/core/`
+
+Core models, task state, control logic, approvals, review flow, status assembly, and shared runtime helpers.
+
+### `runtime/gateway/`
+
+Operator-facing entry paths for bounded runtime actions such as browser or voice-triggered flows.
+
+### `runtime/browser/`
+
+Browser request/result protocol, policy surfaces, allowlist logic, reporting, and backend integration seam.
+
+### `runtime/voice/`
+
+Voice pipeline, routing, session handling, and safety-aware dispatch behavior.
+
+### `runtime/integrations/`
+
+Bounded adapters for subsystems such as Hermes and autoresearch.
+
+### `runtime/researchlab/`
+
+Strategy Lab / research campaign durable state and runner helpers.
+
+### `runtime/dashboard/`
+
+Operator-facing read-model construction such as state export and operator snapshot.
+
+### `tests/`
+
+Focused validation for bounded runtime slices. In this repo, several important tests are runnable directly with `python3`.
+
+### `docs/spec/`
+
+Master spec, implementation checklist, and spec-facing documentation.
+
+### `state/`
+
+Durable runtime state. Some of this may be ignored in git, but it is central to how the runtime operates locally.
+
+---
+
+## Key durable concepts
+
+## Task records
+
+Tasks are the main unit of work. They move through bounded lifecycle states and connect to events, artifacts, review, and approval surfaces.
+
+## Task events
+
+Events are the chronological log of important actions. They help reconstruct what happened without relying on memory.
+
+## Artifacts
+
+Artifacts represent produced outputs. Candidate artifacts usually matter when something is awaiting review or approval.
+
+## Review and approval
+
+Review and approval are not decorative. They are part of the trust boundary. A candidate may exist without being promoted. A review/approval checkpoint is the explicit seam between generation and promotion.
+
+## Browser action request/result records
+
+Browser work is not just “done.” It is requested, recorded, and then either blocked, pending review, accepted, stubbed, or cancelled.
+
+## Voice session records
+
+Voice interactions flow through session and route safety surfaces rather than being treated as raw freeform commands.
+
+## Hermes task request/result records
+
+Hermes is represented through durable request/result records with hardened request validation and failure categorization.
+
+## Lab run request/result records
+
+Autoresearch / Strategy Lab execution uses durable experiment-style request/result records and standard run outputs.
+
+---
+
+## Status surfaces you should know
+
+There are three read-model surfaces you should think of as your operational dashboard spine.
+
+### Status summary
+
+Built from runtime state and subsystem summaries. This is your top-level operational view.
+
+### State export
+
+Structured export of current runtime state for dashboard or tooling consumption.
+
+### Operator snapshot
+
+A compact operator-facing view of current runtime posture, recent subsystem state, and important summaries.
+
+These surfaces matter because v5.1 intentionally routes visibility through them instead of inventing a different reporting path for every feature.
+
+---
+
+## Startup and validation
+
+Before doing real work, use a consistent validation routine.
+
+### Recommended validation sequence
+
+```bash
+cd /home/rollan/.openclaw/workspace/jarvis-v5
+python3 scripts/validate.py
+python3 runtime/core/run_runtime_regression_pack.py
+python3 scripts/smoke_test.py
+```
+
+### What each command does
+
+#### `python3 scripts/validate.py`
+
+Runs repo validation checks and catches structural/runtime consistency issues. This is the first thing to trust when verifying the repo is in a sane state.
+
+#### `python3 runtime/core/run_runtime_regression_pack.py`
+
+Runs the bounded regression pack for key runtime slices.
+
+#### `python3 scripts/smoke_test.py`
+
+Useful for local deployment-level smoke behavior.
+
+### Focused direct-script test examples
+
+```bash
+cd /home/rollan/.openclaw/workspace/jarvis-v5
+python3 tests/test_hermes_adapter.py
+python3 tests/test_autoresearch_adapter.py
+python3 tests/test_browser_gateway.py
+```
+
+This repo has been hardened so several key tests are runnable directly with `python3`, not only through pytest.
+
+---
+
+## Common operator workflows
+
+## 1. Check whether the runtime is healthy
+
+Use:
+
+```bash
+cd /home/rollan/.openclaw/workspace/jarvis-v5
+python3 scripts/validate.py
+python3 runtime/core/run_runtime_regression_pack.py
+```
+
+If both are green, the bounded runtime spine is usually healthy enough for local operator work.
+
+## 2. Inspect current task and subsystem posture
+
+Start from the status/state export/operator snapshot path rather than poking random files first.
+
+Look for:
+
+* blocked tasks
+* pending review
+* pending approvals
+* browser request/result summaries
+* Hermes failure category counts
+* autoresearch failure category counts
+
+## 3. Run Hermes-backed bounded generation
+
+Hermes requests should only run through the existing contract path. The point is not just generation; the point is bounded, validated generation with durable result recording.
+
+You should expect:
+
+* request validation before dispatch
+* blocked/invalid behavior for underspecified contracts
+* durable result records
+* explicit failure categories for malformed, unreachable, timeout, or execution failures
+
+## 4. Run an autoresearch campaign / Strategy Lab pass
+
+Autoresearch should be treated like an experiment pipeline, not a freeform codegen path.
+
+You should expect:
+
+* explicit request contract
+* baseline reference and benchmark slice reference
+* bounded sandbox root
+* target module and eval command
+* durable run result
+* standard run outputs written for successful runs
+
+## 5. Operate browser actions safely
+
+Browser actions live behind request/result records and policy surfaces.
+
+Typical flow:
+
+1. request browser action
+2. allowlist / confirmation policy evaluated
+3. request becomes blocked, pending review, or accepted
+4. accepted action may be stubbed in bounded mode
+5. pending or accepted action may now be cancelled by operator
+
+## 6. Operate voice safely
+
+Voice is not just a shortcut input. It has its own route safety and session surfaces.
+
+Use voice features with the expectation that:
+
+* session state matters
+* route safety matters
+* not every voice command should become execution
+* operator visibility matters more than convenience shortcuts
+
+---
+
+## Browser operation
+
+## What browser v5.1 currently does
+
+The browser layer provides a bounded request/result model rather than unrestricted computer control.
+
+Key behaviors include:
+
+* request recording
+* policy / allowlist handling
+* confirmation state tracking
+* evidence refs and reporting surfaces
+* shared status visibility
+* operator cancel / interrupt for pending or accepted requests
+
+## Browser request states
+
+Practical states include:
+
+* `blocked`
+* `pending_review`
+* `accepted`
+* `cancelled`
+* execution terminal states such as `stubbed` through the bounded path
+
+## Cancel behavior
+
+v5.1 includes a bounded cancel path for browser actions.
+
+Supported transitions:
+
+* `accepted -> cancelled`
+* `pending_review -> cancelled`
+
+Not supported:
+
+* cancelling a blocked request
+* cancelling a request that already has a terminal execution result
+* executing a request after it has been cancelled
+
+Durable cancel metadata includes:
+
+* `cancelled_at`
+* `cancelled_by`
+* `cancel_reason`
+
+Operator-facing reporting includes:
+
+* `cancelled_request_count`
+* `cancelled_result_count`
+
+This is important because cancel is now part of the trust boundary, not just UI sugar.
+
+---
+
+## Voice operation
+
+## What voice v5.1 is for
+
+Voice is meant to support safe operator interaction, not unrestricted hot-mic control.
+
+Voice flows are important when you want:
+
+* lightweight interaction
+* session-aware routing
+* safety-aware command handling
+* future-friendly operator ergonomics
+
+## What to expect
+
+Expect voice behavior to flow through:
+
+* voice session records
+* route safety logic
+* gateway handling
+* notification / operator visibility surfaces
+
+A good mental model is:
+voice input is proposed intent plus bounded route logic, not immediate authority.
+
+---
+
+## Hermes operation
+
+## What Hermes is in v5.1
+
+Hermes is a bounded execution adapter for candidate-oriented generation tasks. It is not a freeform unconstrained agent inside the runtime.
+
+## Hermes request contract expectations
+
+A Hermes task request is expected to include a valid contract such as:
+
+* objective
+* timeout
+* supported sandbox class
+* allowed tools
+* model override policy constrained to allowed families/provider rules
+* supported return format
+* capability declaration
+* callback contract aligned to task and lane
+
+If those contract fields are not present or are policy-invalid, Hermes now fails closed before dispatch.
+
+## Hermes failure categories
+
+Hermes now records durable failure categorization such as:
+
+* invalid request contract
+* timeout
+* unreachable backend
+* malformed response
+* execution failure
+
+These categories roll into the existing summary path, which means you can inspect Hermes failures from the same operational spine instead of reading raw logs first.
+
+## Practical operator guidance
+
+When Hermes fails:
+
+1. inspect the request contract first
+2. inspect failure category next
+3. only then inspect backend transport or payload details
+
+This avoids wasting time debugging a backend when the request itself was underspecified.
+
+---
+
+## Autoresearch / Strategy Lab operation
+
+## What autoresearch is in v5.1
+
+Autoresearch is a bounded experiment-runner path for strategy or research passes, with durable contracts, durable results, and standard output materialization.
+
+## Required contract shape
+
+You should expect a valid run to include at minimum:
+
+* objective
+* objective metrics
+* primary metric consistent with the metric list
+* baseline reference
+* benchmark slice reference
+* bounded sandbox class
+* sandbox root
+* target module
+* program markdown path
+* eval command
+* pass index
+* remaining budget units
+* task-type metadata
+
+Underspecified requests fail closed.
+
+## Result expectations
+
+A valid result should include well-formed fields such as:
+
+* summary
+* hypothesis
+* metrics object
+* recommendation object
+* numeric metric maps
+* bounded status semantics
+
+Malformed result payloads are categorized explicitly instead of being loosely accepted.
+
+## Standard run outputs
+
+For successful bounded lab runs, v5.1 now writes standard run outputs under the research sandbox.
+
+Per run, the output directory pattern is:
+
+```text
+<repo_root>/<sandbox_root>/<run_id>/standard_run_outputs/
+```
+
+Expected files:
+
+* `run_config.json`
+* `baseline_metrics.json`
+* `candidate_metrics.json`
+* `delta_metrics.json`
+* `candidate.patch`
+* `experiment_log.md`
+* `recommendation.json`
+
+These outputs are linked back to durable records, including:
+
+* `candidate_patch_path`
+* `experiment_log_path`
+* `raw_result["standard_run_outputs"]`
+
+This means a run is both inspectable as structured state and inspectable as concrete filesystem outputs.
+
+---
+
+## Review, approval, and promotion
+
+## Why this matters
+
+A lot of confusion in agent systems comes from blending generation with approval. Jarvis v5.1 explicitly does not treat them as the same thing.
+
+## Practical mental model
+
+* generation can produce a candidate
+* review determines whether the candidate looks acceptable
+* approval determines whether it is allowed to move forward
+* promotion is a separate action from generation itself
+
+This is part of the runtime’s trust-boundary design.
+
+## What operators should watch
+
+Pay attention to:
+
+* tasks waiting in pending review
+* approval checkpoint records
+* candidate artifact linkage
+* whether a subsystem is allowed to fallback or not
+* whether degraded mode would weaken posture
+
+---
+
+## Safety controls and trust boundaries
+
+## The core rule
+
+The system should not silently widen capability just because a subsystem is unavailable or a contract is underspecified.
+
+## Practical examples
+
+* Hermes should not run with a bad request contract
+* autoresearch should not run without baseline/benchmark and bounded sandbox metadata
+* browser should not quietly execute a cancelled request
+* review-required outputs should not auto-promote because a reviewer is absent
+* degraded behavior should remain operator-visible
+
+## What “fail closed” means here
+
+Fail closed does not mean “everything breaks.” It means the runtime prefers explicit blocking, invalid-request results, or operator-visible degraded behavior instead of pretending a risky request is fine.
+
+---
+
+## Where to look when something breaks
+
+## Start in this order
+
+### 1. Validation output
+
+Run:
+
+```bash
+cd /home/rollan/.openclaw/workspace/jarvis-v5
+python3 scripts/validate.py
+```
+
+### 2. Regression pack
+
+Run:
+
+```bash
+cd /home/rollan/.openclaw/workspace/jarvis-v5
+python3 runtime/core/run_runtime_regression_pack.py
+```
+
+### 3. Focused subsystem test
+
+Examples:
+
+```bash
+cd /home/rollan/.openclaw/workspace/jarvis-v5
+python3 tests/test_browser_gateway.py
+python3 tests/test_hermes_adapter.py
+python3 tests/test_autoresearch_adapter.py
+```
+
+### 4. Durable state and summaries
+
+Inspect:
+
+* status summary
+* state export
+* operator snapshot
+* relevant task/event/result records
+
+### 5. Only after that, inspect implementation details
+
+At that point you can dive into the affected protocol, adapter, or gateway code.
+
+---
+
+## Troubleshooting guide
+
+## Browser action will not execute
+
+Check:
+
+* request status
+* confirmation state
+* allowlist/policy decision
+* whether it has been cancelled
+* whether a terminal result already exists
+
+## Hermes request failed immediately
+
+Check:
+
+* request validation findings
+* timeout value
+* allowed tools
+* model override policy
+* provider policy
+* callback contract alignment
+
+## Autoresearch failed before meaningful work started
+
+Check:
+
+* baseline reference
+* benchmark slice reference
+* sandbox root
+* target module
+* eval command
+* primary metric validity
+* task metadata contract
+
+## Results exist but operator view looks wrong
+
+Check the status/state export/operator snapshot path before assuming execution failed. Sometimes the issue is in read-model expectations rather than the execution record itself.
+
+## A change feels “implemented” but not trustworthy
+
+Ask whether it has all three:
+
+* durable record
+* bounded transition rule
+* test coverage
+
+If one of those is missing, it probably is not truly production-ready even if it works once.
+
+---
+
+## Recommended day-to-day workflow
+
+A good operator loop for this repo is:
+
+1. validate the repo
+2. run the regression pack
+3. run the focused subsystem you are touching
+4. inspect summaries rather than guessing
+5. keep changes bounded
+6. commit by slice, not by giant mixed batch
+7. keep docs honest about what is actually proven
+
+Example:
+
+```bash
+cd /home/rollan/.openclaw/workspace/jarvis-v5
+python3 scripts/validate.py
+python3 runtime/core/run_runtime_regression_pack.py
+python3 tests/test_browser_gateway.py
+git status
+```
+
+---
+
+## What is intentionally not claimed here
+
+This guide does not claim:
+
+* unrestricted computer control
+* autonomous approval-free promotion everywhere
+* full backend-complete multi-provider rollout
+* every future v5.x idea already being present
+* that every possible test path has been exercised through a full pytest baseline
+
+It reflects the live bounded v5.1 runtime state, not aspirational marketing.
+
+---
+
+## Suggested companion docs
+
+This guide works best alongside:
+
+* `README.md` for quick orientation
+* `docs/RUNBOOK.md` for day-to-day operational procedures
+* `docs/ARCHITECTURE.md` for subsystem map and data flow
+* `docs/spec/V5_1_FREEZE_NOTES.md` for freeze summary and post-v5.1 boundaries
+* `docs/spec/Jarvis_OS_v5_1_Master_Spec.md` as authority
+
+---
+
+## Quick command block
+
+```bash
+cd /home/rollan/.openclaw/workspace/jarvis-v5
+python3 scripts/validate.py
+python3 runtime/core/run_runtime_regression_pack.py
+python3 scripts/smoke_test.py
+python3 tests/test_browser_gateway.py
+python3 tests/test_hermes_adapter.py
+python3 tests/test_autoresearch_adapter.py
+git status
+```
+
+---
+
+## Final operator note
+
+The best way to use Jarvis v5.1 is to treat it like a bounded system with explicit records, explicit trust boundaries, and explicit operator control.
+
+Do not optimize first for maximum autonomy.
+Optimize first for:
+
+* visibility
+* recoverability
+* boundedness
+* reviewability
+* clean state transitions
+
+That is what makes the system usable when it gets bigger.
