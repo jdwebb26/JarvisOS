@@ -24,6 +24,7 @@ from runtime.core.routing import build_model_registry_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.task_lease import build_task_lease_summary
 from runtime.integrations.research_backends import build_research_backend_summary
+from runtime.integrations.lane_activation import summarize_lane_activation
 from runtime.memory.vault_export import build_vault_export_summary
 from runtime.core.token_budget import build_token_budget_summary
 from runtime.dashboard.renderers.a2ui_renderer import render_operator_views
@@ -37,7 +38,19 @@ from runtime.evals.replay_runner import build_eval_run_summary
 from runtime.researchlab.experiment_store import build_experiment_summary
 from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
 from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
-from runtime.core.status import build_discord_live_ops_summary, build_openclaw_discord_bridge_summary
+from runtime.core.status import (
+    build_discord_live_ops_summary,
+    build_extension_lane_status_summary,
+    build_local_model_lane_proof_summary,
+    build_openclaw_discord_bridge_summary,
+    build_openclaw_discord_session_summary,
+    build_routing_control_plane_summary,
+)
+from runtime.core.workspace_registry import summarize_workspace_registry
+from runtime.adaptation_lab.summary import summarize_adaptation_lab
+from runtime.optimizer.eval_gate import summarize_optimizer_lane
+from runtime.integrations.shadowbroker_adapter import summarize_shadowbroker_backend
+from runtime.world_ops.summary import build_world_ops_summary
 from runtime.dashboard.status_names import normalize_status_name
 
 
@@ -493,6 +506,12 @@ def build_state_export(root: Path) -> dict:
     routing_summary = build_model_registry_summary(root=root)
     routing_summary["latest_routing_decision"] = latest_routing_decision
     summary["routing_summary"] = routing_summary
+    summary["workspace_registry_summary"] = summarize_workspace_registry(root=root, tasks=tasks, artifacts=artifacts, outputs=outputs)
+    summary["world_ops_summary"] = build_world_ops_summary(root=root)
+    summary["shadowbroker_summary"] = summarize_shadowbroker_backend(root=root)
+    summary["adaptation_lab_summary"] = summarize_adaptation_lab(root=root)
+    summary["optimizer_summary"] = summarize_optimizer_lane(root=root)
+    summary["local_model_lane_proof_summary"] = build_local_model_lane_proof_summary(root=root)
     summary["discord_live_ops_summary"] = build_discord_live_ops_summary(
         root=root,
         routing_summary=routing_summary,
@@ -501,6 +520,7 @@ def build_state_export(root: Path) -> dict:
         blocked_actions=control_blocked_actions,
     )
     summary["openclaw_discord_bridge_summary"] = build_openclaw_discord_bridge_summary(root=root)
+    summary["openclaw_discord_session_summary"] = build_openclaw_discord_session_summary(root=root)
     summary["backend_assignment_summary"] = {
         "backend_assignment_count": len(backend_assignments),
         "latest_backend_assignment": latest_backend_assignment,
@@ -519,6 +539,11 @@ def build_state_export(root: Path) -> dict:
     summary["token_budget_summary"] = build_token_budget_summary(root=root)
     summary["degradation_summary"] = build_degradation_summary(root=root)
     summary["heartbeat_summary"] = build_heartbeat_report_summary(root=root)
+    summary["routing_control_plane_summary"] = build_routing_control_plane_summary(
+        routing_summary=summary["routing_summary"],
+        degradation_summary=summary["degradation_summary"],
+        heartbeat_summary=summary["heartbeat_summary"],
+    )
     from runtime.integrations.hermes_adapter import build_hermes_summary
 
     summary["hermes_summary"] = build_hermes_summary(root=root)
@@ -545,6 +570,22 @@ def build_state_export(root: Path) -> dict:
     summary["mcp_policy_summary"] = build_mcp_policy_summary(root=root)
     summary["plugin_policy_summary"] = build_plugin_policy_summary(root=root)
     summary["a2a_policy_summary"] = build_a2a_policy_summary(root=root)
+    summary["extension_lane_status_summary"] = build_extension_lane_status_summary(
+        shadowbroker_summary=summary["shadowbroker_summary"],
+        world_ops_summary=summary["world_ops_summary"],
+        autoresearch_summary=summary["autoresearch_summary"],
+        adaptation_lab_summary=summary["adaptation_lab_summary"],
+        optimizer_summary=summary["optimizer_summary"],
+        hermes_summary=summary["hermes_summary"],
+        research_backend_summary=summary["research_backend_summary"],
+        browser_action_summary=summary["browser_action_summary"],
+        a2a_policy_summary=summary["a2a_policy_summary"],
+        local_model_lane_proof_summary=summary["local_model_lane_proof_summary"],
+    )
+    summary["lane_activation_summary"] = summarize_lane_activation(
+        root=root,
+        extension_lane_status_summary=summary["extension_lane_status_summary"],
+    )
     summary["voice_route_capability_summary"] = build_voice_route_capability_summary()
     summary["voice_route_safety_summary"] = build_voice_route_safety_summary()
     summary["notification_summary"] = build_notification_summary(root=root)

@@ -9,7 +9,9 @@ from runtime.core.models import CapabilityProfileRecord, ModelRegistryEntryRecor
 from runtime.core.degradation_policy import record_degradation_event
 from runtime.core.node_registry import update_node_status
 from runtime.core.routing import (
+    explain_routing_decision,
     list_routing_requests,
+    route_task,
     route_task_intent,
     save_capability_profile,
     save_model_registry_entry,
@@ -28,7 +30,7 @@ def _write_runtime_policy(root: Path, payload: dict) -> None:
 
 
 def test_jarvis_resolves_to_9b_on_primary_not_burst(tmp_path: Path) -> None:
-    result = route_task_intent(
+    result = route_task(
         task_id="task_jarvis_primary",
         normalized_request="write a short reply",
         task_type="general",
@@ -47,6 +49,9 @@ def test_jarvis_resolves_to_9b_on_primary_not_burst(tmp_path: Path) -> None:
     assert result["decision"]["selected_host_name"] == "NIMO"
     assert result["decision"]["policy_constraints"]["burst_allowed"] is False
     assert "burst" in result["decision"]["policy_constraints"]["forbidden_host_roles"]
+    explained = explain_routing_decision(result["decision"])
+    assert explained["route_legality_status"] == "legal"
+    assert explained["route_resolution_state"] == "selected"
 
 
 def test_scout_resolves_to_nimo_preferred_route(tmp_path: Path) -> None:
@@ -498,6 +503,9 @@ def test_burst_worker_unavailable_refuses_when_burst_only_policy_is_requested(tm
     failed = build_status(tmp_path)["routing_summary"]["latest_failed_routing_request"]
     assert failed["failure_code"] == "no_legal_routing_candidate"
     assert failed["active_degradation_modes"]
+    truth = build_status(tmp_path)["routing_control_plane_summary"]
+    assert truth["latest_route_state"] == "blocked"
+    assert truth["latest_route_legality"] == "blocked"
 
 
 def test_forbidden_downgrade_is_rejected_when_only_9b_remains(tmp_path: Path) -> None:
@@ -602,6 +610,47 @@ def test_durable_routing_explanation_record_contains_live_selection_context(tmp_
     assert resolution["selected_model_name"] == "Qwen3.5-9B"
     assert resolution["latency_preference"] == "low_latency"
     assert resolution["candidate_evaluations"]
+    assert resolution["route_legality_status"] == "legal"
+
+
+def test_primary_runtime_unavailable_is_visible_as_primary_outage_and_blocks_general_route(tmp_path: Path) -> None:
+    update_node_status("NIMO", status="stopped", root=tmp_path)
+    record_degradation_event(
+        subsystem="primary_runtime",
+        actor="tester",
+        lane="tests",
+        failure_category="unavailable",
+        reason="primary runtime unavailable",
+        status="applied",
+        root=tmp_path,
+    )
+
+    try:
+        route_task_intent(
+            task_id="task_primary_runtime_unavailable",
+            normalized_request="write a short reply",
+            task_type="general",
+            risk_level="normal",
+            priority="normal",
+            actor="tester",
+            lane="tests",
+            root=tmp_path,
+        )
+    except ValueError as exc:
+        assert "No routing candidate survived policy" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected general routing to refuse when the primary runtime is unavailable.")
+
+    status = build_status(tmp_path)
+    snapshot = build_operator_snapshot(tmp_path)
+    export_payload = build_state_export(tmp_path)
+    truth = status["routing_control_plane_summary"]
+    assert truth["latest_route_state"] == "blocked"
+    assert truth["primary_runtime_posture"] == "primary_outage"
+    assert truth["latest_degradation_event"]["degradation_mode"] == "PRIMARY_RUNTIME_UNAVAILABLE"
+    assert truth["latest_failed_route"]["failure_code"] == "no_legal_routing_candidate"
+    assert snapshot["routing_control_plane_summary"]["primary_runtime_posture"] == "primary_outage"
+    assert export_payload["routing_control_plane_summary"]["latest_route_legality"] == "blocked"
 
 
 def main() -> int:
@@ -619,6 +668,7 @@ def main() -> int:
         test_burst_worker_unavailable_refuses_when_burst_only_policy_is_requested(temp_root / "burst_unavailable")
         test_forbidden_downgrade_is_rejected_when_only_9b_remains(temp_root / "downgrade_rejected")
         test_durable_routing_explanation_record_contains_live_selection_context(temp_root / "explanation")
+        test_primary_runtime_unavailable_is_visible_as_primary_outage_and_blocks_general_route(temp_root / "primary_unavailable")
     except AssertionError as exc:
         print(f"runtime route resolution test failed: {exc}", file=sys.stderr)
         return 1

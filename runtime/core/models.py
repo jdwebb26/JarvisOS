@@ -292,6 +292,11 @@ class DegradationMode(StrEnum):
     REVIEW_ONLY = "review_only"
     READ_ONLY = "read_only"
     STOPPED = "stopped"
+    BURST_WORKER_OFFLINE = "BURST_WORKER_OFFLINE"
+    RESEARCH_BACKEND_DOWN = "RESEARCH_BACKEND_DOWN"
+    FALLBACK_SUMMARY_ONLY = "FALLBACK_SUMMARY_ONLY"
+    LOCAL_EMBEDDINGS_ONLY = "LOCAL_EMBEDDINGS_ONLY"
+    PRIMARY_RUNTIME_UNAVAILABLE = "PRIMARY_RUNTIME_UNAVAILABLE"
 
 
 def _serialize_value(value: Any) -> Any:
@@ -367,6 +372,10 @@ class TaskRecord:
     final_outcome: str = ""
     publish_readiness_status: str = "pending"
     publish_readiness_reason: str = ""
+    home_runtime_workspace: str = "jarvis_v5_runtime"
+    target_workspace_id: Optional[str] = None
+    allowed_workspace_ids: list[str] = field(default_factory=list)
+    touched_workspace_ids: list[str] = field(default_factory=list)
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
 
@@ -409,6 +418,10 @@ class TaskRecord:
         data.setdefault("final_outcome", "")
         data.setdefault("publish_readiness_status", "pending")
         data.setdefault("publish_readiness_reason", "")
+        data.setdefault("home_runtime_workspace", "jarvis_v5_runtime")
+        data.setdefault("target_workspace_id", None)
+        data.setdefault("allowed_workspace_ids", [])
+        data.setdefault("touched_workspace_ids", [])
         return cls(**data)
 
 
@@ -599,6 +612,10 @@ class ArtifactRecord:
     revocation_reason: str = ""
     downstream_impacted_output_ids: list[str] = field(default_factory=list)
     superseded_by_artifact_id: Optional[str] = None
+    home_runtime_workspace: str = "jarvis_v5_runtime"
+    target_workspace_id: Optional[str] = None
+    allowed_workspace_ids: list[str] = field(default_factory=list)
+    touched_workspace_ids: list[str] = field(default_factory=list)
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
 
@@ -622,6 +639,10 @@ class ArtifactRecord:
         data.setdefault("revocation_reason", "")
         data.setdefault("downstream_impacted_output_ids", [])
         data.setdefault("superseded_by_artifact_id", None)
+        data.setdefault("home_runtime_workspace", "jarvis_v5_runtime")
+        data.setdefault("target_workspace_id", None)
+        data.setdefault("allowed_workspace_ids", [])
+        data.setdefault("touched_workspace_ids", [])
         return cls(**data)
 
 
@@ -642,6 +663,10 @@ class OutputRecord:
     superseded_by_artifact_id: Optional[str] = None
     revoked_at: Optional[str] = None
     revocation_reason: str = ""
+    home_runtime_workspace: str = "jarvis_v5_runtime"
+    target_workspace_id: Optional[str] = None
+    allowed_workspace_ids: list[str] = field(default_factory=list)
+    touched_workspace_ids: list[str] = field(default_factory=list)
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
 
@@ -656,6 +681,56 @@ class OutputRecord:
         data.setdefault("superseded_by_artifact_id", None)
         data.setdefault("revoked_at", None)
         data.setdefault("revocation_reason", "")
+        data.setdefault("home_runtime_workspace", "jarvis_v5_runtime")
+        data.setdefault("target_workspace_id", None)
+        data.setdefault("allowed_workspace_ids", [])
+        data.setdefault("touched_workspace_ids", [])
+        return cls(**data)
+
+
+@dataclass
+class WorkspaceRecord:
+    workspace_id: str
+    label: str
+    absolute_path: str
+    purpose: str
+    role: str = "registered"
+    access_mode: str = "scoped"
+    allowed_operations: list[str] = field(default_factory=list)
+    sensitivity: str = "standard"
+    default_read_only: bool = True
+    tags: list[str] = field(default_factory=list)
+    owner: Optional[str] = None
+    runtime_notes: str = ""
+    approved_agents: list[str] = field(default_factory=list)
+    approved_lanes: list[str] = field(default_factory=list)
+    operator_approved: bool = False
+    enabled: bool = True
+    created_at: str = field(default_factory=now_iso)
+    updated_at: str = field(default_factory=now_iso)
+    schema_version: str = CORE_SCHEMA_VERSION
+    version: str = LEGACY_RECORD_VERSION
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclass_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "WorkspaceRecord":
+        data = _apply_record_defaults(_extract_known_fields(cls, payload))
+        data.setdefault("allowed_operations", [])
+        data.setdefault("role", "registered")
+        data.setdefault("access_mode", "scoped")
+        data.setdefault("sensitivity", "standard")
+        data.setdefault("default_read_only", True)
+        data.setdefault("tags", [])
+        data.setdefault("owner", None)
+        data.setdefault("runtime_notes", "")
+        data.setdefault("approved_agents", [])
+        data.setdefault("approved_lanes", [])
+        data.setdefault("operator_approved", False)
+        data.setdefault("enabled", True)
+        data.setdefault("created_at", now_iso())
+        data.setdefault("updated_at", now_iso())
         return cls(**data)
 
 

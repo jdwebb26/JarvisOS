@@ -36,6 +36,7 @@ from runtime.core.task_store import (
     transition_task,
 )
 from runtime.core.candidate_store import find_candidate_for_artifact
+from runtime.core.workspace_registry import ensure_home_runtime_workspace
 
 
 def now_iso() -> str:
@@ -165,6 +166,10 @@ def write_text_artifact(
     artifact_id = new_artifact_id()
     resolved_lifecycle = _default_lifecycle_state(producer_kind, lifecycle_state)
     promoted_at = now_iso() if resolved_lifecycle == RecordLifecycleState.PROMOTED.value else None
+    home_workspace = str(task.home_runtime_workspace or ensure_home_runtime_workspace(root=root_path).workspace_id)
+    target_workspace_id = str(task.target_workspace_id or home_workspace)
+    allowed_workspace_ids = list(task.allowed_workspace_ids or [home_workspace, target_workspace_id])
+    touched_workspace_ids = sorted({*(task.touched_workspace_ids or []), home_workspace, target_workspace_id})
 
     record = ArtifactRecord(
         artifact_id=artifact_id,
@@ -184,6 +189,10 @@ def write_text_artifact(
         provenance_ref=provenance_ref,
         promoted_at=promoted_at,
         promoted_by=actor if promoted_at else None,
+        home_runtime_workspace=home_workspace,
+        target_workspace_id=target_workspace_id,
+        allowed_workspace_ids=allowed_workspace_ids,
+        touched_workspace_ids=touched_workspace_ids,
     )
 
     save_artifact(record, root=root_path)

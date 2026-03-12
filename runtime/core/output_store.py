@@ -30,6 +30,7 @@ from runtime.core.promotion_governance import (
 from runtime.core.provenance_store import save_publish_provenance
 from runtime.core.task_events import make_event
 from runtime.core.task_runtime import append_task_event
+from runtime.core.workspace_registry import ensure_home_runtime_workspace
 
 
 def new_output_id() -> str:
@@ -207,6 +208,17 @@ def publish_artifact(
     json_path = out_root / f"{out_id}.json"
 
     published_at = now_iso()
+    home_workspace = str(task.get("home_runtime_workspace") or ensure_home_runtime_workspace(root=root_path).workspace_id)
+    target_workspace_id = str(task.get("target_workspace_id") or artifact.get("target_workspace_id") or home_workspace)
+    allowed_workspace_ids = list(task.get("allowed_workspace_ids") or artifact.get("allowed_workspace_ids") or [home_workspace, target_workspace_id])
+    touched_workspace_ids = sorted(
+        {
+            *(task.get("touched_workspace_ids") or []),
+            *(artifact.get("touched_workspace_ids") or []),
+            home_workspace,
+            target_workspace_id,
+        }
+    )
 
     md_text = "\n".join(
         [
@@ -241,6 +253,10 @@ def publish_artifact(
         published_at=published_at,
         published_by=actor,
         lane=lane,
+        home_runtime_workspace=home_workspace,
+        target_workspace_id=target_workspace_id,
+        allowed_workspace_ids=allowed_workspace_ids,
+        touched_workspace_ids=touched_workspace_ids,
     ).to_dict()
     json_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 

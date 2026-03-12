@@ -200,11 +200,19 @@ def allowed_models_by_task_class(task_class: Any, *, root: Optional[Path] = None
     return [dict(item) for item in task_policy.get("allowed_models", [])]
 
 
+def get_allowed_models_for_task(task_class: Any, *, root: Optional[Path] = None) -> list[dict[str, Any]]:
+    return allowed_models_by_task_class(task_class, root=root)
+
+
 def minimum_tier_by_authority_class(authority_class: Any, *, root: Optional[Path] = None) -> str:
     policy = load_model_policy(root=root)
     authority_key = _normalize_authority_class(authority_class)
     configured = (policy.get("authority_min_tier") or {}).get(authority_key, ModelTier.GENERAL.value)
     return _normalize_tier(configured)
+
+
+def get_min_tier_for_authority(authority_class: Any, *, root: Optional[Path] = None) -> str:
+    return minimum_tier_by_authority_class(authority_class, root=root)
 
 
 def fallback_chain_lookup(
@@ -222,6 +230,15 @@ def fallback_chain_lookup(
         for item in task_policy.get("fallback_chain", [])
         if _tier_meets_floor(item.get("tier"), minimum_tier)
     ]
+
+
+def get_fallback_chain(
+    task_class: Any,
+    *,
+    authority_class: Any = "",
+    root: Optional[Path] = None,
+) -> list[dict[str, Any]]:
+    return fallback_chain_lookup(task_class, authority_class=authority_class, root=root)
 
 
 def shadow_eval_eligibility(
@@ -316,6 +333,29 @@ def route_legality_checks(
         "findings": findings,
         "reason": "route_legal" if not findings else "route_illegal",
     }
+
+
+def is_route_allowed(
+    *,
+    task_class: Any,
+    authority_class: Any = "",
+    family: Any = "",
+    tier: Any = "",
+    backend_runtime: Any = "",
+    model_name: str = "",
+    root: Optional[Path] = None,
+) -> bool:
+    return bool(
+        route_legality_checks(
+            task_class=task_class,
+            authority_class=authority_class,
+            family=family,
+            tier=tier,
+            backend_runtime=backend_runtime,
+            model_name=model_name,
+            root=root,
+        )["allowed"]
+    )
 
 
 def assert_forbidden_downgrade(

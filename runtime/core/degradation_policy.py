@@ -60,13 +60,13 @@ DEGRADATION_MODE_PROFILES: dict[str, dict[str, Any]] = {
         "operator_notification_required": True,
         "retry_policy": {"strategy": "manual_restore", "max_attempts": 1},
     },
-    "BURST_WORKER_OFFLINE": {
+    DegradationMode.BURST_WORKER_OFFLINE.value: {
         "fallback_allowed": True,
         "fallback_action": "primary_node_only",
         "operator_notification_required": True,
         "retry_policy": {"strategy": "auto_retry", "max_attempts": 3},
     },
-    "RESEARCH_BACKEND_DOWN": {
+    DegradationMode.RESEARCH_BACKEND_DOWN.value: {
         "fallback_allowed": True,
         "fallback_action": "summary_only_if_allowed",
         "operator_notification_required": True,
@@ -84,9 +84,21 @@ DEGRADATION_MODE_PROFILES: dict[str, dict[str, Any]] = {
         "operator_notification_required": True,
         "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
     },
-    "FALLBACK_SUMMARY_ONLY": {
+    DegradationMode.FALLBACK_SUMMARY_ONLY.value: {
         "fallback_allowed": True,
         "fallback_action": "summary_only",
+        "operator_notification_required": True,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    DegradationMode.LOCAL_EMBEDDINGS_ONLY.value: {
+        "fallback_allowed": True,
+        "fallback_action": "local_only_execution",
+        "operator_notification_required": True,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    DegradationMode.PRIMARY_RUNTIME_UNAVAILABLE.value: {
+        "fallback_allowed": False,
+        "fallback_action": "hold_or_manual_reroute",
         "operator_notification_required": True,
         "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
     },
@@ -160,7 +172,7 @@ DEFAULT_POLICIES = [
     },
     {
         "subsystem": "burst_worker",
-        "degradation_mode": "BURST_WORKER_OFFLINE",
+        "degradation_mode": DegradationMode.BURST_WORKER_OFFLINE.value,
         "fallback_action": "primary_node_only",
         "requires_operator_notification": True,
         "auto_recover": True,
@@ -168,7 +180,7 @@ DEFAULT_POLICIES = [
     },
     {
         "subsystem": "research_backend",
-        "degradation_mode": "RESEARCH_BACKEND_DOWN",
+        "degradation_mode": DegradationMode.RESEARCH_BACKEND_DOWN.value,
         "fallback_action": "summary_only_if_allowed",
         "requires_operator_notification": True,
         "auto_recover": False,
@@ -192,8 +204,24 @@ DEFAULT_POLICIES = [
     },
     {
         "subsystem": "summary_fallback",
-        "degradation_mode": "FALLBACK_SUMMARY_ONLY",
+        "degradation_mode": DegradationMode.FALLBACK_SUMMARY_ONLY.value,
         "fallback_action": "summary_only",
+        "requires_operator_notification": True,
+        "auto_recover": False,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    {
+        "subsystem": "local_embeddings_lane",
+        "degradation_mode": DegradationMode.LOCAL_EMBEDDINGS_ONLY.value,
+        "fallback_action": "local_only_execution",
+        "requires_operator_notification": True,
+        "auto_recover": True,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    {
+        "subsystem": "primary_runtime",
+        "degradation_mode": DegradationMode.PRIMARY_RUNTIME_UNAVAILABLE.value,
+        "fallback_action": "hold_or_manual_reroute",
         "requires_operator_notification": True,
         "auto_recover": False,
         "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
@@ -346,6 +374,10 @@ def list_active_degradation_modes(root: Optional[Path] = None) -> list[dict[str,
     return active
 
 
+def get_active_degradation_modes(root: Optional[Path] = None) -> list[dict[str, Any]]:
+    return list_active_degradation_modes(root=root)
+
+
 def retry_policy_for_subsystem(subsystem: str, *, root: Optional[Path] = None) -> dict[str, Any]:
     ensure_default_degradation_policies(root=root)
     policy = load_degradation_policy_for_subsystem(subsystem, root=root)
@@ -367,6 +399,19 @@ def operator_notification_required_for_subsystem(
     if degradation_mode:
         return bool(_mode_profile(degradation_mode)["operator_notification_required"])
     return True
+
+
+def should_notify_operator(
+    subsystem: str,
+    *,
+    degradation_mode: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> bool:
+    return operator_notification_required_for_subsystem(
+        subsystem,
+        degradation_mode=degradation_mode,
+        root=root,
+    )
 
 
 def fallback_allowed(
@@ -416,6 +461,23 @@ def fallback_allowed(
     }
 
 
+def can_fallback(
+    *,
+    subsystem: str,
+    authority_class: Optional[str] = None,
+    degradation_mode: Optional[str] = None,
+    fallback_action: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    return fallback_allowed(
+        subsystem=subsystem,
+        authority_class=authority_class,
+        degradation_mode=degradation_mode,
+        fallback_action=fallback_action,
+        root=root,
+    )
+
+
 def assert_no_forbidden_authority_downgrade(
     *,
     subsystem: str,
@@ -438,6 +500,24 @@ def assert_no_forbidden_authority_downgrade(
             f"Forbidden degraded fallback for {subsystem}: "
             f"{legality['degradation_mode']} -> {legality['fallback_action']} under {legality['authority_class']}"
         )
+
+
+def is_authority_downgrade_forbidden(
+    *,
+    subsystem: str,
+    authority_class: Optional[str] = None,
+    degradation_mode: Optional[str] = None,
+    fallback_action: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> bool:
+    legality = fallback_allowed(
+        subsystem=subsystem,
+        authority_class=authority_class,
+        degradation_mode=degradation_mode,
+        fallback_action=fallback_action,
+        root=root,
+    )
+    return any("sensitive_authority" in reason or "approval_required" in reason for reason in legality["reasons"])
 
 
 def degradation_retry_policy(

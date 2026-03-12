@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -238,6 +239,128 @@ def test_autoresearch_invalid_request_contract_blocks_before_runner_dispatch(tmp
     assert result_row["failure_category"] == "invalid_request_contract"
 
 
+def test_autoresearch_blocks_when_upstream_runtime_not_configured(tmp_path: Path):
+    task = _make_task(tmp_path, task_id="task_research_upstream_missing", status=TaskStatus.RUNNING.value)
+    _seed_autoresearch_contract(task)
+    save_task(task, root=tmp_path)
+
+    old_command = os.environ.pop("JARVIS_AUTORESEARCH_UPSTREAM_COMMAND", None)
+    old_cwd = os.environ.pop("JARVIS_AUTORESEARCH_UPSTREAM_CWD", None)
+    old_timeout = os.environ.pop("JARVIS_AUTORESEARCH_UPSTREAM_TIMEOUT_SECONDS", None)
+    try:
+        result = execute_research_campaign(
+            task_id=task.task_id,
+            actor="tester",
+            lane="research",
+            objective="run real upstream runtime",
+            objective_metrics=["score"],
+            baseline_ref="baseline:v1",
+            benchmark_slice_ref="slice:smoke",
+            max_passes=1,
+            max_budget_units=1,
+            root=tmp_path,
+            runner=None,
+        )
+    finally:
+        if old_command is not None:
+            os.environ["JARVIS_AUTORESEARCH_UPSTREAM_COMMAND"] = old_command
+        if old_cwd is not None:
+            os.environ["JARVIS_AUTORESEARCH_UPSTREAM_CWD"] = old_cwd
+        if old_timeout is not None:
+            os.environ["JARVIS_AUTORESEARCH_UPSTREAM_TIMEOUT_SECONDS"] = old_timeout
+
+    stored_task = load_task(task.task_id, root=tmp_path)
+    campaign = load_research_campaign(result["campaign"]["campaign_id"], root=tmp_path)
+    result_path = next((tmp_path / "state" / "lab_run_results").glob("*.json"))
+    result_row = json.loads(result_path.read_text(encoding="utf-8"))
+    upstream_runtime = result_row["raw_result"]["upstream_runtime"]
+
+    assert stored_task is not None
+    assert stored_task.status == TaskStatus.BLOCKED.value
+    assert campaign is not None
+    assert campaign.status == "failed"
+    assert result_row["failure_category"] == "upstream_unavailable"
+    assert upstream_runtime["runtime_status"] == "blocked_upstream_not_configured"
+    assert "not configured" in upstream_runtime["message"]
+
+
+def test_autoresearch_executes_real_upstream_runtime_command(tmp_path: Path):
+    task = _make_task(
+        tmp_path,
+        task_id="task_research_upstream_ok",
+        status=TaskStatus.QUEUED.value,
+        review_required=True,
+    )
+    _seed_autoresearch_contract(task)
+    upstream_script = (tmp_path / "fake_upstream_autoresearch.py").resolve()
+    task.backend_metadata["autoresearch_contract"]["upstream_runtime"] = {
+        "command": [sys.executable, str(upstream_script)],
+        "cwd": str(tmp_path.resolve()),
+        "timeout_seconds": 10,
+    }
+    save_task(task, root=tmp_path)
+
+    upstream_script.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "",
+                "request_path = Path(os.environ['JARVIS_AUTORESEARCH_REQUEST_FILE'])",
+                "result_path = Path(os.environ['JARVIS_AUTORESEARCH_RESULT_FILE'])",
+                "request = json.loads(request_path.read_text(encoding='utf-8'))",
+                "payload = {",
+                "    'run_id': 'run_upstream_real',",
+                "    'summary': 'upstream runtime pass',",
+                "    'hypothesis': 'external engine contract preserved',",
+                "    'metrics': {'score': 0.72},",
+                "    'baseline_metrics': {'score': 0.60},",
+                "    'candidate_metrics': {'score': 0.72},",
+                "    'delta_metrics': {'score': 0.12},",
+                "    'recommendation': {'action': 'promote_candidate'},",
+                "    'token_usage': {'total_tokens': 42},",
+                "    'budget_used': 1,",
+                "    'comparison_summary': f\"objective={request['objective']}\",",
+                "}",
+                "result_path.parent.mkdir(parents=True, exist_ok=True)",
+                "result_path.write_text(json.dumps(payload), encoding='utf-8')",
+                "print(json.dumps(payload))",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = execute_research_campaign(
+        task_id=task.task_id,
+        actor="tester",
+        lane="research",
+        objective="prove upstream runtime execution seam",
+        objective_metrics=["score"],
+        primary_metric="score",
+        baseline_ref="baseline:v1",
+        benchmark_slice_ref="slice:smoke",
+        max_passes=1,
+        max_budget_units=1,
+        root=tmp_path,
+        runner=None,
+    )
+
+    result_path = next((tmp_path / "state" / "lab_run_results").glob("*.json"))
+    result_row = json.loads(result_path.read_text(encoding="utf-8"))
+    status = build_status(tmp_path)
+    upstream_runtime = result_row["raw_result"]["upstream_runtime"]
+
+    assert result["candidate_artifact_id"] is not None
+    assert result_row["run_id"] == "run_upstream_real"
+    assert result_row["failure_category"] == ""
+    assert upstream_runtime["runtime_status"] == "completed"
+    assert upstream_runtime["payload_source"] in {"stdout", "result_file"}
+    assert status["autoresearch_summary"]["upstream_runtime_status_counts"]["completed"] == 1
+    assert status["autoresearch_summary"]["latest_upstream_runtime"]["runtime_status"] == "completed"
+
+
 def test_autoresearch_persists_spec_fields_and_surfaces_summary(tmp_path: Path):
     task = _make_task(
         tmp_path,
@@ -422,5 +545,7 @@ if __name__ == "__main__":
     _run_tmp(test_autoresearch_links_pending_approval_checkpoint, "tmp_test_autoresearch_approval")
     _run_tmp(test_autoresearch_malformed_run_blocks_task, "tmp_test_autoresearch_malformed")
     _run_tmp(test_autoresearch_invalid_request_contract_blocks_before_runner_dispatch, "tmp_test_autoresearch_invalid_request")
+    _run_tmp(test_autoresearch_blocks_when_upstream_runtime_not_configured, "tmp_test_autoresearch_upstream_missing")
+    _run_tmp(test_autoresearch_executes_real_upstream_runtime_command, "tmp_test_autoresearch_upstream_real")
     _run_tmp(test_autoresearch_persists_spec_fields_and_surfaces_summary, "tmp_test_autoresearch_contract")
     _run_tmp(test_autoresearch_persists_strategy_diversity_map, "tmp_test_autoresearch_diversity")

@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
+import shutil
+import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -50,6 +54,7 @@ from runtime.evals.trace_store import record_run_trace
 from runtime.integrations.search_normalizer import build_source_records
 from runtime.researchlab.runner import (
     list_experiment_runs_for_campaign,
+    research_workspace_dir,
     save_experiment_run,
     save_metric_result,
     save_research_campaign,
@@ -64,12 +69,34 @@ SUCCESS_STATUS = "completed"
 FAILED_STATUS = "failed"
 STOPPED_STATUS = "stopped"
 INVALID_REQUEST_STATUS = "invalid_request"
+UPSTREAM_COMMAND_ENV = "JARVIS_AUTORESEARCH_UPSTREAM_COMMAND"
+UPSTREAM_CWD_ENV = "JARVIS_AUTORESEARCH_UPSTREAM_CWD"
+UPSTREAM_TIMEOUT_ENV = "JARVIS_AUTORESEARCH_UPSTREAM_TIMEOUT_SECONDS"
+UPSTREAM_REQUEST_FILE_ENV = "JARVIS_AUTORESEARCH_REQUEST_FILE"
+UPSTREAM_RESULT_FILE_ENV = "JARVIS_AUTORESEARCH_RESULT_FILE"
 
 Runner = Callable[["LabRunRequest"], dict[str, Any]]
 
 
 class LabRunMalformedError(ValueError):
     pass
+
+
+class AutoresearchUpstreamRuntimeError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        failure_category: str,
+        runtime_status: str,
+        message: str,
+        details: str = "",
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(message)
+        self.failure_category = failure_category
+        self.runtime_status = runtime_status
+        self.details = details
+        self.metadata = dict(metadata or {})
 
 
 def _serialize(instance: Any) -> dict[str, Any]:
@@ -177,20 +204,27 @@ def build_autoresearch_summary(root: Optional[Path] = None) -> dict[str, Any]:
     diversity_maps = list_strategy_diversity_maps(root=root)
     status_counts: dict[str, int] = {}
     failure_category_counts: dict[str, int] = {}
+    upstream_runtime_status_counts: dict[str, int] = {}
     for row in results:
         status = row.get("status", "unknown")
         status_counts[status] = status_counts.get(status, 0) + 1
         failure_category = row.get("failure_category", "")
         if failure_category:
             failure_category_counts[failure_category] = failure_category_counts.get(failure_category, 0) + 1
+        upstream_runtime = dict((row.get("raw_result") or {}).get("upstream_runtime") or {})
+        runtime_status = str(upstream_runtime.get("runtime_status") or "").strip()
+        if runtime_status:
+            upstream_runtime_status_counts[runtime_status] = upstream_runtime_status_counts.get(runtime_status, 0) + 1
     return {
         "lab_run_request_count": len(requests),
         "lab_run_result_count": len(results),
         "strategy_diversity_map_count": len(diversity_maps),
         "lab_run_status_counts": status_counts,
         "lab_run_failure_category_counts": failure_category_counts,
+        "upstream_runtime_status_counts": upstream_runtime_status_counts,
         "latest_lab_run_request": requests[0] if requests else None,
         "latest_lab_run_result": results[0] if results else None,
+        "latest_upstream_runtime": dict((results[0].get("raw_result") or {}).get("upstream_runtime") or {}) if results else None,
         "latest_strategy_diversity_map": diversity_maps[0] if diversity_maps else None,
     }
 
@@ -513,8 +547,291 @@ def _parse_result(*, request: LabRunRequest, payload: dict[str, Any]) -> LabRunR
     )
 
 
-def _default_runner(_: LabRunRequest) -> dict[str, Any]:
-    raise RuntimeError("Autoresearch runner is not configured.")
+def _normalize_command(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [part for part in shlex.split(value) if part]
+    return []
+
+
+def _upstream_runtime_config(request: LabRunRequest, *, root: Path) -> dict[str, Any]:
+    metadata = dict(request.metadata or {})
+    contract = dict(metadata.get("upstream_runtime") or {})
+    command = _normalize_command(contract.get("command"))
+    if not command:
+        command = _normalize_command(os.environ.get(UPSTREAM_COMMAND_ENV, ""))
+
+    cwd_value = str(contract.get("cwd") or os.environ.get(UPSTREAM_CWD_ENV, "") or root)
+    cwd = str(Path(cwd_value).resolve())
+    timeout_value = contract.get("timeout_seconds")
+    if timeout_value in (None, ""):
+        timeout_value = os.environ.get(UPSTREAM_TIMEOUT_ENV, "")
+    timeout_seconds = 90
+    if timeout_value not in (None, ""):
+        try:
+            timeout_seconds = max(1, int(timeout_value))
+        except (TypeError, ValueError):
+            timeout_seconds = 90
+
+    return {
+        "command": command,
+        "cwd": cwd,
+        "timeout_seconds": timeout_seconds,
+        "config_source": "request_contract" if contract.get("command") else ("environment" if command else "missing"),
+    }
+
+
+def _probe_upstream_runtime(request: LabRunRequest, *, root: Path) -> dict[str, Any]:
+    config = _upstream_runtime_config(request, root=root)
+    command = list(config["command"])
+    if not command:
+        return {
+            "available": False,
+            "runtime_status": "blocked_upstream_not_configured",
+            "details": f"Autoresearch upstream runtime is not configured. Set `{UPSTREAM_COMMAND_ENV}` or request.metadata['upstream_runtime']['command'].",
+            "config": config,
+        }
+    binary = command[0]
+    if not Path(binary).expanduser().exists() and "/" not in binary and shutil.which(binary) is None:
+        return {
+            "available": False,
+            "runtime_status": "blocked_upstream_binary_missing",
+            "details": f"Configured autoresearch upstream command `{binary}` is not available on PATH.",
+            "config": config,
+        }
+    return {
+        "available": True,
+        "runtime_status": "available",
+        "details": "Autoresearch upstream runtime command is configured.",
+        "config": config,
+    }
+
+
+def probe_autoresearch_upstream_runtime(*, root: Optional[Path] = None, metadata_override: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    root_path = Path(root or ROOT).resolve()
+    request = LabRunRequest(
+        request_id=new_id("labreq"),
+        task_id="activation_probe",
+        campaign_id="activation_probe",
+        created_at=now_iso(),
+        requested_by="operator_activation",
+        lane="operator_activation",
+        objective="Autoresearch upstream healthcheck",
+        objective_metrics=["probe_score"],
+        metric_directions={"probe_score": "maximize"},
+        primary_metric="probe_score",
+        baseline_ref="activation_probe_baseline",
+        benchmark_slice_ref="activation_probe_slice",
+        sandbox_class="bounded",
+        sandbox_root="workspace/work/autoresearch_activation",
+        target_module="runtime.integration",
+        program_md_path="docs/operations.md",
+        eval_command="echo probe",
+        pass_index=1,
+        remaining_budget_units=1,
+        metadata={
+            "task_type": "research",
+            "upstream_runtime": dict(metadata_override or {}),
+        },
+    )
+    runtime_probe = _probe_upstream_runtime(request, root=root_path)
+    config = dict(runtime_probe.get("config") or {})
+    if not runtime_probe.get("available"):
+        return {
+            "configured": False,
+            "healthy": False,
+            "runtime_status": str(runtime_probe.get("runtime_status") or "blocked_upstream_not_configured"),
+            "details": str(runtime_probe.get("details") or ""),
+            "command": list(config.get("command") or []),
+            "cwd": str(config.get("cwd") or ""),
+            "timeout_seconds": config.get("timeout_seconds"),
+        }
+    request_path, result_path = _upstream_runner_workspace(request, root=root_path)
+    request_path.write_text(json.dumps({"probe": True, "kind": "autoresearch_upstream_healthcheck"}, indent=2) + "\n", encoding="utf-8")
+    env = os.environ.copy()
+    env[UPSTREAM_REQUEST_FILE_ENV] = str(request_path)
+    env[UPSTREAM_RESULT_FILE_ENV] = str(result_path)
+    env["JARVIS_AUTORESEARCH_PROBE_MODE"] = "healthcheck"
+    try:
+        completed = subprocess.run(
+            list(config["command"]),
+            cwd=config["cwd"],
+            capture_output=True,
+            text=True,
+            timeout=int(config["timeout_seconds"]),
+            check=False,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "configured": True,
+            "healthy": False,
+            "runtime_status": "degraded_upstream_timeout",
+            "details": str(exc),
+            "command": list(config["command"]),
+            "cwd": config["cwd"],
+            "timeout_seconds": config["timeout_seconds"],
+        }
+    payload: Any = None
+    if result_path.exists():
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except Exception:
+            payload = None
+    elif (completed.stdout or "").strip():
+        try:
+            payload = json.loads((completed.stdout or "").strip())
+        except Exception:
+            payload = None
+    if completed.returncode != 0:
+        return {
+            "configured": True,
+            "healthy": False,
+            "runtime_status": "degraded_upstream_failed",
+            "details": (completed.stderr or completed.stdout or f"returncode={completed.returncode}").strip(),
+            "command": list(config["command"]),
+            "cwd": config["cwd"],
+            "timeout_seconds": config["timeout_seconds"],
+        }
+    if not isinstance(payload, dict):
+        return {
+            "configured": True,
+            "healthy": False,
+            "runtime_status": "degraded_upstream_bad_payload",
+            "details": "Autoresearch upstream healthcheck did not return a JSON object payload.",
+            "command": list(config["command"]),
+            "cwd": config["cwd"],
+            "timeout_seconds": config["timeout_seconds"],
+        }
+    return {
+        "configured": True,
+        "healthy": True,
+        "runtime_status": str(payload.get("runtime_status") or "healthy"),
+        "details": str(payload.get("details") or "Autoresearch upstream runtime responded to healthcheck."),
+        "payload": payload,
+        "command": list(config["command"]),
+        "cwd": config["cwd"],
+        "timeout_seconds": config["timeout_seconds"],
+        "request_path": str(request_path.relative_to(root_path)),
+        "result_path": str(result_path.relative_to(root_path)) if result_path.exists() else "",
+    }
+
+
+def _upstream_runner_workspace(request: LabRunRequest, *, root: Path) -> tuple[Path, Path]:
+    workspace = research_workspace_dir(request.sandbox_root or "workspace/work/autoresearch_upstream", root=root)
+    request_path = workspace / "upstream_requests" / f"{request.request_id}.json"
+    result_path = workspace / "upstream_results" / f"{request.request_id}.json"
+    request_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    return request_path, result_path
+
+
+def _run_upstream_autoresearch(request: LabRunRequest, *, root: Path) -> dict[str, Any]:
+    runtime_probe = _probe_upstream_runtime(request, root=root)
+    config = dict(runtime_probe["config"])
+    if not runtime_probe["available"]:
+        raise AutoresearchUpstreamRuntimeError(
+            failure_category="upstream_unavailable",
+            runtime_status=str(runtime_probe["runtime_status"]),
+            message=str(runtime_probe["details"]),
+            metadata={"runtime_probe": runtime_probe},
+        )
+
+    request_path, result_path = _upstream_runner_workspace(request, root=root)
+    request_payload = request.to_dict()
+    request_path.write_text(json.dumps(request_payload, indent=2) + "\n", encoding="utf-8")
+
+    env = os.environ.copy()
+    env[UPSTREAM_REQUEST_FILE_ENV] = str(request_path)
+    env[UPSTREAM_RESULT_FILE_ENV] = str(result_path)
+    env["JARVIS_AUTORESEARCH_TASK_ID"] = request.task_id
+    env["JARVIS_AUTORESEARCH_CAMPAIGN_ID"] = request.campaign_id
+    env["JARVIS_AUTORESEARCH_REQUEST_ID"] = request.request_id
+
+    try:
+        completed = subprocess.run(
+            list(config["command"]),
+            cwd=config["cwd"],
+            capture_output=True,
+            text=True,
+            timeout=int(config["timeout_seconds"]),
+            check=False,
+            env=env,
+        )
+    except FileNotFoundError as exc:
+        raise AutoresearchUpstreamRuntimeError(
+            failure_category="upstream_unavailable",
+            runtime_status="blocked_upstream_binary_missing",
+            message=f"Configured autoresearch upstream command `{config['command'][0]}` could not be executed.",
+            details=str(exc),
+            metadata={"runtime_probe": runtime_probe},
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise AutoresearchUpstreamRuntimeError(
+            failure_category="upstream_timeout",
+            runtime_status="degraded_upstream_timeout",
+            message=f"Autoresearch upstream runtime timed out after {config['timeout_seconds']}s.",
+            details=str(exc),
+            metadata={
+                "runtime_probe": runtime_probe,
+                "timeout_seconds": config["timeout_seconds"],
+            },
+        ) from exc
+
+    stdout = (completed.stdout or "").strip()
+    stderr = (completed.stderr or "").strip()
+    payload: Any = None
+    payload_source = ""
+    if result_path.exists():
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+        payload_source = "result_file"
+    elif stdout:
+        payload = json.loads(stdout)
+        payload_source = "stdout"
+
+    if completed.returncode != 0:
+        raise AutoresearchUpstreamRuntimeError(
+            failure_category="upstream_runtime_failed",
+            runtime_status="degraded_upstream_failed",
+            message=f"Autoresearch upstream runtime exited with code {completed.returncode}.",
+            details=stderr or stdout,
+            metadata={
+                "runtime_probe": runtime_probe,
+                "returncode": completed.returncode,
+                "stdout": stdout,
+                "stderr": stderr,
+            },
+        )
+
+    if not isinstance(payload, dict):
+        raise AutoresearchUpstreamRuntimeError(
+            failure_category="upstream_empty_result",
+            runtime_status="degraded_upstream_empty_result",
+            message="Autoresearch upstream runtime did not return a JSON object result.",
+            details=stdout or stderr or "missing_result_payload",
+            metadata={"runtime_probe": runtime_probe},
+        )
+
+    payload = dict(payload)
+    payload["upstream_runtime"] = {
+        "runtime_status": "completed",
+        "payload_source": payload_source,
+        "command": list(config["command"]),
+        "cwd": config["cwd"],
+        "timeout_seconds": config["timeout_seconds"],
+        "returncode": completed.returncode,
+        "request_path": str(request_path.relative_to(root)),
+        "result_path": str(result_path.relative_to(root)) if result_path.exists() else "",
+    }
+    return payload
+
+
+def _build_upstream_runner(*, root: Path) -> Runner:
+    def upstream_runner(request: LabRunRequest) -> dict[str, Any]:
+        return _run_upstream_autoresearch(request, root=root)
+
+    return upstream_runner
 
 
 def _link_candidate_to_pending_records(*, task_id: str, artifact_id: str, root: Path) -> None:
@@ -716,7 +1033,7 @@ def execute_research_campaign(
         root=root_path,
     )
 
-    use_runner = runner or _default_runner
+    use_runner = runner or _build_upstream_runner(root=root_path)
     best_score: Optional[float] = None
     best_run_id: Optional[str] = None
     best_result: Optional[LabRunResult] = None
@@ -765,7 +1082,10 @@ def execute_research_campaign(
             stop_conditions=dict(campaign.stop_conditions),
             execution_backend=AUTORESEARCH_BACKEND_ID,
             sandbox_class="bounded",
-            metadata={"task_type": task.task_type},
+            metadata={
+                "task_type": task.task_type,
+                "upstream_runtime": dict(metadata.get("upstream_runtime") or {}),
+            },
         )
         request_validation = validate_lab_run_request(request)
         save_lab_run_request(request, root=root_path)
@@ -793,8 +1113,17 @@ def execute_research_campaign(
             result = _parse_result(request=request, payload=use_runner(request))
         except Exception as exc:
             failure_category = "runner_failure"
+            runtime_state = {}
             if isinstance(exc, LabRunMalformedError):
                 failure_category = "invalid_request_contract" if not request_validation["allowed"] else "malformed_result"
+            elif isinstance(exc, AutoresearchUpstreamRuntimeError):
+                failure_category = exc.failure_category
+                runtime_state = {
+                    "runtime_status": exc.runtime_status,
+                    "message": str(exc),
+                    "details": exc.details,
+                    **dict(exc.metadata),
+                }
             result = LabRunResult(
                 result_id=new_id("labres"),
                 request_id=request.request_id,
@@ -811,7 +1140,7 @@ def execute_research_campaign(
                 hypothesis="",
                 comparison_summary=f"{type(exc).__name__}: {exc}",
                 recommendation_hint="",
-                raw_result={},
+                raw_result={"upstream_runtime": runtime_state} if runtime_state else {},
                 execution_backend=AUTORESEARCH_BACKEND_ID,
             )
             save_lab_run_result(result, root=root_path)
@@ -890,6 +1219,8 @@ def execute_research_campaign(
             save_research_campaign(campaign, root=root_path)
             task = load_task(task_id, root=root_path)
             task.checkpoint_summary = f"Research campaign failed: {run.stop_reason}"
+            task.backend_metadata.setdefault("autoresearch", {})
+            task.backend_metadata["autoresearch"]["latest_upstream_runtime"] = runtime_state
             save_task(task, root=root_path)
             transition_task(
                 task_id=task_id,
@@ -1189,6 +1520,11 @@ def execute_research_campaign(
     if best_evidence_bundle_id:
         task.backend_metadata.setdefault("autoresearch", {})
         task.backend_metadata["autoresearch"]["evidence_bundle_refs"] = [best_evidence_bundle_id]
+    if best_result is not None:
+        task.backend_metadata.setdefault("autoresearch", {})
+        task.backend_metadata["autoresearch"]["latest_upstream_runtime"] = dict(
+            (best_result.raw_result or {}).get("upstream_runtime") or {}
+        )
     task.backend_metadata.setdefault("execution_contracts", {})
     task.backend_metadata["execution_contracts"]["latest_backend_execution_request_id"] = latest_execution_request_id
     task.backend_metadata["execution_contracts"]["latest_backend_execution_result_id"] = latest_execution_result_id
@@ -1234,7 +1570,7 @@ def execute_research_campaign(
     }
 
 
-def _build_response_runner(args: argparse.Namespace) -> Runner:
+def _build_response_runner(args: argparse.Namespace) -> Optional[Runner]:
     if args.response_file:
         payloads = json.loads(Path(args.response_file).read_text(encoding="utf-8"))
         if not isinstance(payloads, list):
@@ -1248,7 +1584,7 @@ def _build_response_runner(args: argparse.Namespace) -> Runner:
             return dict(responses[index])
 
         return response_runner
-    return _default_runner
+    return None
 
 
 def main() -> int:

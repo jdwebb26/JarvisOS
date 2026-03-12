@@ -1252,6 +1252,7 @@ def _latest_runtime_route_resolution(decision: Optional[dict[str, Any]]) -> Opti
     selection_context = dict(constraints.get("selection_context") or {})
     selected_candidate = dict(selection_context.get("selected_candidate") or {})
     return {
+        "updated_at": decision.get("updated_at"),
         "routing_decision_id": decision.get("routing_decision_id"),
         "selected_provider_id": decision.get("selected_provider_id"),
         "selected_model_name": decision.get("selected_model_name"),
@@ -1277,6 +1278,11 @@ def _latest_runtime_route_resolution(decision: Optional[dict[str, Any]]) -> Opti
         "node_health_status": selected_candidate.get("node_health_status"),
         "rerouted_from_preferred_model": bool(selected_candidate.get("rerouted_from_preferred_model", False)),
         "candidate_evaluations": list(selection_context.get("candidate_evaluations") or []),
+        "route_legality_status": constraints.get("route_legality_status", "legal"),
+        "route_resolution_state": constraints.get("route_resolution_state", "selected"),
+        "fallback_attempted": bool(constraints.get("fallback_attempted", False)),
+        "fallback_blocked_for_safety": bool(constraints.get("fallback_blocked_for_safety", False)),
+        "blocked_route_reason": constraints.get("blocked_route_reason"),
         "selection_reason": decision.get("selection_reason", ""),
     }
 
@@ -1288,6 +1294,7 @@ def build_routing_failure_summary(request: Optional[dict[str, Any]]) -> Optional
     return {
         "routing_request_id": request.get("routing_request_id"),
         "task_id": request.get("task_id"),
+        "updated_at": request.get("updated_at"),
         "lane": request.get("lane"),
         "channel": constraints.get("channel"),
         "workload_type": constraints.get("workload_type"),
@@ -1308,8 +1315,71 @@ def build_routing_failure_summary(request: Optional[dict[str, Any]]) -> Optional
         "required_capabilities": list(request.get("required_capabilities") or []),
         "failure_reason": constraints.get("failure_reason", ""),
         "failure_code": constraints.get("failure_code"),
+        "route_legality_status": constraints.get("route_legality_status", "blocked"),
+        "route_resolution_state": constraints.get("route_resolution_state", "blocked"),
+        "fallback_blocked_for_safety": bool(constraints.get("fallback_blocked_for_safety", False)),
+        "blocked_route_reason": constraints.get("blocked_route_reason") or constraints.get("failure_reason", ""),
         "status": request.get("status"),
     }
+
+
+def score_candidate_route(candidate: dict[str, Any]) -> tuple[Any, ...]:
+    return tuple(candidate.get("score") or candidate.get("rank") or ())
+
+
+def select_best_route(candidates: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    if not candidates:
+        return None
+    ranked = sorted(candidates, key=score_candidate_route, reverse=True)
+    return ranked[0]
+
+
+def collect_candidate_routes(
+    *,
+    task_id: str,
+    normalized_request: str,
+    required_capabilities: list[str],
+    task_type: str,
+    risk_level: str,
+    priority: str,
+    workload_type: str,
+    allowed_families: list[str],
+    preferred_family: str,
+    runtime_route_policy: dict[str, Any],
+    root: Path,
+) -> dict[str, Any]:
+    entry, profile, candidate_model_names, selection_context = _choose_entry(
+        task_id=task_id,
+        normalized_request=normalized_request,
+        required_capabilities=required_capabilities,
+        task_type=task_type,
+        risk_level=risk_level,
+        priority=priority,
+        workload_type=workload_type,
+        allowed_families=allowed_families,
+        preferred_family=preferred_family,
+        runtime_route_policy=runtime_route_policy,
+        root=root,
+    )
+    candidates = list(selection_context.get("candidate_evaluations") or [])
+    for row in candidates:
+        row.setdefault("score", row.get("score") or [])
+    return {
+        "selected_entry": entry,
+        "selected_profile": profile,
+        "candidate_model_names": candidate_model_names,
+        "selection_context": selection_context,
+        "candidates": candidates,
+        "best_candidate": select_best_route(candidates),
+    }
+
+
+def explain_routing_decision(decision: dict[str, Any]) -> Optional[dict[str, Any]]:
+    return _latest_runtime_route_resolution(decision)
+
+
+def persist_routing_decision(record: RoutingDecisionRecord, root: Optional[Path] = None) -> RoutingDecisionRecord:
+    return save_routing_decision(record, root=root)
 
 
 def route_task_intent(
@@ -1419,7 +1489,7 @@ def route_task_intent(
     )
     eligible_provider_ids = sorted({row.provider_id for row in _candidate_entry_pool(allowed_families=allowed_families, root=root_path)})
     try:
-        entry, profile, candidate_model_names, selection_context = _choose_entry(
+        route_selection = collect_candidate_routes(
             task_id=task_id,
             normalized_request=normalized_request,
             required_capabilities=required_capabilities,
@@ -1432,8 +1502,19 @@ def route_task_intent(
             runtime_route_policy=runtime_route_policy,
             root=root_path,
         )
+        entry = route_selection["selected_entry"]
+        profile = route_selection["selected_profile"]
+        candidate_model_names = route_selection["candidate_model_names"]
+        selection_context = route_selection["selection_context"]
     except ValueError as exc:
         request.status = "failed"
+        fallback_blocked_for_safety = bool(
+            active_degradation_modes
+            and (
+                authority_class in {AuthorityClass.REVIEW_REQUIRED.value, AuthorityClass.APPROVAL_REQUIRED.value}
+                or bool(runtime_route_policy.get("allowed_fallbacks"))
+            )
+        )
         request.policy_constraints = {
             **dict(request.policy_constraints or {}),
             "eligible_provider_ids": eligible_provider_ids,
@@ -1441,6 +1522,10 @@ def route_task_intent(
             "failure_reason": (
                 "No routing candidate survived policy, host-role, provider, backend, and capability legality filters."
             ),
+            "route_legality_status": "blocked",
+            "route_resolution_state": "blocked",
+            "fallback_blocked_for_safety": fallback_blocked_for_safety,
+            "blocked_route_reason": str(exc),
         }
         save_routing_request(request, root=root_path)
         raise ValueError(
@@ -1451,9 +1536,18 @@ def route_task_intent(
         **dict(request.policy_constraints or {}),
         "eligible_provider_ids": eligible_provider_ids,
         "selection_context": selection_context,
+        "route_legality_status": "legal",
+        "route_resolution_state": (
+            "rerouted"
+            if bool((selection_context.get("selected_candidate") or {}).get("rerouted_from_preferred_model"))
+            else "selected"
+        ),
+        "fallback_attempted": bool((selection_context.get("selected_candidate") or {}).get("rerouted_from_preferred_model")),
+        "fallback_blocked_for_safety": False,
+        "blocked_route_reason": "",
     }
     save_routing_request(request, root=root_path)
-    decision = save_routing_decision(
+    decision = persist_routing_decision(
         RoutingDecisionRecord(
             routing_decision_id=new_id("rdec"),
             routing_request_id=request.routing_request_id,
@@ -1594,6 +1688,10 @@ def route_task_intent(
             "disabled_execution_backends": list(effective_controls.get("disabled_execution_backends", [])),
         },
     }
+
+
+def route_task(**kwargs: Any) -> dict:
+    return route_task_intent(**kwargs)
 
 
 def build_model_registry_summary(root: Optional[Path] = None) -> dict:

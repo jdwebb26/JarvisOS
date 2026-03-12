@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.models import RecordLifecycleState, TaskRecord, TaskStatus, now_iso
 from runtime.core.task_events import append_event, make_event
+from runtime.core.workspace_registry import ensure_home_runtime_workspace
 from runtime.controls.control_store import assert_control_allows
 
 
@@ -116,6 +117,17 @@ def load_task(task_id: str, root: Optional[Path] = None) -> Optional[TaskRecord]
 
 
 def create_task(record: TaskRecord, root: Optional[Path] = None) -> TaskRecord:
+    home_workspace = ensure_home_runtime_workspace(root=root)
+    if not record.home_runtime_workspace:
+        record.home_runtime_workspace = home_workspace.workspace_id
+    if not record.target_workspace_id:
+        record.target_workspace_id = record.home_runtime_workspace
+    if not record.allowed_workspace_ids:
+        record.allowed_workspace_ids = [record.home_runtime_workspace]
+        if record.target_workspace_id != record.home_runtime_workspace:
+            record.allowed_workspace_ids.append(record.target_workspace_id)
+    if not record.touched_workspace_ids:
+        record.touched_workspace_ids = sorted({record.home_runtime_workspace, record.target_workspace_id})
     save_task(record, root=root)
     append_event(
         make_event(

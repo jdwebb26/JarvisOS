@@ -12,13 +12,17 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from runtime.core.degradation_policy import (
+    can_fallback,
     assert_no_forbidden_authority_downgrade,
     ensure_default_degradation_policies,
     fallback_allowed,
+    get_active_degradation_modes,
+    is_authority_downgrade_forbidden,
     list_degradation_events,
     list_active_degradation_modes,
     load_degradation_policy_for_subsystem,
     save_degradation_policy,
+    should_notify_operator,
 )
 from runtime.core.models import AuthorityClass
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
@@ -186,6 +190,18 @@ def test_degraded_fallback_legality_stays_sensitive_to_authority(tmp_path: Path)
 
     active_before = list_active_degradation_modes(root=tmp_path)
     assert active_before == []
+    assert get_active_degradation_modes(root=tmp_path) == []
+    assert can_fallback(
+        subsystem="research_backend",
+        authority_class=AuthorityClass.APPROVAL_REQUIRED.value,
+        root=tmp_path,
+    )["allowed"] is False
+    assert should_notify_operator("research_backend", root=tmp_path) is True
+    assert is_authority_downgrade_forbidden(
+        subsystem="research_backend",
+        authority_class=AuthorityClass.APPROVAL_REQUIRED.value,
+        root=tmp_path,
+    ) is True
 
 
 def _run_as_script() -> int:

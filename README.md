@@ -149,3 +149,25 @@ Current live runtime posture:
 - replay/scoring scaffolding expanded into deeper routing evaluation
 
 This repo does not claim that the 5.2 target posture is already implemented. Current 5.2 work in this branch is scaffolding only unless a later routing-core ticket says otherwise.
+
+Current extension/sidecar lane labels are tracked in:
+
+- [docs/jarvis_5_2_migration_status.md](/home/rollan/.openclaw/workspace/jarvis-v5/docs/jarvis_5_2_migration_status.md)
+- [docs/external_lane_activation.md](/home/rollan/.openclaw/workspace/jarvis-v5/docs/external_lane_activation.md)
+
+Those labels are operational, not aspirational:
+
+- `live_and_usable`
+- `implemented_but_blocked_by_external_runtime`
+- `scaffold_only`
+- `deprecated_alias`
+
+## External sidecars
+
+ShadowBroker is treated as an external OSINT sidecar.
+
+- Jarvis may use ShadowBroker-backed snapshots for evidence, research, and operator visibility.
+- ShadowBroker is not runtime truth.
+- ShadowBroker does not directly control approvals, promotions, or routing legality.
+- If ShadowBroker is absent or degraded, operator surfaces must report that honestly rather than implying real-time coverage.
+- Deployment/install contract: [docs/shadowbroker_deployment.md](/home/rollan/.openclaw/workspace/jarvis-v5/docs/shadowbroker_deployment.md)
