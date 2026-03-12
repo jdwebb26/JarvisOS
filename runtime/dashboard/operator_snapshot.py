@@ -156,6 +156,8 @@ def build_operator_snapshot(root: Path) -> dict:
         "token_budget_summary": status.get("token_budget_summary", {}),
         "degradation_summary": status.get("degradation_summary", {}),
         "heartbeat_summary": status.get("heartbeat_summary", {}),
+        "node_registry_summary": (status.get("heartbeat_summary", {}) or {}).get("node_registry_summary", {}),
+        "node_health_summary": (status.get("heartbeat_summary", {}) or {}).get("node_health_summary", {}),
         "hermes_summary": status.get("hermes_summary", {}),
         "autoresearch_summary": status.get("autoresearch_summary", {}),
         "eval_outcome_summary": status.get("eval_outcome_summary", {}),
@@ -258,6 +260,9 @@ def build_operator_snapshot(root: Path) -> dict:
             "backend_health": runtime_5_2_prep["backend_health_summary"]["snapshot_count"],
             "accelerators": runtime_5_2_prep["accelerator_summary"]["summary_count"],
             "eval_runs": eval_scaffolding_summary["eval_run_count"],
+            "registered_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_registry_summary", {}) or {}).get("registered_node_count", 0),
+            "online_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_health_summary", {}) or {}).get("online_node_count", 0),
+            "burst_online_nodes": ((status.get("heartbeat_summary", {}) or {}).get("node_health_summary", {}) or {}).get("burst_online_count", 0),
         },
     }
 

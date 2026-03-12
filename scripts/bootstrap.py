@@ -13,6 +13,8 @@ if str(DEFAULT_ROOT) not in sys.path:
     sys.path.insert(0, str(DEFAULT_ROOT))
 
 from runtime.dashboard.runtime_5_2_prep import ensure_runtime_5_2_prep_state
+from runtime.core.heartbeat_reports import write_node_heartbeat
+from runtime.core.node_registry import ensure_default_nodes
 
 ROOT_MARKERS = [
     "AGENTS.md",
@@ -87,6 +89,8 @@ REQUIRED_DIRS = [
     "state/backend_execution_results",
     "state/backend_health",
     "state/accelerators",
+    "state/nodes",
+    "state/worker_heartbeats",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -207,6 +211,8 @@ AUTO_CREATE_DIRS = [
     "state/backend_execution_results",
     "state/backend_health",
     "state/accelerators",
+    "state/nodes",
+    "state/worker_heartbeats",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -357,12 +363,24 @@ def ensure_foundation(root: Path, *, force: bool = False) -> dict[str, object]:
     created_dirs, existing_dirs = ensure_dirs(resolved_root, AUTO_CREATE_DIRS)
     copied_configs = ensure_config_skeletons(resolved_root, force=force)
     runtime_prep = ensure_runtime_5_2_prep_state(root=resolved_root)
+    default_nodes = ensure_default_nodes(root=resolved_root)
+    write_node_heartbeat(
+        node_name="NIMO",
+        actor="system",
+        lane="bootstrap",
+        backend_summary=["qwen_planner", "qwen_executor", "operator"],
+        model_family_summary=["qwen"],
+        capability_summary={"bootstrap_seed": True},
+        metadata={"scaffolding_only": True, "seed_source": "bootstrap"},
+        root=resolved_root,
+    )
     return {
         "root": str(resolved_root),
         "created_dirs": created_dirs,
         "existing_dirs_count": len(existing_dirs),
         "copied_configs": copied_configs,
         "runtime_5_2_prep": runtime_prep,
+        "default_nodes": [row.to_dict() for row in default_nodes],
     }
 
 
@@ -391,6 +409,17 @@ def main() -> int:
     created_dirs, existing_dirs = ensure_dirs(root, REQUIRED_DIRS)
     copied_configs = ensure_config_skeletons(root, force=args.force)
     runtime_prep = ensure_runtime_5_2_prep_state(root=root)
+    default_nodes = ensure_default_nodes(root=root)
+    write_node_heartbeat(
+        node_name="NIMO",
+        actor="system",
+        lane="bootstrap",
+        backend_summary=["qwen_planner", "qwen_executor", "operator"],
+        model_family_summary=["qwen"],
+        capability_summary={"bootstrap_seed": True},
+        metadata={"scaffolding_only": True, "seed_source": "bootstrap"},
+        root=root,
+    )
 
     report = {
         "ok": True,
@@ -403,6 +432,7 @@ def main() -> int:
         "copy_examples_requested": args.copy_examples,
         "copied_configs": copied_configs,
         "runtime_5_2_prep": runtime_prep,
+        "default_nodes": [row.to_dict() for row in default_nodes],
     }
 
     report_path = root / "state" / "logs" / "bootstrap_report.json"

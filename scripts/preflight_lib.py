@@ -23,6 +23,8 @@ from runtime.dashboard.runtime_5_2_prep import (
     build_degraded_state_summary,
     ensure_runtime_5_2_prep_state,
 )
+from runtime.core.heartbeat_reports import build_node_health_summary
+from runtime.core.node_registry import ensure_default_nodes
 from runtime.evals.replay_runner import build_eval_run_summary
 
 ROOT = resolve_repo_root(Path(__file__).resolve().parents[1])
@@ -87,6 +89,8 @@ REQUIRED_DIRS = [
     "state/backend_execution_results",
     "state/backend_health",
     "state/accelerators",
+    "state/nodes",
+    "state/worker_heartbeats",
     "state/token_budgets",
     "state/degradation_policies",
     "state/degradation_events",
@@ -242,6 +246,7 @@ REQUIRED_FILES = [
     "runtime/core/routing.py",
     "runtime/core/execution_contracts.py",
     "runtime/core/backend_assignments.py",
+    "runtime/core/node_registry.py",
     "runtime/core/provenance_store.py",
     "runtime/core/replay_store.py",
     "runtime/core/modality_contracts.py",
@@ -278,6 +283,7 @@ KEY_MODULES = [
     "runtime.core.intake",
     "runtime.core.decision_router",
     "runtime.core.routing",
+    "runtime.core.node_registry",
     "runtime.core.candidate_store",
     "runtime.core.rollback_store",
     "runtime.core.approval_sessions",
@@ -391,6 +397,7 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     findings: list[Finding] = []
     foundation = ensure_foundation(root)
     runtime_prep = ensure_runtime_5_2_prep_state(root=root)
+    default_nodes = ensure_default_nodes(root=root)
 
     if root.exists():
         _add(findings, "pass", "repo", "Repo root exists.", details=str(root))
@@ -420,6 +427,14 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             "runtime_prep",
             "Seeded 5.2-prep backend/accelerator scaffolding files.",
             details=", ".join(runtime_prep["seeded_files"]),
+        )
+    if default_nodes:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Seeded node registry scaffolding.",
+            details=", ".join(sorted(row.node_name for row in default_nodes)),
         )
 
     copied_configs = {rel: result for rel, result in foundation["copied_configs"].items() if result == "copied"}
@@ -524,6 +539,7 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     accelerator_summary = build_accelerator_summary(root=root)
     eval_run_summary = build_eval_run_summary(root=root)
     degraded_state = build_degraded_state_summary(root=root)
+    node_health = build_node_health_summary(root=root)
 
     if backend_health["snapshot_count"]:
         _add(findings, "pass", "runtime_prep", "Backend health scaffolding is present.")
@@ -540,6 +556,31 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             _add(findings, "pass", "runtime_prep", "Eval run scaffolding directory is present.")
         else:
             _add(findings, "warn", "runtime_prep", "Eval run scaffolding directory is missing.", "Run `python3 scripts/bootstrap.py` to create `state/eval_runs`.")
+
+    if node_health["registered_node_count"]:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Node registry scaffolding is present.",
+            details=(
+                f"registered_nodes={node_health['registered_node_count']} "
+                f"online_nodes={node_health['online_node_count']} "
+                f"burst_online={node_health['burst_online_count']}"
+            ),
+        )
+    else:
+        _add(findings, "warn", "runtime_prep", "Node registry scaffolding is missing.", "Run `python3 scripts/bootstrap.py` to seed node scaffolding.")
+
+    if node_health["primary_online_count"]:
+        _add(findings, "pass", "runtime_prep", "Primary node heartbeat is present.")
+    else:
+        _add(findings, "warn", "runtime_prep", "Primary node heartbeat is missing or stale.", "Run `python3 scripts/bootstrap.py` or rebuild the heartbeat report.")
+
+    if node_health["burst_online_count"]:
+        _add(findings, "pass", "runtime_prep", "At least one burst node heartbeat is present.")
+    else:
+        _add(findings, "pass", "runtime_prep", "No burst node is currently online; optional burst capacity remains non-critical.")
 
     if degraded_state["degraded_backend_count"]:
         _add(
@@ -582,6 +623,7 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             _add(findings, "warn", "operator", "Operator handoff pack exists but is malformed.", "Rebuild the handoff pack after dashboard regeneration.", str(exc))
         else:
             required_pack_keys = {"backend_health_summary", "degraded_state_summary", "eval_scaffolding_summary"}
+            required_pack_keys.update({"active_nodes_summary", "heartbeat_summary"})
             pack = dict(handoff.get("pack") or handoff)
             missing = sorted(required_pack_keys - set(pack))
             if missing:
@@ -668,6 +710,7 @@ def build_doctor_report(root: Path) -> dict:
     accelerator_summary = build_accelerator_summary(root=root)
     eval_run_summary = build_eval_run_summary(root=root)
     degraded_state = build_degraded_state_summary(root=root)
+    node_health = build_node_health_summary(root=root)
 
     _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count} run_traces={run_traces_count} eval_results={eval_results_count} consolidation_runs={consolidation_runs_count} memory_retrievals={memory_retrievals_count}")
     _add(
@@ -678,7 +721,9 @@ def build_doctor_report(root: Path) -> dict:
         details=(
             f"backend_snapshots={backend_health['snapshot_count']} "
             f"accelerator_summaries={accelerator_summary['summary_count']} "
-            f"eval_runs={eval_run_summary['eval_run_count']}"
+            f"eval_runs={eval_run_summary['eval_run_count']} "
+            f"registered_nodes={node_health['registered_node_count']} "
+            f"online_nodes={node_health['online_node_count']}"
         ),
     )
     if backend_health["unhealthy_lane_count"]:
@@ -697,6 +742,22 @@ def build_doctor_report(root: Path) -> dict:
             "runtime_prep",
             "Degraded backend posture is present in runtime-prep summaries.",
             "Use operator snapshot / handoff summaries to inspect degraded lanes before migration work.",
+        )
+    if not node_health["primary_online_count"]:
+        _add(
+            findings,
+            "warn",
+            "runtime_prep",
+            "Primary node heartbeat is missing or stale.",
+            "Rebuild the heartbeat report or rerun bootstrap before taking node-aware migration tickets.",
+        )
+    elif node_health["stale_heartbeat_count"]:
+        _add(
+            findings,
+            "pass",
+            "runtime_prep",
+            "Node registry is readable; some optional nodes are offline or stale.",
+            details=", ".join(row["node_name"] for row in node_health["stale_nodes"][:5]),
         )
 
     state_export = root / "state" / "logs" / "state_export.json"
@@ -753,6 +814,8 @@ def build_doctor_report(root: Path) -> dict:
             "backend_health_snapshots": backend_health["snapshot_count"],
             "accelerator_summaries": accelerator_summary["summary_count"],
             "eval_runs": eval_run_summary["eval_run_count"],
+            "registered_nodes": node_health["registered_node_count"],
+            "online_nodes": node_health["online_node_count"],
         },
         "groups": grouped,
         "next_actions": next_actions,
@@ -772,7 +835,9 @@ def render_doctor_report(report: dict) -> str:
             f"tasks={report['summary']['tasks']} "
             f"outputs={report['summary']['outputs']} "
             f"backend_health={report['summary'].get('backend_health_snapshots', 0)} "
-            f"eval_runs={report['summary'].get('eval_runs', 0)}"
+            f"eval_runs={report['summary'].get('eval_runs', 0)} "
+            f"nodes={report['summary'].get('registered_nodes', 0)} "
+            f"online_nodes={report['summary'].get('online_nodes', 0)}"
         ),
     ]
     for category, items in report["groups"].items():

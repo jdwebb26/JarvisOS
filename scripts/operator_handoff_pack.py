@@ -883,6 +883,8 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "token_budget_summary": snapshot.get("token_budget_summary", {}),
         "degradation_summary": snapshot.get("degradation_summary", {}),
         "heartbeat_summary": snapshot.get("heartbeat_summary", {}),
+        "node_registry_summary": snapshot.get("node_registry_summary", {}),
+        "node_health_summary": snapshot.get("node_health_summary", {}),
         "active_nodes_summary": snapshot.get("active_nodes_summary", {}),
         "backend_health_summary": snapshot.get("backend_health_summary", {}),
         "accelerator_summary": snapshot.get("accelerator_summary", {}),
