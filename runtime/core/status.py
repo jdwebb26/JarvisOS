@@ -122,9 +122,11 @@ def _infer_backend_failure_category(result: dict[str, Any] | None) -> str:
             str(result.get("outcome_summary") or ""),
         ]
     ).lower()
+    if "unreachable backend" in text or "external runtime unreachable" in text or "connection refused" in text:
+        return "external_runtime_unreachable"
     if "model timeout" in text:
         return "model_timeout"
-    if "backend timeout" in text or "unreachable backend" in text:
+    if "backend timeout" in text:
         return "backend_timeout"
     if "invalid provider" in text or "invalid model" in text or "provider/model" in text:
         return "invalid_provider_model_config"
@@ -134,6 +136,64 @@ def _infer_backend_failure_category(result: dict[str, Any] | None) -> str:
     if status and status not in {"completed", "ready"}:
         return status
     return ""
+
+
+def _normalize_live_lane_failure_category(
+    *,
+    backend_failure_category: str,
+    degradation_event: dict[str, Any] | None,
+    blocked_action: dict[str, Any] | None,
+) -> str:
+    if blocked_action:
+        return "governance_blocked"
+    degradation_refs = dict((degradation_event or {}).get("source_refs") or {})
+    if degradation_event and degradation_refs.get("fallback_allowed") is False:
+        return "degraded_fallback_blocked"
+    normalized = str(backend_failure_category or "").strip()
+    if normalized in {
+        "routing_refused",
+        "backend_timeout",
+        "model_timeout",
+        "invalid_provider_model_config",
+        "degraded_fallback_blocked",
+        "governance_blocked",
+        "external_runtime_unreachable",
+    }:
+        return normalized
+    if normalized in {"timeout", "unreachable_backend"}:
+        return "backend_timeout"
+    if normalized:
+        return normalized
+    if degradation_event:
+        return str(degradation_event.get("failure_category") or "degraded")
+    return ""
+
+
+def _live_lane_next_inspect(
+    *,
+    failure_category: str,
+    row: dict[str, Any],
+    latest_discord_routing_refusal: dict[str, Any] | None,
+) -> str:
+    if failure_category == "routing_refused":
+        return "Inspect routing_summary.latest_failed_routing_request and runtime_routing_policy.json."
+    if failure_category == "backend_timeout":
+        return "Inspect backend_execution_results and the selected backend health on the routed host."
+    if failure_category == "model_timeout":
+        return "Inspect backend_execution_results for model timeout and the selected model/runtime service."
+    if failure_category == "invalid_provider_model_config":
+        return "Inspect selected provider/model configuration and backend adapter inputs."
+    if failure_category == "degraded_fallback_blocked":
+        return "Inspect degradation_summary.latest_degradation_event and fallback legality reasons."
+    if failure_category == "governance_blocked":
+        return "Inspect promotion_governance_summary.latest_blocked_action and clear the review/approval gate."
+    if failure_category == "external_runtime_unreachable":
+        return "Inspect backend health and external runtime reachability for the selected backend/model host."
+    if latest_discord_routing_refusal and not row.get("route_selected"):
+        return "Inspect routing_summary.latest_failed_routing_request."
+    if row.get("backend_execution_attempted") and row.get("status") not in {TaskStatus.COMPLETED.value, TaskStatus.SHIPPED.value}:
+        return "Inspect backend_execution_results and recent task events for this task."
+    return "Inspect the task row, routing metadata, and latest execution result."
 
 
 def build_discord_live_ops_summary(
@@ -219,53 +279,102 @@ def build_discord_live_ops_summary(
         if task.last_error:
             failure_candidates.append((task.updated_at or task.created_at or "", "task_error", task.last_error))
         failure_candidates.sort(key=lambda row: row[0], reverse=True)
-        last_failure_category = failure_candidates[0][1] if failure_candidates else ""
+        last_failure_category = _normalize_live_lane_failure_category(
+            backend_failure_category=backend_failure_category,
+            degradation_event=latest_degradation,
+            blocked_action=latest_blocked,
+        )
+        if not last_failure_category and failure_candidates:
+            last_failure_category = failure_candidates[0][1]
         last_failure_reason = failure_candidates[0][2] if failure_candidates else ""
         if last_failure_category:
             failure_category_counts[last_failure_category] = failure_category_counts.get(last_failure_category, 0) + 1
 
-        rows.append(
-            {
-                "task_id": task.task_id,
-                "source_front_door": "discord",
-                "source_lane": task.source_lane,
-                "source_channel": task.source_channel,
-                "source_message_id": task.source_message_id,
-                "status": task.status,
-                "lifecycle_state": task.lifecycle_state,
-                "task_type": task.task_type,
-                "execution_backend": task.execution_backend,
-                "provider_id": routing_meta.get("provider_id"),
-                "selected_model_name": task.assigned_model or routing_meta.get("model_name"),
-                "selected_node_role": routing_meta.get("selected_node_role"),
-                "selected_host_name": routing_meta.get("selected_host_name"),
-                "workload_type": routing_meta.get("workload_type"),
-                "routing_decision_id": routing_meta.get("routing_decision_id"),
-                "last_failure_category": last_failure_category,
-                "last_failure_reason": last_failure_reason,
-                "backend_failure_category": backend_failure_category,
-                "backend_execution_status": (latest_backend or {}).get("status"),
-                "backend_execution_result_id": (latest_backend or {}).get("backend_execution_result_id"),
-                "degradation_event_id": (latest_degradation or {}).get("degradation_event_id"),
-                "degradation_mode": (latest_degradation or {}).get("degradation_mode"),
-                "degraded_failure_category": (latest_degradation or {}).get("failure_category"),
-                "degraded_fallback_action": fallback_action,
-                "degraded_fallback_attempted": bool(fallback_action and fallback_action != "no_local_fallback" and fallback_allowed is not False),
-                "degraded_fallback_blocked": fallback_allowed is False,
-                "degraded_fallback_legality_reasons": list(degradation_refs.get("fallback_legality_reasons") or []),
-                "governance_blocked_action_id": (latest_blocked or {}).get("blocked_action_id"),
-                "governance_block_reason": (latest_blocked or {}).get("reason"),
-                "updated_at": task.updated_at,
-            }
+        route_selected = bool(routing_meta.get("routing_decision_id"))
+        backend_execution_attempted = latest_backend is not None
+        timeout_stage = ""
+        if last_failure_category == "model_timeout":
+            timeout_stage = "model"
+        elif last_failure_category in {"backend_timeout", "external_runtime_unreachable"}:
+            timeout_stage = "backend"
+        row = {
+            "task_id": task.task_id,
+            "source_front_door": "discord",
+            "source_lane": task.source_lane,
+            "source_channel": task.source_channel,
+            "source_message_id": task.source_message_id,
+            "status": task.status,
+            "lifecycle_state": task.lifecycle_state,
+            "task_type": task.task_type,
+            "execution_backend": task.execution_backend,
+            "provider_id": routing_meta.get("provider_id"),
+            "selected_model_name": task.assigned_model or routing_meta.get("model_name"),
+            "selected_node_role": routing_meta.get("selected_node_role"),
+            "selected_host_name": routing_meta.get("selected_host_name"),
+            "workload_type": routing_meta.get("workload_type"),
+            "routing_decision_id": routing_meta.get("routing_decision_id"),
+            "route_selected": route_selected,
+            "backend_execution_attempted": backend_execution_attempted,
+            "last_failure_category": last_failure_category,
+            "last_failure_reason": last_failure_reason,
+            "backend_failure_category": backend_failure_category,
+            "backend_execution_status": (latest_backend or {}).get("status"),
+            "backend_execution_result_id": (latest_backend or {}).get("backend_execution_result_id"),
+            "timeout_stage": timeout_stage,
+            "degradation_event_id": (latest_degradation or {}).get("degradation_event_id"),
+            "degradation_mode": (latest_degradation or {}).get("degradation_mode"),
+            "degraded_failure_category": (latest_degradation or {}).get("failure_category"),
+            "degraded_fallback_action": fallback_action,
+            "degraded_fallback_attempted": bool(fallback_action and fallback_action != "no_local_fallback" and fallback_allowed is not False),
+            "degraded_fallback_blocked": fallback_allowed is False,
+            "degraded_fallback_legal": fallback_allowed is not False if fallback_action else None,
+            "degraded_fallback_legality_reasons": list(degradation_refs.get("fallback_legality_reasons") or []),
+            "governance_blocked_action_id": (latest_blocked or {}).get("blocked_action_id"),
+            "governance_block_reason": (latest_blocked or {}).get("reason"),
+            "updated_at": task.updated_at,
+        }
+        row["next_inspect"] = _live_lane_next_inspect(
+            failure_category=last_failure_category,
+            row=row,
+            latest_discord_routing_refusal=latest_discord_routing_refusal,
         )
+        rows.append(row)
+
+    latest_discord_task = rows[0] if rows else None
+    live_lane_diagnostic = {
+        "front_door": "discord",
+        "route_selected": bool(latest_discord_task and latest_discord_task.get("route_selected")),
+        "backend_execution_attempted": bool(latest_discord_task and latest_discord_task.get("backend_execution_attempted")),
+        "selected_backend": (latest_discord_task or {}).get("execution_backend"),
+        "selected_provider_id": (latest_discord_task or {}).get("provider_id"),
+        "selected_model_name": (latest_discord_task or {}).get("selected_model_name"),
+        "selected_node_role": (latest_discord_task or {}).get("selected_node_role"),
+        "selected_host_name": (latest_discord_task or {}).get("selected_host_name"),
+        "failure_category": (latest_discord_task or {}).get("last_failure_category")
+        or ("routing_refused" if latest_discord_routing_refusal else ""),
+        "failure_reason": (latest_discord_task or {}).get("last_failure_reason")
+        or str((latest_discord_routing_refusal or {}).get("failure_reason") or ""),
+        "timeout_stage": (latest_discord_task or {}).get("timeout_stage"),
+        "degraded_fallback_attempted": bool(latest_discord_task and latest_discord_task.get("degraded_fallback_attempted")),
+        "degraded_fallback_blocked": bool(latest_discord_task and latest_discord_task.get("degraded_fallback_blocked")),
+        "next_inspect": (
+            (latest_discord_task or {}).get("next_inspect")
+            or _live_lane_next_inspect(
+                failure_category="routing_refused" if latest_discord_routing_refusal else "",
+                row={},
+                latest_discord_routing_refusal=latest_discord_routing_refusal,
+            )
+        ),
+    }
 
     return {
         "discord_origin_task_count": len(rows),
         "active_discord_task_count": sum(1 for row in rows if row.get("status") in active_statuses),
         "failure_category_counts": failure_category_counts,
         "recent_discord_tasks": rows[:10],
-        "latest_discord_task": rows[0] if rows else None,
+        "latest_discord_task": latest_discord_task,
         "latest_discord_routing_refusal": latest_discord_routing_refusal,
+        "live_lane_diagnostic": live_lane_diagnostic,
     }
 
 

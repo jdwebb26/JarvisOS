@@ -38,6 +38,7 @@ from runtime.core.routing import (
     resolve_runtime_route_policy,
     runtime_routing_policy_path,
 )
+from runtime.core.status import build_discord_live_ops_summary
 
 ROOT = resolve_repo_root(Path(__file__).resolve().parents[1])
 WORKSPACE = ROOT / "workspace"
@@ -948,6 +949,8 @@ def build_doctor_report(root: Path) -> dict:
     node_health = build_node_health_summary(root=root)
     task_lease_summary = build_task_lease_summary(root=root)
     skill_scheduler_summary = build_skill_scheduler_summary(root=root)
+    discord_live_ops_summary = build_discord_live_ops_summary(root=root)
+    live_lane_diagnostic = dict(discord_live_ops_summary.get("live_lane_diagnostic") or {})
 
     _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count} run_traces={run_traces_count} eval_results={eval_results_count} consolidation_runs={consolidation_runs_count} memory_retrievals={memory_retrievals_count}")
     _add(
@@ -1014,6 +1017,45 @@ def build_doctor_report(root: Path) -> dict:
             "runtime_prep",
             "Skill candidates are present and remain bounded behind review/eval gating.",
         )
+    if discord_live_ops_summary["discord_origin_task_count"]:
+        failure_category = str(live_lane_diagnostic.get("failure_category") or "")
+        next_inspect = str(live_lane_diagnostic.get("next_inspect") or "")
+        if failure_category:
+            _add(
+                findings,
+                "warn",
+                "live_lane",
+                f"Latest Discord live-lane task is degraded or blocked: {failure_category}.",
+                next_inspect or "Inspect discord_live_ops_summary in status/operator snapshot.",
+                details=(
+                    f"route_selected={live_lane_diagnostic.get('route_selected')} "
+                    f"backend_execution_attempted={live_lane_diagnostic.get('backend_execution_attempted')} "
+                    f"selected_backend={live_lane_diagnostic.get('selected_backend') or 'unknown'} "
+                    f"selected_model={live_lane_diagnostic.get('selected_model_name') or 'unknown'} "
+                    f"selected_host={live_lane_diagnostic.get('selected_host_name') or 'unknown'}"
+                ),
+            )
+        else:
+            _add(
+                findings,
+                "pass",
+                "live_lane",
+                "Discord live-lane summary is available and no active failure category is recorded.",
+                details=(
+                    f"route_selected={live_lane_diagnostic.get('route_selected')} "
+                    f"backend_execution_attempted={live_lane_diagnostic.get('backend_execution_attempted')}"
+                ),
+            )
+    elif discord_live_ops_summary.get("latest_discord_routing_refusal"):
+        refusal = discord_live_ops_summary["latest_discord_routing_refusal"]
+        _add(
+            findings,
+            "warn",
+            "live_lane",
+            "Latest Discord live-lane intake was refused by routing.",
+            "Inspect routing_summary.latest_failed_routing_request and runtime_routing_policy.json.",
+            details=str(refusal.get("failure_reason") or ""),
+        )
 
     state_export = root / "state" / "logs" / "state_export.json"
     if state_export.exists():
@@ -1078,6 +1120,7 @@ def build_doctor_report(root: Path) -> dict:
         "groups": grouped,
         "next_actions": next_actions,
         "regression_pack": regression["payload"] if regression["ok"] else None,
+        "live_lane_diagnostic": live_lane_diagnostic,
     }
 
 
@@ -1101,6 +1144,16 @@ def render_doctor_report(report: dict) -> str:
             f"skill_candidates={report['summary'].get('skill_candidates', 0)}"
         ),
     ]
+    live_lane = report.get("live_lane_diagnostic") or {}
+    if live_lane:
+        lines.append(
+            "live_lane: "
+            f"route_selected={live_lane.get('route_selected')} "
+            f"backend_execution_attempted={live_lane.get('backend_execution_attempted')} "
+            f"failure_category={live_lane.get('failure_category') or 'none'} "
+            f"selected_model={live_lane.get('selected_model_name') or 'unknown'} "
+            f"selected_host={live_lane.get('selected_host_name') or 'unknown'}"
+        )
     for category, items in report["groups"].items():
         noteworthy = [item for item in items if item["status"] != "pass"]
         if not noteworthy:

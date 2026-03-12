@@ -9,6 +9,7 @@ from runtime.core.task_store import load_task, save_task
 from runtime.core.status import build_status
 from runtime.dashboard.operator_snapshot import build_operator_snapshot
 from runtime.dashboard.state_export import build_state_export
+from scripts.preflight_lib import build_doctor_report
 
 
 def _latest_discord_row(payload: dict) -> dict:
@@ -45,8 +46,12 @@ def test_discord_origin_task_surfaces_route_metadata_in_live_ops_summary(tmp_pat
     assert status_row["selected_host_name"] == "NIMO"
     assert status_row["workload_type"] == "general"
     assert status_row["routing_decision_id"]
+    assert status_row["route_selected"] is True
+    assert status_row["backend_execution_attempted"] is False
     assert snapshot_row["selected_host_name"] == "NIMO"
     assert export_row["selected_model_name"] == "Qwen3.5-9B"
+    assert status["discord_live_ops_summary"]["live_lane_diagnostic"]["route_selected"] is True
+    assert status["discord_live_ops_summary"]["live_lane_diagnostic"]["backend_execution_attempted"] is False
 
 
 def test_discord_live_ops_summary_preserves_timeout_and_degraded_context(tmp_path: Path):
@@ -118,12 +123,20 @@ def test_discord_live_ops_summary_preserves_timeout_and_degraded_context(tmp_pat
     export_row = _latest_discord_row(export_payload)
 
     assert status_row["backend_failure_category"] == "model_timeout"
+    assert status_row["route_selected"] is True
+    assert status_row["backend_execution_attempted"] is True
+    assert status_row["timeout_stage"] == "model"
     assert status_row["degraded_fallback_blocked"] is True
+    assert status_row["degraded_fallback_legal"] is False
     assert status_row["degraded_fallback_legality_reasons"] == ["policy_blocked"]
     assert status_row["degraded_failure_category"] == "backend_timeout"
+    assert status_row["last_failure_category"] == "degraded_fallback_blocked"
     assert status_row["last_failure_reason"] == "Degraded fallback blocked by policy"
+    assert "degradation_summary.latest_degradation_event" in status_row["next_inspect"]
     assert snapshot_row["degraded_fallback_blocked"] is True
     assert export_row["backend_failure_category"] == "model_timeout"
+    assert status["discord_live_ops_summary"]["live_lane_diagnostic"]["failure_category"] == "degraded_fallback_blocked"
+    assert status["discord_live_ops_summary"]["live_lane_diagnostic"]["timeout_stage"] == "model"
 
 
 def test_discord_live_ops_summary_surfaces_governance_blocked_publish(tmp_path: Path):
@@ -178,8 +191,10 @@ def test_discord_live_ops_summary_surfaces_governance_blocked_publish(tmp_path: 
     assert result["error_type"] == "governance_blocked"
     assert status_row["last_failure_category"] == "governance_blocked"
     assert "reviewer lane is unavailable or uncleared" in str(status_row["governance_block_reason"])
+    assert "promotion_governance_summary.latest_blocked_action" in status_row["next_inspect"]
     assert snapshot_row["governance_blocked_action_id"] == result["blocked"]["blocked_action_id"]
     assert export_row["governance_block_reason"] == result["blocked"]["reason"]
+    assert status["discord_live_ops_summary"]["live_lane_diagnostic"]["failure_category"] == "governance_blocked"
 
 
 def test_discord_routing_refusal_surfaces_in_live_ops_summary(tmp_path: Path):
@@ -226,3 +241,61 @@ def test_discord_routing_refusal_surfaces_in_live_ops_summary(tmp_path: Path):
     assert status["discord_live_ops_summary"]["latest_discord_routing_refusal"]["channel"] == "discord_jarvis"
     assert snapshot["discord_live_ops_summary"]["latest_discord_routing_refusal"]["preferred_host_role"] == "burst"
     assert export_payload["discord_live_ops_summary"]["latest_discord_routing_refusal"]["allowed_host_roles"] == ["burst"]
+    assert status["discord_live_ops_summary"]["live_lane_diagnostic"]["failure_category"] == "routing_refused"
+    assert status["discord_live_ops_summary"]["live_lane_diagnostic"]["route_selected"] is False
+    assert "routing_summary.latest_failed_routing_request" in status["discord_live_ops_summary"]["live_lane_diagnostic"]["next_inspect"]
+
+
+def test_doctor_report_surfaces_live_lane_diagnostic(tmp_path: Path):
+    created = create_task_from_message(
+        text="task: investigate this failing model run",
+        user="tester",
+        lane="jarvis",
+        channel="discord_jarvis",
+        message_id="discord_msg_doctor",
+        root=tmp_path,
+    )
+    task = load_task(created["task_id"], root=tmp_path)
+    assert task is not None
+    routing = (task.backend_metadata or {}).get("routing") or {}
+    request = record_backend_execution_request(
+        task_id=task.task_id,
+        actor="tester",
+        lane="discord",
+        request_kind="discord_generation",
+        execution_backend=task.execution_backend,
+        provider_id=str(routing.get("provider_id") or "qwen"),
+        model_name=task.assigned_model,
+        routing_decision_id=routing.get("routing_decision_id"),
+        provider_adapter_result_id=routing.get("provider_adapter_result_id"),
+        input_summary="discord task execution",
+        source_refs={"source_channel": task.source_channel},
+        status="failed",
+        root=tmp_path,
+    )
+    record_backend_execution_result(
+        backend_execution_request_id=request.backend_execution_request_id,
+        task_id=task.task_id,
+        actor="tester",
+        lane="discord",
+        request_kind="discord_generation",
+        execution_backend=task.execution_backend,
+        provider_id=str(routing.get("provider_id") or "qwen"),
+        model_name=task.assigned_model,
+        status="failed",
+        error="upstream connection refused",
+        outcome_summary="external runtime unreachable",
+        metadata={"failure_category": "external_runtime_unreachable"},
+        root=tmp_path,
+    )
+
+    report = build_doctor_report(tmp_path)
+
+    assert report["live_lane_diagnostic"]["route_selected"] is True
+    assert report["live_lane_diagnostic"]["backend_execution_attempted"] is True
+    assert report["live_lane_diagnostic"]["failure_category"] == "external_runtime_unreachable"
+    assert "external runtime reachability" in report["live_lane_diagnostic"]["next_inspect"]
+    assert any(
+        item["message"].startswith("Latest Discord live-lane task is degraded or blocked: external_runtime_unreachable.")
+        for item in report["groups"].get("live_lane", [])
+    )
