@@ -82,7 +82,25 @@ def _is_real_user_query(text: str) -> bool:
     normalized = str(text or "").strip()
     if not normalized:
         return False
-    return not normalized.lower().startswith("conversation info (untrusted metadata):")
+    lowered = normalized.lower()
+    if not lowered.startswith("conversation info (untrusted metadata):"):
+        return True
+    marker = "\n\nsender (untrusted metadata):"
+    marker_index = lowered.find(marker)
+    if marker_index == -1:
+        return False
+    trailing = normalized[marker_index + len(marker):].strip()
+    if not trailing:
+        return False
+    lines = [line.rstrip() for line in trailing.splitlines()]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return False
+    last_line = lines[-1].strip()
+    if not last_line or last_line.startswith("```") or last_line.startswith("{") or last_line.startswith("}"):
+        return False
+    return True
 
 
 def _load_jsonl_rows(path: Path) -> tuple[list[dict[str, Any]], int]:
@@ -139,6 +157,7 @@ def list_discord_session_bindings(
 
 def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
     session_path = binding.get("session_path")
+    session_file_missing = isinstance(session_path, Path) and not session_path.exists()
     rows, parse_errors = _load_jsonl_rows(session_path) if isinstance(session_path, Path) else ([], 0)
     valid_user_query_count = 0
     last_user_query = ""
@@ -165,7 +184,9 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
             last_template_error_at = str(row.get("timestamp") or "")
 
     malformed_reason = ""
-    if explicit_template_error:
+    if session_file_missing:
+        malformed_reason = "malformed_session_file_missing"
+    elif explicit_template_error:
         malformed_reason = "malformed_session_template_no_user_query"
     elif valid_user_query_count == 0:
         malformed_reason = "malformed_session_no_valid_user_query"
@@ -190,6 +211,7 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
         "latest_template_error": latest_template_error,
         "last_template_error_at": last_template_error_at,
         "parse_error_count": parse_errors,
+        "session_file_missing": session_file_missing,
         "malformed": malformed,
         "malformed_reason": malformed_reason,
         "operator_action_required": (

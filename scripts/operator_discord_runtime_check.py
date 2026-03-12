@@ -6,12 +6,14 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.status import build_status
+from runtime.integrations.openclaw_sessions import resolve_openclaw_root
 from scripts.preflight_lib import write_report
 
 
@@ -25,7 +27,7 @@ def _nonempty(*values: Any) -> Any:
             continue
         if value == "":
             continue
-            return value
+        return value
     return None
 
 
@@ -33,9 +35,56 @@ def _classify_runtime_host(host_name: str) -> str:
     normalized = str(host_name or "").strip().upper()
     if normalized == "NIMO":
         return "NIMO"
+    if normalized in {"KOOLKID", "KOOLKIDCLUB"}:
+        return "KOOLKID"
+    if normalized in {"SNOWGLOBE_LOCAL", "SNOWGLOBE"}:
+        return "SNOWGLOBE_LOCAL"
     if normalized == "LOCAL":
         return "LOCAL"
     return "unknown"
+
+
+def _classify_runtime_host_from_url(base_url: str) -> str:
+    parsed = urlparse(str(base_url or "").strip())
+    host = (parsed.hostname or "").strip().lower()
+    if host == "100.70.114.34":
+        return "NIMO"
+    if host == "100.84.23.108":
+        return "KOOLKID"
+    if host in {"127.0.0.1", "localhost", "::1"}:
+        return "SNOWGLOBE_LOCAL"
+    return "unknown"
+
+
+def _load_openclaw_provider_runtime(*, root: Path, provider_id: str) -> dict[str, Any]:
+    if not provider_id:
+        return {}
+    openclaw_root = resolve_openclaw_root(repo_root=root)
+    if openclaw_root is None:
+        return {}
+    config_path = openclaw_root / "openclaw.json"
+    if not config_path.exists():
+        return {}
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    provider = (
+        (((config.get("models") or {}).get("providers") or {}).get(provider_id))
+        or {}
+    )
+    if not isinstance(provider, dict):
+        return {}
+    base_url = str(provider.get("baseUrl") or "").strip()
+    api = str(provider.get("api") or "").strip()
+    host_classification = _classify_runtime_host_from_url(base_url)
+    return {
+        "provider_id": provider_id,
+        "base_url": base_url,
+        "api": api,
+        "host_classification": host_classification,
+        "host_name": host_classification if host_classification != "unknown" else "",
+    }
 
 
 def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
@@ -48,6 +97,8 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
     latest_attempt = dict(bridge.get("latest_attempt") or {})
     latest_bridge_failure = dict(bridge.get("latest_failure") or {})
     session_summary = dict(status.get("openclaw_discord_session_summary") or {})
+    recent_sessions = list(session_summary.get("recent_discord_sessions") or [])
+    latest_session = dict(recent_sessions[0] or {}) if recent_sessions else {}
     latest_malformed = dict(session_summary.get("latest_malformed_session") or {})
     routing_control = dict(status.get("routing_control_plane_summary") or {})
     latest_selected_route = dict(routing_control.get("latest_selected_route") or {})
@@ -56,6 +107,8 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
         live_lane.get("selected_provider_id"),
         latest_task.get("provider_id"),
         latest_attempt.get("selected_provider_id"),
+        latest_session.get("selected_provider_id"),
+        latest_session.get("provider_override"),
         latest_malformed.get("selected_provider_id"),
         latest_malformed.get("provider_override"),
     )
@@ -63,21 +116,28 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
         live_lane.get("selected_model_name"),
         latest_task.get("selected_model_name"),
         latest_attempt.get("selected_model_name"),
+        latest_session.get("selected_model_name"),
+        latest_session.get("model_override"),
         latest_malformed.get("selected_model_name"),
         latest_malformed.get("model_override"),
     )
+    provider_runtime = _load_openclaw_provider_runtime(root=root, provider_id=str(active_provider or ""))
     active_backend = _nonempty(
         live_lane.get("selected_backend"),
         latest_task.get("execution_backend"),
         latest_selected_route.get("execution_backend"),
+        provider_runtime.get("api"),
     )
     active_host = _nonempty(
         live_lane.get("selected_host_name"),
         latest_task.get("selected_host_name"),
         latest_selected_route.get("host_name"),
+        provider_runtime.get("host_name"),
     )
+    active_endpoint = _nonempty(provider_runtime.get("base_url"))
     route_selected = bool(live_lane.get("route_selected"))
     backend_execution_attempted = bool(live_lane.get("backend_execution_attempted"))
+    latest_attempt_present = bool(latest_attempt)
     last_failure_category = str(
         _nonempty(
             live_lane.get("failure_category"),
@@ -101,6 +161,9 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
     if not active_provider or not active_model or not active_backend:
         blocking_reasons.append("Active Discord provider/model/backend truth is incomplete.")
         required_actions.append("Run a fresh Discord request and inspect the resulting bridge/live-lane summaries.")
+    if not (route_selected or backend_execution_attempted or latest_attempt_present):
+        blocking_reasons.append("No fresh Discord route/execution evidence is present.")
+        required_actions.append("Send one fresh Discord message and re-run `python3 scripts/operator_discord_runtime_check.py --json`.")
     if not session_looks_healthy:
         blocking_reasons.append("Malformed Discord session state detected.")
         required_actions.append(
@@ -126,6 +189,16 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
                 "provider_id": active_provider,
                 "model_name": active_model,
                 "backend_runtime": active_backend,
+                "endpoint": active_endpoint,
+            },
+        },
+        {
+            "name": "live_execution_evidence_present",
+            "ok": bool(route_selected or backend_execution_attempted or latest_attempt_present),
+            "details": {
+                "route_selected": route_selected,
+                "backend_execution_attempted": backend_execution_attempted,
+                "bridge_attempt_present": latest_attempt_present,
             },
         },
         {
@@ -155,6 +228,7 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
         "active_provider_id": active_provider,
         "active_model": active_model,
         "active_backend_runtime": active_backend,
+        "active_endpoint": active_endpoint,
         "active_host_name": active_host,
         "active_host_classification": _classify_runtime_host(str(active_host or "")),
         "route_selected": route_selected,
