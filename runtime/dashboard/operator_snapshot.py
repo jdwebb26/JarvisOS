@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.status import summarize_status
+from runtime.dashboard.renderers.a2ui_renderer import render_operator_views
 from runtime.dashboard.status_names import normalize_status_summary
 from runtime.dashboard.runtime_5_2_prep import build_runtime_5_2_prep_summary
 from runtime.core.task_lease import build_task_lease_summary
@@ -276,6 +277,11 @@ def build_operator_snapshot(root: Path) -> dict:
             "skill_candidates": skill_scheduler_summary.get("registry_summary", {}).get("skill_candidate_summary", {}).get("skill_candidate_count", 0),
         },
     }
+    snapshot["ui_view_summary"] = render_operator_views(
+        root=root,
+        source_name="operator_snapshot",
+        source_payload=snapshot,
+    )
 
     out_path = root / "state" / "logs" / "operator_snapshot.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)

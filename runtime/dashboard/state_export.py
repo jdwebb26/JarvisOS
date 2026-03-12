@@ -24,6 +24,7 @@ from runtime.core.routing import build_model_registry_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.task_lease import build_task_lease_summary
 from runtime.core.token_budget import build_token_budget_summary
+from runtime.dashboard.renderers.a2ui_renderer import render_operator_views
 from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
@@ -889,6 +890,11 @@ def build_state_export(root: Path) -> dict:
         "latest_recovery_cycle_issue_count_after": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("active_issue_count_after"),
         "latest_recovery_cycle_stop_reason": (operator_recovery_cycles[-1] if operator_recovery_cycles else {}).get("stop_reason"),
     }
+    summary["ui_view_summary"] = render_operator_views(
+        root=root,
+        source_name="state_export",
+        source_payload=summary,
+    )
 
     out_path = root / "state" / "logs" / "state_export.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
