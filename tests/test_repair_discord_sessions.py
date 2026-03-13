@@ -8,6 +8,7 @@ from runtime.dashboard.state_export import build_state_export
 from runtime.integrations.openclaw_sessions import (
     build_openclaw_discord_session_integrity_summary,
     repair_discord_sessions,
+    sanitize_user_facing_assistant_reply,
 )
 from scripts.preflight_lib import build_doctor_report
 
@@ -121,3 +122,74 @@ def test_repair_discord_sessions_archives_and_unbinds_malformed_session(tmp_path
     assert session_key not in stored_index
     assert not session_file.exists()
     assert Path(repaired["archived_session_file"]).exists()
+
+
+def test_sanitize_user_facing_assistant_reply_strips_scaffold_and_missing_noise() -> None:
+    raw = """
+</context>
+<system_status>
+[MISSING] Expected at: /home/rollan/.openclaw/workspace/jarvis-v5/USER.md
+I've read SOUL.md and checked AGENTS.md.
+ShadowBroker is not installed.
+""".strip()
+
+    sanitized = sanitize_user_facing_assistant_reply(raw)
+
+    assert sanitized["was_sanitized"] is True
+    assert "</context>" not in sanitized["clean_text"]
+    assert "<system_status>" not in sanitized["clean_text"]
+    assert "[MISSING] Expected at:" not in sanitized["clean_text"]
+    assert "read SOUL.md" not in sanitized["clean_text"]
+    assert sanitized["clean_text"] == "ShadowBroker is not installed."
+
+
+def test_session_summary_exposes_clean_reply_separately_from_raw_diagnostics(tmp_path: Path) -> None:
+    openclaw_root = tmp_path / ".openclaw"
+    session_id = "sess_reply_1"
+    session_key = "agent:jarvis:discord:channel:789"
+    session_file = openclaw_root / "agents" / "jarvis" / "sessions" / f"{session_id}.jsonl"
+    _write_json(
+        openclaw_root / "agents" / "jarvis" / "sessions" / "sessions.json",
+        {
+            session_key: {
+                "sessionId": session_id,
+                "providerOverride": "lmstudio",
+                "modelOverride": "qwen/qwen3.5-9b",
+                "compactionCount": 0,
+                "lastChannel": "discord",
+                "sessionFile": str(session_file),
+            }
+        },
+    )
+    _write_jsonl(
+        session_file,
+        [
+            {
+                "type": "message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "do we have access to shadowbroker yet"}],
+                },
+            },
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "</context>\n<system_instructions>\n[MISSING] Expected at: /tmp/USER.md\nShadowBroker is not installed.",
+                        }
+                    ],
+                },
+            },
+        ],
+    )
+
+    summary = build_openclaw_discord_session_integrity_summary(repo_root=tmp_path, openclaw_root=openclaw_root)
+    latest = dict(summary["recent_discord_sessions"][0])
+
+    assert latest["latest_assistant_reply_raw"].startswith("</context>")
+    assert latest["latest_user_facing_reply"] == "ShadowBroker is not installed."
+    assert latest["latest_assistant_reply_contaminated"] is True
+    assert any(fragment == "</context>" for fragment in latest["latest_assistant_reply_findings"])

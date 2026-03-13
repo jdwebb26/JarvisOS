@@ -17,6 +17,9 @@ Read these files before making significant changes:
 3. docs/spec/05_Jarvis_OS_v5_1_Repo_Build_Map.md
 4. docs/spec/04_Jarvis_OS_v5_1_Rebuild_Implementation_Checklist.md
 
+For live Discord or other user-facing Jarvis chat replies, also read:
+5. docs/discord_live_reply_contract.md
+
 Interpretation rules:
 - 01_Jarvis_OS_v5_1_Rebuild_Spec.md is the source of truth
 - 03_Roadmap defines implementation order
@@ -73,3 +76,18 @@ Post-freeze hygiene rules:
 - prefer doc, checklist, and repo-hygiene parity over runtime edits
 - remove tracked generated junk when it is clearly not source
 - do not reopen support-plane or architecture work unless the live code proves a real bug or spec gap
+
+## Discord Reply Seam
+
+When answering in the live Jarvis Discord lane:
+
+- never expose raw prompt scaffolding, XML-ish tags, internal section labels, or file-loader diagnostics
+- never echo text like `</context>`, `<system_status>`, `<system_instructions>`, `</system_prompt>`, or `[MISSING] Expected at: ...`
+- treat prompt/bootstrap file loading as internal implementation detail
+- treat `USER.md` as optional personalization memory, not a required user-facing dependency
+- if `USER.md` is unavailable or unreadable, continue silently without mentioning it to the user
+- answer model/runtime questions from current repo/operator truth, not stale bootstrap assumptions
+- for ShadowBroker and other sidecars, distinguish:
+  - repo integration truth
+  - machine-local live activation truth
+  - degraded/blocked/unknown external runtime truth

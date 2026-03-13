@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Optional
@@ -12,6 +13,31 @@ from runtime.core.models import now_iso
 SESSION_TEMPLATE_ERROR_TOKENS = (
     "error rendering prompt with jinja template",
     "no user query found in messages",
+)
+
+USER_FACING_REPLY_TAG_LINES = {
+    "</context>",
+    "<system_status>",
+    "</system_status>",
+    "<system_instructions>",
+    "</system_instructions>",
+    "<system_prompt>",
+    "</system_prompt>",
+    "<agent>",
+    "</agent>",
+    "<user_ping>",
+    "</user_ping>",
+}
+USER_FACING_REPLY_DROP_PATTERNS = (
+    re.compile(r"^\[MISSING\]\s+Expected at:\s+.+$", re.IGNORECASE),
+    re.compile(r"^(i('| a)?m|i have|i've)\s+(read|checked|loaded)\s+(soul\.md|user\.md|agents\.md).*$", re.IGNORECASE),
+    re.compile(r"^(checked|read|loaded)\s+(soul\.md|user\.md|agents\.md).*$", re.IGNORECASE),
+)
+USER_FACING_REPLY_QUESTION_PATTERNS = (
+    re.compile(r"\bwhat'?s your model\b", re.IGNORECASE),
+    re.compile(r"\bwhat is your model\b", re.IGNORECASE),
+    re.compile(r"\bdo we have access to shadowbroker yet\b", re.IGNORECASE),
+    re.compile(r"\bshadowbroker\b", re.IGNORECASE),
 )
 
 
@@ -119,6 +145,44 @@ def _load_jsonl_rows(path: Path) -> tuple[list[dict[str, Any]], int]:
     return rows, parse_errors
 
 
+def sanitize_user_facing_assistant_reply(text: Any) -> dict[str, Any]:
+    raw = str(text or "").replace("\r\n", "\n")
+    if not raw.strip():
+        return {
+            "raw_text": raw,
+            "clean_text": "",
+            "was_sanitized": False,
+            "removed_fragments": [],
+            "contains_status_question": False,
+        }
+
+    removed_fragments: list[str] = []
+    clean_lines: list[str] = []
+    for original_line in raw.splitlines():
+        line = original_line.strip()
+        if not line:
+            clean_lines.append("")
+            continue
+        if line in USER_FACING_REPLY_TAG_LINES:
+            removed_fragments.append(line)
+            continue
+        if any(pattern.match(line) for pattern in USER_FACING_REPLY_DROP_PATTERNS):
+            removed_fragments.append(line)
+            continue
+        clean_lines.append(original_line.rstrip())
+
+    clean_text = "\n".join(clean_lines)
+    clean_text = re.sub(r"\n{3,}", "\n\n", clean_text).strip()
+    contains_status_question = any(pattern.search(raw) for pattern in USER_FACING_REPLY_QUESTION_PATTERNS)
+    return {
+        "raw_text": raw,
+        "clean_text": clean_text,
+        "was_sanitized": clean_text != raw.strip(),
+        "removed_fragments": removed_fragments,
+        "contains_status_question": contains_status_question,
+    }
+
+
 def list_discord_session_bindings(
     *,
     repo_root: Optional[Path] = None,
@@ -166,6 +230,10 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
     selected_provider_id = binding.get("provider_override") or ""
     selected_model_name = binding.get("model_override") or ""
     last_template_error_at = ""
+    latest_assistant_reply_raw = ""
+    latest_user_facing_reply = ""
+    latest_assistant_reply_findings: list[str] = []
+    latest_assistant_reply_contaminated = False
     for row in rows:
         if row.get("type") == "custom" and row.get("customType") == "model-snapshot":
             data = dict(row.get("data") or {})
@@ -177,6 +245,12 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
         if role == "user" and _is_real_user_query(text):
             valid_user_query_count += 1
             last_user_query = text
+        if role == "assistant":
+            latest_assistant_reply_raw = text or str(row.get("errorMessage") or "")
+            sanitized = sanitize_user_facing_assistant_reply(latest_assistant_reply_raw)
+            latest_user_facing_reply = str(sanitized.get("clean_text") or "")
+            latest_assistant_reply_findings = list(sanitized.get("removed_fragments") or [])
+            latest_assistant_reply_contaminated = bool(sanitized.get("was_sanitized"))
         searchable = " ".join([json.dumps(row, sort_keys=True), text]).lower()
         if any(token in searchable for token in SESSION_TEMPLATE_ERROR_TOKENS):
             explicit_template_error = True
@@ -207,6 +281,10 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
         "compaction_count": int(binding.get("compaction_count") or 0),
         "valid_user_query_count": valid_user_query_count,
         "last_user_query": last_user_query,
+        "latest_assistant_reply_raw": latest_assistant_reply_raw,
+        "latest_user_facing_reply": latest_user_facing_reply,
+        "latest_assistant_reply_contaminated": latest_assistant_reply_contaminated,
+        "latest_assistant_reply_findings": latest_assistant_reply_findings,
         "explicit_template_error": explicit_template_error,
         "latest_template_error": latest_template_error,
         "last_template_error_at": last_template_error_at,
