@@ -1,10 +1,10 @@
 {
   "ok": true,
   "verdict": "healthy",
-  "timestamp_utc": "2026-03-12T00:43:42.987390+00:00",
+  "timestamp_utc": "2026-03-12T14:56:00.501891+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "summary": {
-    "pass": 295,
+    "pass": 358,
     "warn": 0,
     "fail": 0,
     "tasks": 33,
@@ -19,7 +19,12 @@
     "outputs": 7,
     "backend_health_snapshots": 1,
     "accelerator_summaries": 1,
-    "eval_runs": 0
+    "eval_runs": 0,
+    "registered_nodes": 3,
+    "online_nodes": 1,
+    "task_leases": 0,
+    "approved_skills": 0,
+    "skill_candidates": 0
   },
   "groups": {
     "repo": [
@@ -33,6 +38,74 @@
         "status": "pass",
         "category": "repo",
         "message": "Git metadata directory is present."
+      }
+    ],
+    "runtime_prep": [
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Seeded node registry scaffolding.",
+        "details": "Koolkidclub, LOCAL, NIMO"
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Backend health scaffolding is present."
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Accelerator scaffolding is present."
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Eval run scaffolding directory is present."
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Node registry scaffolding is present.",
+        "details": "registered_nodes=3 online_nodes=1 burst_online=0"
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Primary node heartbeat is present."
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "No burst node is currently online; optional burst capacity remains non-critical."
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Task lease scaffolding is present.",
+        "details": "leases=0 active=0 expired=0 requeued=0"
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Skills scaffolding is present.",
+        "details": "approved_skills=0 skill_candidates=0 schedule_ready=0"
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Backend health scaffolding reports no degraded lanes."
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "5.2-prep runtime scaffolding summary loaded.",
+        "details": "backend_snapshots=1 accelerator_summaries=1 eval_runs=0 registered_nodes=3 online_nodes=1 task_leases=0 approved_skills=0 skill_candidates=0"
+      },
+      {
+        "status": "pass",
+        "category": "runtime_prep",
+        "message": "Node registry is readable; some optional nodes are offline or stale.",
+        "details": "Koolkidclub, LOCAL"
       }
     ],
     "filesystem": [
@@ -60,6 +133,11 @@
         "status": "pass",
         "category": "filesystem",
         "message": "Directory `runtime/dashboard` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime/dashboard/renderers` is present."
       },
       {
         "status": "pass",
@@ -105,6 +183,16 @@
         "status": "pass",
         "category": "filesystem",
         "message": "Directory `runtime/memory` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime/skills` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `runtime/ui` is present."
       },
       {
         "status": "pass",
@@ -224,6 +312,16 @@
       {
         "status": "pass",
         "category": "filesystem",
+        "message": "Directory `state/research_queries` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/evidence_bundles` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
         "message": "Directory `state/lab_run_requests` is present."
       },
       {
@@ -325,6 +423,41 @@
         "status": "pass",
         "category": "filesystem",
         "message": "Directory `state/accelerators` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/nodes` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/worker_heartbeats` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/task_leases` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/experiments` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/skills` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/skill_candidates` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `state/ui_views` is present."
       },
       {
         "status": "pass",
@@ -674,6 +807,21 @@
       {
         "status": "pass",
         "category": "filesystem",
+        "message": "Directory `workspace/vault` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `workspace/vault/artifacts` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `workspace/vault/briefs` is present."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
         "message": "Directory `workspace/inbox` is present."
       },
       {
@@ -695,6 +843,11 @@
         "status": "pass",
         "category": "filesystem",
         "message": "Directory `workspace/out` is writable."
+      },
+      {
+        "status": "pass",
+        "category": "filesystem",
+        "message": "Directory `workspace/vault` is writable."
       }
     ],
     "files": [
@@ -1101,6 +1254,66 @@
       {
         "status": "pass",
         "category": "files",
+        "message": "File `runtime/core/node_registry.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/core/task_lease.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/skills/registry.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/skills/skill_store.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/skills/skill_candidate.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/skills/skill_scheduler.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/ui/a2ui_schema.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/ui/component_catalog.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/dashboard/renderers/a2ui_renderer.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/memory/vault_export.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/memory/vault_index.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/memory/brief_builder.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
         "message": "File `runtime/core/provenance_store.py` is present."
       },
       {
@@ -1156,7 +1369,27 @@
       {
         "status": "pass",
         "category": "files",
+        "message": "File `runtime/integrations/research_backends.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/integrations/searxng_client.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/integrations/search_normalizer.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
         "message": "File `runtime/researchlab/runner.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/researchlab/evidence_bundle.py` is present."
       },
       {
         "status": "pass",
@@ -1172,6 +1405,16 @@
         "status": "pass",
         "category": "files",
         "message": "File `runtime/evals/scorers.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/researchlab/experiment_store.py` is present."
+      },
+      {
+        "status": "pass",
+        "category": "files",
+        "message": "File `runtime/researchlab/optimizer.py` is present."
       },
       {
         "status": "pass",
@@ -1309,34 +1552,36 @@
         "status": "pass",
         "category": "config",
         "message": "Live config `config/policies.yaml` has no obvious placeholders."
+      },
+      {
+        "status": "pass",
+        "category": "config",
+        "message": "Runtime routing policy config is valid.",
+        "details": "path=/home/rollan/.openclaw/workspace/jarvis-v5/config/runtime_routing_policy.json schema_version=v5.2_runtime_routing_v1"
       }
     ],
-    "runtime_prep": [
+    "vault": [
       {
         "status": "pass",
-        "category": "runtime_prep",
-        "message": "Backend health scaffolding is present."
-      },
+        "category": "vault",
+        "message": "Knowledge vault export scaffolding is present and non-authoritative.",
+        "details": "exports=0 exportable_artifacts=7"
+      }
+    ],
+    "experiments": [
       {
         "status": "pass",
-        "category": "runtime_prep",
-        "message": "Accelerator scaffolding is present."
-      },
+        "category": "experiments",
+        "message": "Self-optimization experiment scaffolding is present.",
+        "details": "experiments=0 frontier_size=0"
+      }
+    ],
+    "research": [
       {
         "status": "pass",
-        "category": "runtime_prep",
-        "message": "Eval run scaffolding directory is present."
-      },
-      {
-        "status": "pass",
-        "category": "runtime_prep",
-        "message": "Backend health scaffolding reports no degraded lanes."
-      },
-      {
-        "status": "pass",
-        "category": "runtime_prep",
-        "message": "5.2-prep runtime scaffolding summary loaded.",
-        "details": "backend_snapshots=1 accelerator_summaries=1 eval_runs=0"
+        "category": "research",
+        "message": "Research backend abstraction and evidence bundle scaffolding are present.",
+        "details": "backends=1 healthy_backends=0 evidence_bundles=0"
       }
     ],
     "imports": [
@@ -1354,6 +1599,66 @@
         "status": "pass",
         "category": "imports",
         "message": "Module `runtime.core.routing` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.core.node_registry` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.core.task_lease` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.skills.registry` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.skills.skill_store` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.skills.skill_candidate` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.skills.skill_scheduler` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.ui.a2ui_schema` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.ui.component_catalog` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.dashboard.renderers.a2ui_renderer` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.memory.vault_export` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.memory.vault_index` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.memory.brief_builder` imports cleanly."
       },
       {
         "status": "pass",
@@ -1403,7 +1708,27 @@
       {
         "status": "pass",
         "category": "imports",
+        "message": "Module `runtime.integrations.research_backends` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.integrations.searxng_client` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.integrations.search_normalizer` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
         "message": "Module `runtime.researchlab.runner` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.researchlab.evidence_bundle` imports cleanly."
       },
       {
         "status": "pass",
@@ -1419,6 +1744,16 @@
         "status": "pass",
         "category": "imports",
         "message": "Module `runtime.evals.scorers` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.researchlab.experiment_store` imports cleanly."
+      },
+      {
+        "status": "pass",
+        "category": "imports",
+        "message": "Module `runtime.researchlab.optimizer` imports cleanly."
       },
       {
         "status": "pass",
@@ -1541,7 +1876,7 @@
         "ok": true,
         "exit_code": 0,
         "payload_ok": true,
-        "stdout_head": "{\n  \"ok\": true,\n  \"skipped\": true,\n  \"reason\": \"readonly tasks.db: /home/rollan/.openclaw/workspace/tasks/tasks.db\"\n}",
+        "stdout_head": "{\n  \"ok\": true,\n  \"inserted_task_id\": 109,\n  \"inserted_title\": \"ops report e2e executor smoke 20260312_095557\",\n  \"executor_exit_code\": 0,\n  \"executor_stdout_head\": \"\",\n  \"executor_stderr_head\": \"\",\n  \"task_status\": \"done\",\n  \"task_result_path\": \"/home/rollan/.openclaw/workspace/tasks/results/109.md\",\n  \"artifact_exists\": true,\n  \"found_sections\": [\n    \"## Queue Counts\",\n    \"## Recently Completed / Updated Tasks\",\n    \"## Latest Artifact Paths\",\n    \"## Attention Items\",\n    \"## Next Human/Agent Action\"\n  ],\n  \"preview_head\": \"# Ops Report Improvement Task 109\\n\\n## Title\\nops report e2e exe",
         "stderr_head": ""
       },
       {
@@ -1549,7 +1884,7 @@
         "ok": true,
         "exit_code": 0,
         "payload_ok": true,
-        "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart router idempotency smoke 20260311_194341\",\n  \"task_id\": \"task_25afa7f3a94b\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_count_after_create\": 1,\n  \"approval_count_after_create\": 0,\n  \"second_route\": {\n    \"kind\": \"waiting_review\",\n    \"task_id\": \"task_25afa7f3a94b\",\n    \"review_id\": \"rev_3d00e97a34d6\",\n    \"reviewer_role\": \"anton\",\n    \"status\": \"pending\",\n    \"message\": \"A review already exists and is still pending.\"\n  },\n  \"review_cou",
+        "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart router idempotency smoke 20260312_095557\",\n  \"task_id\": \"task_e6d704974018\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_count_after_create\": 1,\n  \"approval_count_after_create\": 0,\n  \"second_route\": {\n    \"kind\": \"waiting_review\",\n    \"task_id\": \"task_e6d704974018\",\n    \"review_id\": \"rev_9ac7b4fbe091\",\n    \"reviewer_role\": \"anton\",\n    \"status\": \"pending\",\n    \"message\": \"A review already exists and is still pending.\"\n  },\n  \"review_cou",
         "stderr_head": ""
       },
       {
@@ -1557,7 +1892,7 @@
         "ok": true,
         "exit_code": 0,
         "payload_ok": true,
-        "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart ready-to-ship smoke 20260311_194341\",\n  \"task_id\": \"task_e4c2e1c50b90\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_id\": \"rev_04f28c13be73\",\n  \"status_after_review_approved\": \"waiting_approval\",\n  \"approval_id\": \"apr_35d5bd6cfb2e\",\n  \"approval_status_after_decision\": \"approved\",\n  \"final_outcome_before_approval_decision\": \"candidate_ready_for_live_apply\",\n  \"candidate_artifact_id\": \"art_b39f16c56297\",\n  \"final_task_status\": \"ready_to_sh",
+        "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart ready-to-ship smoke 20260312_095558\",\n  \"task_id\": \"task_0542ef10a54c\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_id\": \"rev_4fb52a2d7b2d\",\n  \"status_after_review_approved\": \"waiting_approval\",\n  \"approval_id\": \"apr_58cf0d23c848\",\n  \"approval_status_after_decision\": \"approved\",\n  \"final_outcome_before_approval_decision\": \"candidate_ready_for_live_apply\",\n  \"candidate_artifact_id\": \"art_752ba7a52ffb\",\n  \"final_task_status\": \"ready_to_sh",
         "stderr_head": ""
       },
       {
@@ -1565,9 +1900,25 @@
         "ok": true,
         "exit_code": 0,
         "payload_ok": true,
-        "stdout_head": "{\n  \"ok\": true,\n  \"temp_root\": \"/home/rollan/.openclaw/workspace/jarvis-v5/e2e_publish_complete_chain_fzsne7sp\",\n  \"task_id\": \"task_da84b5f969fe\",\n  \"artifact_id\": \"art_948d6c30bf01\",\n  \"intake_result\": {\n    \"kind\": \"task_created\",\n    \"task_created\": true,\n    \"task_id\": \"task_da84b5f969fe\",\n    \"short_summary\": \"deploy live production service restart e2e publish-complete smoke\",\n    \"initial_status\": \"queued\",\n    \"final_status\": \"waiting_review\",\n    \"progress_lane\": \"#tasks\",\n    \"review_expected\": true,\n    \"approval_expected\": true,\n    \"task_type\": \"deploy\",\n    \"priority\": \"normal\",\n ",
+        "stdout_head": "{\n  \"ok\": true,\n  \"temp_root\": \"/home/rollan/.openclaw/workspace/jarvis-v5/e2e_publish_complete_chain_0nd69a0s\",\n  \"task_id\": \"task_18849d772070\",\n  \"artifact_id\": \"art_9af86983dc32\",\n  \"intake_result\": {\n    \"kind\": \"task_created\",\n    \"ok\": true,\n    \"task_created\": true,\n    \"task_id\": \"task_18849d772070\",\n    \"short_summary\": \"deploy live production service restart e2e publish-complete smoke\",\n    \"initial_status\": \"queued\",\n    \"final_status\": \"waiting_review\",\n    \"progress_lane\": \"#tasks\",\n    \"review_expected\": true,\n    \"approval_expected\": true,\n    \"task_type\": \"deploy\",\n    \"priori",
         "stderr_head": ""
       }
     ]
+  },
+  "live_lane_diagnostic": {
+    "front_door": "discord",
+    "route_selected": false,
+    "backend_execution_attempted": false,
+    "selected_backend": null,
+    "selected_provider_id": null,
+    "selected_model_name": null,
+    "selected_node_role": null,
+    "selected_host_name": null,
+    "failure_category": "",
+    "failure_reason": "",
+    "timeout_stage": null,
+    "degraded_fallback_attempted": false,
+    "degraded_fallback_blocked": false,
+    "next_inspect": "Inspect the task row, routing metadata, and latest execution result."
   }
 }

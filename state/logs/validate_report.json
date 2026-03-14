@@ -1,18 +1,18 @@
 {
   "ok": true,
   "strict": false,
-  "timestamp_utc": "2026-03-12T00:43:41.080030+00:00",
+  "timestamp_utc": "2026-03-14T04:59:07.316815+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "requested_root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "summary": {
-    "pass": 291,
+    "pass": 387,
     "warn": 0,
     "fail": 0
   },
   "foundation": {
     "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
     "created_dirs": [],
-    "existing_dirs_count": 115,
+    "existing_dirs_count": 138,
     "copied_configs": {
       "config/app.yaml": "kept_existing",
       "config/channels.yaml": "kept_existing",
@@ -21,6 +21,125 @@
     },
     "runtime_5_2_prep": {
       "seeded_files": []
+    },
+    "default_nodes": [
+      {
+        "node_profile_id": "node_22e678328e33",
+        "created_at": "2026-03-12T01:19:09.547445+00:00",
+        "updated_at": "2026-03-13T06:11:45.853431+00:00",
+        "actor": "system",
+        "lane": "bootstrap",
+        "node_name": "NIMO",
+        "node_role": "primary",
+        "status": "healthy",
+        "authority_class": "suggest_only",
+        "available_backends": [
+          "qwen_planner",
+          "qwen_executor",
+          "operator"
+        ],
+        "accelerator_refs": [
+          "local_scaffolding_accelerator"
+        ],
+        "labels": [
+          "live_primary",
+          "scaffolding_seed"
+        ],
+        "metadata": {
+          "scaffolding_only": true,
+          "backend_summary": [
+            "qwen_planner",
+            "qwen_executor",
+            "operator"
+          ],
+          "model_family_summary": [
+            "qwen"
+          ],
+          "notes": [
+            "Primary durable node scaffold for 5.2 prep visibility."
+          ],
+          "last_seen_at": "2026-03-13T06:11:45.853057+00:00",
+          "last_heartbeat_status": "healthy",
+          "last_current_task_count": 0
+        },
+        "schema_version": "v5.1",
+        "version": "v1"
+      },
+      {
+        "node_profile_id": "node_69612aa8c4df",
+        "created_at": "2026-03-12T01:19:09.547836+00:00",
+        "updated_at": "2026-03-12T01:19:09.547853+00:00",
+        "actor": "system",
+        "lane": "bootstrap",
+        "node_name": "Koolkidclub",
+        "node_role": "burst",
+        "status": "stopped",
+        "authority_class": "suggest_only",
+        "available_backends": [],
+        "accelerator_refs": [],
+        "labels": [
+          "optional_burst",
+          "scaffolding_seed"
+        ],
+        "metadata": {
+          "scaffolding_only": true,
+          "optional": true,
+          "backend_summary": [],
+          "model_family_summary": [],
+          "notes": [
+            "Optional burst worker scaffold. Not part of the critical path."
+          ]
+        },
+        "schema_version": "v5.1",
+        "version": "v1"
+      },
+      {
+        "node_profile_id": "node_c410d6f430eb",
+        "created_at": "2026-03-12T03:34:44.528123+00:00",
+        "updated_at": "2026-03-12T03:34:44.528164+00:00",
+        "actor": "system",
+        "lane": "bootstrap",
+        "node_name": "LOCAL",
+        "node_role": "local",
+        "status": "healthy",
+        "authority_class": "suggest_only",
+        "available_backends": [
+          "memory_spine",
+          "evaluation_spine",
+          "operator"
+        ],
+        "accelerator_refs": [],
+        "labels": [
+          "live_local_support",
+          "routing_local_only"
+        ],
+        "metadata": {
+          "scaffolding_only": false,
+          "backend_summary": [
+            "memory_spine",
+            "evaluation_spine",
+            "operator"
+          ],
+          "model_family_summary": [
+            "local"
+          ],
+          "notes": [
+            "Local support node for local-only workloads such as embeddings."
+          ]
+        },
+        "schema_version": "v5.1",
+        "version": "v1"
+      }
+    ],
+    "vault_scaffold": {
+      "workspace_vault_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/vault",
+      "index_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/vault/index.json",
+      "created_dirs": [
+        "workspace/vault",
+        "workspace/vault/artifacts",
+        "workspace/vault/briefs"
+      ],
+      "export_count": 0
     }
   },
   "findings": [
@@ -34,6 +153,12 @@
       "status": "pass",
       "category": "repo",
       "message": "Git metadata directory is present."
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Seeded node registry scaffolding.",
+      "details": "Koolkidclub, LOCAL, NIMO"
     },
     {
       "status": "pass",
@@ -59,6 +184,11 @@
       "status": "pass",
       "category": "filesystem",
       "message": "Directory `runtime/dashboard` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/dashboard/renderers` is present."
     },
     {
       "status": "pass",
@@ -104,6 +234,31 @@
       "status": "pass",
       "category": "filesystem",
       "message": "Directory `runtime/memory` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/world_ops` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/adaptation_lab` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/optimizer` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/skills` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `runtime/ui` is present."
     },
     {
       "status": "pass",
@@ -223,6 +378,16 @@
     {
       "status": "pass",
       "category": "filesystem",
+      "message": "Directory `state/research_queries` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/evidence_bundles` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
       "message": "Directory `state/lab_run_requests` is present."
     },
     {
@@ -324,6 +489,121 @@
       "status": "pass",
       "category": "filesystem",
       "message": "Directory `state/accelerators` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/nodes` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/worker_heartbeats` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/task_leases` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/workspaces` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/world_ops_feeds` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/world_ops_events` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/world_ops_briefs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/world_ops_snapshots` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/shadowbroker_snapshots` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/shadowbroker_events` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/shadowbroker_backend_health` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/shadowbroker_briefs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/lane_activation` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/lane_activation_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/adaptation_jobs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/adaptation_datasets` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/adaptation_results` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/optimizer_runs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/optimizer_variants` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/experiments` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/skills` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/skill_candidates` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `state/ui_views` is present."
     },
     {
       "status": "pass",
@@ -673,6 +953,21 @@
     {
       "status": "pass",
       "category": "filesystem",
+      "message": "Directory `workspace/vault` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `workspace/vault/artifacts` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `workspace/vault/briefs` is present."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
       "message": "Directory `workspace/inbox` is present."
     },
     {
@@ -698,12 +993,27 @@
     {
       "status": "pass",
       "category": "files",
+      "message": "File `docs/external_lane_activation.md` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `docs/operator_go_live_checklist.md` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
       "message": "File `docs/operations.md` is present."
     },
     {
       "status": "pass",
       "category": "files",
       "message": "File `docs/runtime-regression-runbook.md` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `.env.external-lanes.example` is present."
     },
     {
       "status": "pass",
@@ -744,6 +1054,31 @@
       "status": "pass",
       "category": "files",
       "message": "File `scripts/operator_checkpoint_action_pack.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_activate_external_lanes.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_activate_local_model_lanes.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_discord_runtime_check.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/operator_go_live_gate.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `scripts/repair_discord_sessions.py` is present."
     },
     {
       "status": "pass",
@@ -1088,6 +1423,66 @@
     {
       "status": "pass",
       "category": "files",
+      "message": "File `runtime/core/node_registry.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/core/task_lease.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/skills/registry.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/skills/skill_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/skills/skill_candidate.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/skills/skill_scheduler.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/ui/a2ui_schema.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/ui/component_catalog.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/dashboard/renderers/a2ui_renderer.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/memory/vault_export.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/memory/vault_index.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/memory/brief_builder.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
       "message": "File `runtime/core/provenance_store.py` is present."
     },
     {
@@ -1143,7 +1538,27 @@
     {
       "status": "pass",
       "category": "files",
+      "message": "File `runtime/integrations/research_backends.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/integrations/searxng_client.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/integrations/search_normalizer.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
       "message": "File `runtime/researchlab/runner.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/researchlab/evidence_bundle.py` is present."
     },
     {
       "status": "pass",
@@ -1159,6 +1574,16 @@
       "status": "pass",
       "category": "files",
       "message": "File `runtime/evals/scorers.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/researchlab/experiment_store.py` is present."
+    },
+    {
+      "status": "pass",
+      "category": "files",
+      "message": "File `runtime/researchlab/optimizer.py` is present."
     },
     {
       "status": "pass",
@@ -1288,12 +1713,19 @@
     {
       "status": "pass",
       "category": "config",
-      "message": "config/models.yaml keeps model endpoints on localhost."
+      "message": "config/models.yaml uses trusted non-public runtime endpoints.",
+      "details": "100.70.114.34"
     },
     {
       "status": "pass",
       "category": "config",
       "message": "Live config `config/policies.yaml` has no obvious placeholders."
+    },
+    {
+      "status": "pass",
+      "category": "config",
+      "message": "Runtime routing policy config is valid.",
+      "details": "path=/home/rollan/.openclaw/workspace/jarvis-v5/config/runtime_routing_policy.json schema_version=v5.2_runtime_routing_v1"
     },
     {
       "status": "pass",
@@ -1304,6 +1736,11 @@
       "status": "pass",
       "category": "filesystem",
       "message": "Directory `workspace/out` is writable."
+    },
+    {
+      "status": "pass",
+      "category": "filesystem",
+      "message": "Directory `workspace/vault` is writable."
     },
     {
       "status": "pass",
@@ -1319,6 +1756,76 @@
       "status": "pass",
       "category": "runtime_prep",
       "message": "Eval run scaffolding directory is present."
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Node registry scaffolding is present.",
+      "details": "registered_nodes=3 online_nodes=1 burst_online=0"
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Primary node heartbeat is present."
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "No burst node is currently online; optional burst capacity remains non-critical."
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Task lease scaffolding is present.",
+      "details": "leases=0 active=0 expired=0 requeued=0"
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Workspace registry is present and keeps jarvis-v5 as central runtime truth.",
+      "details": "workspaces=1 default_home=jarvis_v5_runtime operator_approved=0 writable=1"
+    },
+    {
+      "status": "pass",
+      "category": "world_ops",
+      "message": "World-ops sidecar summary is readable and remains non-authoritative.",
+      "details": "active_feeds=0 degraded_feeds=0 recent_events=0"
+    },
+    {
+      "status": "pass",
+      "category": "adaptation_lab",
+      "message": "Adaptation lab sidecar summary is readable and remains eval/operator gated.",
+      "details": "datasets=0 jobs=0 blocked_jobs=0"
+    },
+    {
+      "status": "pass",
+      "category": "optimizer",
+      "message": "DSPy optimizer summary is readable and remains eval/operator gated.",
+      "details": "variants=0 runs=0 blocked_runs=0"
+    },
+    {
+      "status": "pass",
+      "category": "runtime_prep",
+      "message": "Skills scaffolding is present.",
+      "details": "approved_skills=0 skill_candidates=0 schedule_ready=0"
+    },
+    {
+      "status": "pass",
+      "category": "vault",
+      "message": "Knowledge vault export scaffolding is present and non-authoritative.",
+      "details": "exports=0 exportable_artifacts=7"
+    },
+    {
+      "status": "pass",
+      "category": "experiments",
+      "message": "Self-optimization experiment scaffolding is present.",
+      "details": "experiments=0 frontier_size=0"
+    },
+    {
+      "status": "pass",
+      "category": "research",
+      "message": "Research backend abstraction and evidence bundle scaffolding are present.",
+      "details": "backends=1 healthy_backends=0 evidence_bundles=26"
     },
     {
       "status": "pass",
@@ -1339,6 +1846,66 @@
       "status": "pass",
       "category": "imports",
       "message": "Module `runtime.core.routing` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.node_registry` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.core.task_lease` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.skills.registry` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.skills.skill_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.skills.skill_candidate` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.skills.skill_scheduler` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.ui.a2ui_schema` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.ui.component_catalog` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.dashboard.renderers.a2ui_renderer` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.memory.vault_export` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.memory.vault_index` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.memory.brief_builder` imports cleanly."
     },
     {
       "status": "pass",
@@ -1388,7 +1955,27 @@
     {
       "status": "pass",
       "category": "imports",
+      "message": "Module `runtime.integrations.research_backends` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.integrations.searxng_client` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.integrations.search_normalizer` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
       "message": "Module `runtime.researchlab.runner` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.researchlab.evidence_bundle` imports cleanly."
     },
     {
       "status": "pass",
@@ -1404,6 +1991,31 @@
       "status": "pass",
       "category": "imports",
       "message": "Module `runtime.evals.scorers` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.researchlab.experiment_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.researchlab.optimizer` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.optimizer.dspy_runner` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.optimizer.variant_store` imports cleanly."
+    },
+    {
+      "status": "pass",
+      "category": "imports",
+      "message": "Module `runtime.optimizer.eval_gate` imports cleanly."
     },
     {
       "status": "pass",

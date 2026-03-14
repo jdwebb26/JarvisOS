@@ -1,6 +1,142 @@
 {
   "rows": [
     {
+      "event_id": "evt_4ffad65ffef6",
+      "task_id": "task_84d4ec9cfd46",
+      "event_type": "review_recorded",
+      "actor": "operator",
+      "lane": "review",
+      "created_at": "2026-03-11T04:05:48.710189+00:00",
+      "from_status": null,
+      "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
+      "checkpoint_summary": "Review verdict recorded: approved",
+      "reason": "Approved from checkpoint pack for task_84d4ec9cfd46",
+      "final_outcome": null,
+      "artifact_id": null,
+      "artifact_type": null,
+      "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "review",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
+      "already_linked": null
+    },
+    {
+      "event_id": "evt_cde3e6ae1f9a",
+      "task_id": "task_84d4ec9cfd46",
+      "event_type": "approval_requested",
+      "actor": "operator",
+      "lane": "review",
+      "created_at": "2026-03-11T04:05:48.559587+00:00",
+      "from_status": "waiting_approval",
+      "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
+      "checkpoint_summary": "Approval required after review approval: deploy live production service restart regression smoke 20260309_115921",
+      "reason": "Approval required after review approval: deploy live production service restart regression smoke 20260309_115921",
+      "final_outcome": null,
+      "artifact_id": null,
+      "artifact_type": null,
+      "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "review",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "waiting_approval"
+      },
+      "already_linked": null
+    },
+    {
+      "event_id": "evt_0c5d8cb014fb",
+      "task_id": "task_84d4ec9cfd46",
+      "event_type": "status_transition",
+      "actor": "operator",
+      "lane": "review",
+      "created_at": "2026-03-11T04:05:48.559403+00:00",
+      "from_status": "waiting_review",
+      "to_status": "waiting_approval",
+      "from_lifecycle_state": "working",
+      "to_lifecycle_state": "working",
+      "checkpoint_summary": "Approval requested from anton",
+      "reason": "Approval required after review approval: deploy live production service restart regression smoke 20260309_115921",
+      "final_outcome": null,
+      "artifact_id": null,
+      "artifact_type": null,
+      "artifact_title": null,
+      "execution_backend": "unassigned",
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "review",
+        "execution_backend": "unassigned"
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_approval"
+      },
+      "already_linked": null
+    },
+    {
+      "event_id": "evt_d9b4b3f03ce0",
+      "task_id": "task_84d4ec9cfd46",
+      "event_type": "approval_checkpoint_created",
+      "actor": "operator",
+      "lane": "review",
+      "created_at": "2026-03-11T04:05:48.558338+00:00",
+      "from_status": "waiting_review",
+      "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
+      "checkpoint_summary": "Approval required after review approval: deploy live production service restart regression smoke 20260309_115921",
+      "reason": "Approved from checkpoint pack for task_84d4ec9cfd46",
+      "final_outcome": null,
+      "artifact_id": null,
+      "artifact_type": null,
+      "artifact_title": null,
+      "execution_backend": "unassigned",
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "review",
+        "execution_backend": "unassigned"
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_approval"
+      },
+      "already_linked": null
+    },
+    {
       "event_id": "evt_e5ec73cd34cb",
       "task_id": "task_d7b35612e2c7",
       "event_type": "approval_recorded",
@@ -9,12 +145,29 @@
       "created_at": "2026-03-10T02:28:45.964397+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval decision recorded: approved",
       "reason": "approved after real candidate arm/write dry-run",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "anton",
+        "lane": "review",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -26,12 +179,29 @@
       "created_at": "2026-03-10T02:28:45.964112+00:00",
       "from_status": "waiting_approval",
       "to_status": "ready_to_ship",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval granted: apr_fe7e884155a7",
       "reason": "approved after real candidate arm/write dry-run",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "anton",
+        "lane": "review",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "ready_to_ship"
+      },
       "already_linked": null
     },
     {
@@ -43,12 +213,29 @@
       "created_at": "2026-03-10T01:40:01.613963+00:00",
       "from_status": "shipped",
       "to_status": "completed",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": null,
       "reason": "Task completed.",
       "final_outcome": "Published recovered live apply report for local_executor.py after successful controlled Qwen apply.",
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "outputs",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "shipped",
+        "to_status": "completed"
+      },
       "already_linked": null
     },
     {
@@ -60,12 +247,29 @@
       "created_at": "2026-03-10T01:40:01.612877+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Output published: out_88b300de8685",
       "reason": "Recovered live apply artifact for local_executor.py; applied=True; rolled_back=False; smoke_ok=True",
       "final_outcome": null,
       "artifact_id": "art_c5eebd93028d",
       "artifact_type": "live_apply_report",
       "artifact_title": "Live Apply Report \u2014 local_executor.py",
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "outputs",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": "art_c5eebd93028d",
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -77,12 +281,29 @@
       "created_at": "2026-03-10T01:39:51.829778+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Artifact linked: art_c5eebd93028d",
       "reason": null,
       "final_outcome": null,
       "artifact_id": "art_c5eebd93028d",
       "artifact_type": "live_apply_report",
       "artifact_title": "Live Apply Report \u2014 local_executor.py",
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "apply",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": "art_c5eebd93028d",
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": false
     },
     {
@@ -94,12 +315,29 @@
       "created_at": "2026-03-10T00:48:23.140013+00:00",
       "from_status": "ready_to_ship",
       "to_status": "shipped",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Live candidate apply succeeded",
       "reason": "target_file=/home/rollan/.openclaw/workspace/tasks/local_executor.py\ncandidate_file=/home/rollan/.openclaw/workspace/artifacts/qwen_live/2026-03-09/candidates/local_executor.py\nlive_apply_artifact=/home/rollan/.openclaw/workspace/artifacts/qwen_live/2026-03-09/20260309_194823_live_apply.md",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "qwen_candidate_applier",
+        "lane": "apply",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "ready_to_ship",
+        "to_status": "shipped"
+      },
       "already_linked": null
     },
     {
@@ -111,12 +349,29 @@
       "created_at": "2026-03-09T18:54:29.407841+00:00",
       "from_status": "shipped",
       "to_status": "completed",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": null,
       "reason": "Task completed.",
       "final_outcome": "Used existing published output out_9bc70bf935b4 from artifact art_publish_smoke_20260309_125152.",
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "outputs",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "shipped",
+        "to_status": "completed"
+      },
       "already_linked": null
     },
     {
@@ -128,12 +383,29 @@
       "created_at": "2026-03-09T18:08:04.314390+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Output published: out_9bc70bf935b4",
       "reason": "tiny linked artifact for publish_complete smoke",
       "final_outcome": null,
       "artifact_id": "art_publish_smoke_20260309_125152",
       "artifact_type": "report",
       "artifact_title": "publish smoke artifact art_publish_smoke_20260309_125152",
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "operator",
+        "lane": "outputs",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": "art_publish_smoke_20260309_125152",
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -145,12 +417,29 @@
       "created_at": "2026-03-09T17:26:05.190942+00:00",
       "from_status": "ready_to_ship",
       "to_status": "shipped",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Live candidate apply succeeded",
       "reason": "target_file=/home/rollan/.openclaw/workspace/tasks/local_executor.py\ncandidate_file=/home/rollan/.openclaw/workspace/artifacts/qwen_live/2026-03-09/apply_candidates/local_executor.write_ops_report_artifact.scope_patch.py\nlive_apply_artifact=/home/rollan/.openclaw/workspace/artifacts/qwen_live/2026-03-09/20260309_122605_live_apply.md",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "qwen_candidate_applier",
+        "lane": "apply",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "ready_to_ship",
+        "to_status": "shipped"
+      },
       "already_linked": null
     },
     {
@@ -162,12 +451,29 @@
       "created_at": "2026-03-09T17:16:38.329518+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval decision recorded: approved",
       "reason": "ready_to_ship smoke approval approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -179,12 +485,29 @@
       "created_at": "2026-03-09T17:16:38.329311+00:00",
       "from_status": "waiting_approval",
       "to_status": "ready_to_ship",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval granted: apr_fbdec31901b6",
       "reason": "ready_to_ship smoke approval approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "ready_to_ship"
+      },
       "already_linked": null
     },
     {
@@ -196,12 +519,29 @@
       "created_at": "2026-03-09T17:16:38.315514+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review verdict recorded: approved",
       "reason": "ready_to_ship smoke review approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -213,12 +553,29 @@
       "created_at": "2026-03-09T17:16:38.304063+00:00",
       "from_status": "waiting_approval",
       "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval request created: apr_fbdec31901b6",
       "reason": "Approval required after review approval: deploy live production service restart ready-to-ship smoke 20260309_121638",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "waiting_approval"
+      },
       "already_linked": null
     },
     {
@@ -230,12 +587,29 @@
       "created_at": "2026-03-09T17:16:38.303901+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval requested from anton",
       "reason": "Approval required after review approval: deploy live production service restart ready-to-ship smoke 20260309_121638",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_approval"
+      },
       "already_linked": null
     },
     {
@@ -247,12 +621,29 @@
       "created_at": "2026-03-09T17:16:38.288947+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review request created: rev_3f8e740e2c45",
       "reason": "Review required for task task_cec3239feefb: deploy live production service restart ready-to-ship smoke 20260309_121638",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -264,12 +655,29 @@
       "created_at": "2026-03-09T17:16:38.288749+00:00",
       "from_status": "queued",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review requested from anton",
       "reason": "Review required for task task_cec3239feefb: deploy live production service restart ready-to-ship smoke 20260309_121638",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "queued",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -281,12 +689,29 @@
       "created_at": "2026-03-09T17:16:38.285745+00:00",
       "from_status": null,
       "to_status": "queued",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Task created: deploy live production service restart ready-to-ship smoke 20260309_121638",
       "reason": null,
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": "queued"
+      },
       "already_linked": null
     },
     {
@@ -298,12 +723,29 @@
       "created_at": "2026-03-09T17:11:31.662771+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval decision recorded: approved",
       "reason": "ready_to_ship smoke approval approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -315,12 +757,29 @@
       "created_at": "2026-03-09T17:11:31.662597+00:00",
       "from_status": "waiting_approval",
       "to_status": "ready_to_ship",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval granted: apr_54d59595e889",
       "reason": "ready_to_ship smoke approval approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "ready_to_ship"
+      },
       "already_linked": null
     },
     {
@@ -332,12 +791,29 @@
       "created_at": "2026-03-09T17:11:31.648886+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review verdict recorded: approved",
       "reason": "ready_to_ship smoke review approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -349,12 +825,29 @@
       "created_at": "2026-03-09T17:11:31.638136+00:00",
       "from_status": "waiting_approval",
       "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval request created: apr_54d59595e889",
       "reason": "Approval required after review approval: deploy live production service restart ready-to-ship smoke 20260309_121131",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "waiting_approval"
+      },
       "already_linked": null
     },
     {
@@ -366,12 +859,29 @@
       "created_at": "2026-03-09T17:11:31.637972+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval requested from anton",
       "reason": "Approval required after review approval: deploy live production service restart ready-to-ship smoke 20260309_121131",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_approval"
+      },
       "already_linked": null
     },
     {
@@ -383,12 +893,29 @@
       "created_at": "2026-03-09T17:11:31.622840+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review request created: rev_0e7fa7d2ac68",
       "reason": "Review required for task task_6229f00fea37: deploy live production service restart ready-to-ship smoke 20260309_121131",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -400,12 +927,29 @@
       "created_at": "2026-03-09T17:11:31.622648+00:00",
       "from_status": "queued",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review requested from anton",
       "reason": "Review required for task task_6229f00fea37: deploy live production service restart ready-to-ship smoke 20260309_121131",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "queued",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -417,12 +961,29 @@
       "created_at": "2026-03-09T17:11:31.619442+00:00",
       "from_status": null,
       "to_status": "queued",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Task created: deploy live production service restart ready-to-ship smoke 20260309_121131",
       "reason": null,
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "ready_to_ship_smoke",
+        "lane": "ready_to_ship_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": "queued"
+      },
       "already_linked": null
     },
     {
@@ -434,12 +995,29 @@
       "created_at": "2026-03-09T17:07:22.777483+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval decision recorded: approved",
       "reason": "task store transition smoke approval approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "task_store_smoke",
+        "lane": "task_store_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -451,12 +1029,29 @@
       "created_at": "2026-03-09T17:07:22.777328+00:00",
       "from_status": "waiting_approval",
       "to_status": "queued",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval granted: apr_430eb52b4c1c",
       "reason": "task store transition smoke approval approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "task_store_smoke",
+        "lane": "task_store_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "queued"
+      },
       "already_linked": null
     },
     {
@@ -468,12 +1063,29 @@
       "created_at": "2026-03-09T17:07:22.765820+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review verdict recorded: approved",
       "reason": "task store transition smoke review approval",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "task_store_smoke",
+        "lane": "task_store_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -485,12 +1097,29 @@
       "created_at": "2026-03-09T17:07:22.755298+00:00",
       "from_status": "waiting_approval",
       "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval request created: apr_430eb52b4c1c",
       "reason": "Approval required after review approval: deploy live production service restart task-store transition smoke 20260309_120722",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "task_store_smoke",
+        "lane": "task_store_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "waiting_approval"
+      },
       "already_linked": null
     },
     {
@@ -502,12 +1131,29 @@
       "created_at": "2026-03-09T17:07:22.755141+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval requested from anton",
       "reason": "Approval required after review approval: deploy live production service restart task-store transition smoke 20260309_120722",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "task_store_smoke",
+        "lane": "task_store_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_approval"
+      },
       "already_linked": null
     },
     {
@@ -519,12 +1165,29 @@
       "created_at": "2026-03-09T17:07:22.740878+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review request created: rev_8e6666ba005d",
       "reason": "Review required for task task_81a337bbf2d7: deploy live production service restart task-store transition smoke 20260309_120722",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "task_store_smoke",
+        "lane": "task_store_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -536,12 +1199,29 @@
       "created_at": "2026-03-09T17:07:22.740607+00:00",
       "from_status": "queued",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review requested from anton",
       "reason": "Review required for task task_81a337bbf2d7: deploy live production service restart task-store transition smoke 20260309_120722",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "task_store_smoke",
+        "lane": "task_store_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "queued",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -553,12 +1233,29 @@
       "created_at": "2026-03-09T17:07:22.737497+00:00",
       "from_status": null,
       "to_status": "queued",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Task created: deploy live production service restart task-store transition smoke 20260309_120722",
       "reason": null,
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "task_store_smoke",
+        "lane": "task_store_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": "queued"
+      },
       "already_linked": null
     },
     {
@@ -570,12 +1267,29 @@
       "created_at": "2026-03-09T17:04:03.478033+00:00",
       "from_status": null,
       "to_status": null,
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review verdict recorded: approved",
       "reason": "router idempotency smoke approval of review",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "router_smoke",
+        "lane": "router_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": null
+      },
       "already_linked": null
     },
     {
@@ -587,12 +1301,29 @@
       "created_at": "2026-03-09T17:04:03.466689+00:00",
       "from_status": "waiting_approval",
       "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval request created: apr_fe7e884155a7",
       "reason": "Approval required after review approval: deploy live production service restart router idempotency smoke 20260309_120403",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "router_smoke",
+        "lane": "router_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_approval",
+        "to_status": "waiting_approval"
+      },
       "already_linked": null
     },
     {
@@ -604,12 +1335,29 @@
       "created_at": "2026-03-09T17:04:03.466415+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_approval",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Approval requested from anton",
       "reason": "Approval required after review approval: deploy live production service restart router idempotency smoke 20260309_120403",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "router_smoke",
+        "lane": "router_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_approval"
+      },
       "already_linked": null
     },
     {
@@ -621,12 +1369,29 @@
       "created_at": "2026-03-09T17:04:03.450524+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review request created: rev_429125f80d5e",
       "reason": "Review required for task task_d7b35612e2c7: deploy live production service restart router idempotency smoke 20260309_120403",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "router_smoke",
+        "lane": "router_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -638,12 +1403,29 @@
       "created_at": "2026-03-09T17:04:03.450334+00:00",
       "from_status": "queued",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review requested from anton",
       "reason": "Review required for task task_d7b35612e2c7: deploy live production service restart router idempotency smoke 20260309_120403",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "router_smoke",
+        "lane": "router_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "queued",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -655,12 +1437,29 @@
       "created_at": "2026-03-09T17:04:03.447327+00:00",
       "from_status": null,
       "to_status": "queued",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Task created: deploy live production service restart router idempotency smoke 20260309_120403",
       "reason": null,
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "router_smoke",
+        "lane": "router_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": "queued"
+      },
       "already_linked": null
     },
     {
@@ -672,12 +1471,29 @@
       "created_at": "2026-03-09T16:59:21.140807+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review request created: rev_fa264f7f6b49",
       "reason": "Review required for task task_e4bdfd0fc6e4: patch python function bug in executor regression smoke 20260309_115921",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "intake_regression",
+        "lane": "intake_regression",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -689,12 +1505,29 @@
       "created_at": "2026-03-09T16:59:21.140656+00:00",
       "from_status": "queued",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review requested from archimedes",
       "reason": "Review required for task task_e4bdfd0fc6e4: patch python function bug in executor regression smoke 20260309_115921",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "intake_regression",
+        "lane": "intake_regression",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "queued",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -706,12 +1539,29 @@
       "created_at": "2026-03-09T16:59:21.138713+00:00",
       "from_status": null,
       "to_status": "queued",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Task created: patch python function bug in executor regression smoke 20260309_115921",
       "reason": null,
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "intake_regression",
+        "lane": "intake_regression",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": "queued"
+      },
       "already_linked": null
     },
     {
@@ -723,12 +1573,29 @@
       "created_at": "2026-03-09T16:59:21.126778+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review request created: rev_311836e4a3e6",
       "reason": "Review required for task task_84d4ec9cfd46: deploy live production service restart regression smoke 20260309_115921",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "intake_regression",
+        "lane": "intake_regression",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -740,12 +1607,29 @@
       "created_at": "2026-03-09T16:59:21.126570+00:00",
       "from_status": "queued",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review requested from anton",
       "reason": "Review required for task task_84d4ec9cfd46: deploy live production service restart regression smoke 20260309_115921",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "intake_regression",
+        "lane": "intake_regression",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "queued",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     },
     {
@@ -757,12 +1641,29 @@
       "created_at": "2026-03-09T16:59:21.121552+00:00",
       "from_status": null,
       "to_status": "queued",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Task created: deploy live production service restart regression smoke 20260309_115921",
       "reason": null,
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "intake_regression",
+        "lane": "intake_regression",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": null,
+        "to_status": "queued"
+      },
       "already_linked": null
     },
     {
@@ -774,80 +1675,29 @@
       "created_at": "2026-03-09T16:56:07.509304+00:00",
       "from_status": "waiting_review",
       "to_status": "waiting_review",
+      "from_lifecycle_state": null,
+      "to_lifecycle_state": null,
       "checkpoint_summary": "Review request created: rev_657fba34ce3a",
       "reason": "Review required for task task_9c69c65badd7: patch python function bug in executor intake auto route smoke 20260309_115607",
       "final_outcome": null,
       "artifact_id": null,
       "artifact_type": null,
       "artifact_title": null,
-      "already_linked": null
-    },
-    {
-      "event_id": "evt_ec9086358e18",
-      "task_id": "task_9c69c65badd7",
-      "event_type": "status_transition",
-      "actor": "intake_smoke",
-      "lane": "intake_smoke",
-      "created_at": "2026-03-09T16:56:07.509139+00:00",
-      "from_status": "queued",
-      "to_status": "waiting_review",
-      "checkpoint_summary": "Review requested from archimedes",
-      "reason": "Review required for task task_9c69c65badd7: patch python function bug in executor intake auto route smoke 20260309_115607",
-      "final_outcome": null,
-      "artifact_id": null,
-      "artifact_type": null,
-      "artifact_title": null,
-      "already_linked": null
-    },
-    {
-      "event_id": "evt_94c35db2cedc",
-      "task_id": "task_9c69c65badd7",
-      "event_type": "task_created",
-      "actor": "intake_smoke",
-      "lane": "intake_smoke",
-      "created_at": "2026-03-09T16:56:07.504909+00:00",
-      "from_status": null,
-      "to_status": "queued",
-      "checkpoint_summary": "Task created: patch python function bug in executor intake auto route smoke 20260309_115607",
-      "reason": null,
-      "final_outcome": null,
-      "artifact_id": null,
-      "artifact_type": null,
-      "artifact_title": null,
-      "already_linked": null
-    },
-    {
-      "event_id": "evt_65892363088f",
-      "task_id": "task_e134c1f6347c",
-      "event_type": "review_requested",
-      "actor": "intake_smoke",
-      "lane": "intake_smoke",
-      "created_at": "2026-03-09T16:56:07.440984+00:00",
-      "from_status": "waiting_review",
-      "to_status": "waiting_review",
-      "checkpoint_summary": "Review request created: rev_74ea3848cac1",
-      "reason": "Review required for task task_e134c1f6347c: deploy live production service restart intake auto route smoke 20260309_115607",
-      "final_outcome": null,
-      "artifact_id": null,
-      "artifact_type": null,
-      "artifact_title": null,
-      "already_linked": null
-    },
-    {
-      "event_id": "evt_f1381b3a1857",
-      "task_id": "task_e134c1f6347c",
-      "event_type": "status_transition",
-      "actor": "intake_smoke",
-      "lane": "intake_smoke",
-      "created_at": "2026-03-09T16:56:07.440821+00:00",
-      "from_status": "queued",
-      "to_status": "waiting_review",
-      "checkpoint_summary": "Review requested from anton",
-      "reason": "Review required for task task_e134c1f6347c: deploy live production service restart intake auto route smoke 20260309_115607",
-      "final_outcome": null,
-      "artifact_id": null,
-      "artifact_type": null,
-      "artifact_title": null,
+      "execution_backend": null,
+      "backend_run_id": null,
+      "producer_metadata": {
+        "actor": "intake_smoke",
+        "lane": "intake_smoke",
+        "execution_backend": null
+      },
+      "evidence_metadata": {
+        "artifact_id": null,
+        "backend_run_id": null
+      },
+      "provenance_metadata": {
+        "from_status": "waiting_review",
+        "to_status": "waiting_review"
+      },
       "already_linked": null
     }
   ],

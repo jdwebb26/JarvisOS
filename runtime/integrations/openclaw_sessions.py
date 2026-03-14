@@ -234,6 +234,9 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
     latest_user_facing_reply = ""
     latest_assistant_reply_findings: list[str] = []
     latest_assistant_reply_contaminated = False
+    system_prompt_report = dict(binding.get("raw", {}).get("systemPromptReport") or {})
+    prompt_budget = dict(system_prompt_report.get("promptBudget") or {})
+    tool_exposure = dict(system_prompt_report.get("toolExposure") or {})
     for row in rows:
         if row.get("type") == "custom" and row.get("customType") == "model-snapshot":
             data = dict(row.get("data") or {})
@@ -285,6 +288,21 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
         "latest_user_facing_reply": latest_user_facing_reply,
         "latest_assistant_reply_contaminated": latest_assistant_reply_contaminated,
         "latest_assistant_reply_findings": latest_assistant_reply_findings,
+        "latest_prompt_budget": {
+            "estimated_total_tokens": int(prompt_budget.get("estimatedTotalTokens") or 0),
+            "safe_threshold_tokens": int(prompt_budget.get("safeThresholdTokens") or 0),
+            "hard_threshold_tokens": int(prompt_budget.get("hardThresholdTokens") or 0),
+            "over_safe_threshold": bool(prompt_budget.get("overSafeThreshold")),
+            "over_hard_threshold": bool(prompt_budget.get("overHardThreshold")),
+            "raw_user_turn_window": int(dict(prompt_budget.get("workingMemory") or {}).get("rawUserTurnWindow") or 0),
+            "user_turns_in_session": int(dict(prompt_budget.get("workingMemory") or {}).get("userTurnsInSession") or 0),
+            "metadata_wrapper_tokens": int(dict(dict(prompt_budget.get("categories") or {}).get("metadataWrappers") or {}).get("tokens") or 0),
+            "raw_tool_output_tokens": int(dict(dict(prompt_budget.get("categories") or {}).get("rawToolOutputs") or {}).get("tokens") or 0),
+            "retrieved_memory_tokens": int(dict(dict(prompt_budget.get("categories") or {}).get("retrievedMemory") or {}).get("tokens") or 0),
+            "preflight_compaction": dict(prompt_budget.get("preflightCompaction") or {}),
+        },
+        "tool_exposure_mode": str(tool_exposure.get("mode") or ""),
+        "tool_exposure_reason": str(tool_exposure.get("reason") or ""),
         "explicit_template_error": explicit_template_error,
         "latest_template_error": latest_template_error,
         "last_template_error_at": last_template_error_at,

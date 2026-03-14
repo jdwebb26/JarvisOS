@@ -193,3 +193,82 @@ def test_session_summary_exposes_clean_reply_separately_from_raw_diagnostics(tmp
     assert latest["latest_user_facing_reply"] == "ShadowBroker is not installed."
     assert latest["latest_assistant_reply_contaminated"] is True
     assert any(fragment == "</context>" for fragment in latest["latest_assistant_reply_findings"])
+
+
+def test_session_summary_exposes_prompt_budget_and_tool_exposure(tmp_path: Path) -> None:
+    openclaw_root = tmp_path / ".openclaw"
+    session_id = "sess_budget_1"
+    session_key = "agent:jarvis:discord:channel:999"
+    session_file = openclaw_root / "agents" / "jarvis" / "sessions" / f"{session_id}.jsonl"
+    _write_json(
+        openclaw_root / "agents" / "jarvis" / "sessions" / "sessions.json",
+        {
+            session_key: {
+                "sessionId": session_id,
+                "providerOverride": "lmstudio",
+                "modelOverride": "qwen/qwen3.5-35b-a3b",
+                "compactionCount": 3,
+                "lastChannel": "discord",
+                "sessionFile": str(session_file),
+                "systemPromptReport": {
+                    "toolExposure": {
+                        "mode": "chat-minimal",
+                        "reason": "simple_discord_chat",
+                    },
+                    "promptBudget": {
+                        "estimatedTotalTokens": 18123,
+                        "safeThresholdTokens": 22000,
+                        "hardThresholdTokens": 25000,
+                        "overSafeThreshold": False,
+                        "overHardThreshold": False,
+                        "categories": {
+                            "metadataWrappers": {"tokens": 1200},
+                            "rawToolOutputs": {"tokens": 3200},
+                            "retrievedMemory": {"tokens": 600},
+                        },
+                        "workingMemory": {
+                            "rawUserTurnWindow": 6,
+                            "userTurnsInSession": 9,
+                        },
+                        "preflightCompaction": {
+                            "requested": True,
+                            "reason": "raw_turn_window",
+                            "compacted": True,
+                        },
+                    },
+                },
+            }
+        },
+    )
+    _write_jsonl(
+        session_file,
+        [
+            {
+                "type": "message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "reply with only: pong"}],
+                },
+            },
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "pong"}],
+                },
+            },
+        ],
+    )
+
+    summary = build_openclaw_discord_session_integrity_summary(repo_root=tmp_path, openclaw_root=openclaw_root)
+    latest = dict(summary["recent_discord_sessions"][0])
+
+    assert latest["tool_exposure_mode"] == "chat-minimal"
+    assert latest["tool_exposure_reason"] == "simple_discord_chat"
+    assert latest["latest_prompt_budget"]["estimated_total_tokens"] == 18123
+    assert latest["latest_prompt_budget"]["raw_user_turn_window"] == 6
+    assert latest["latest_prompt_budget"]["user_turns_in_session"] == 9
+    assert latest["latest_prompt_budget"]["metadata_wrapper_tokens"] == 1200
+    assert latest["latest_prompt_budget"]["raw_tool_output_tokens"] == 3200
+    assert latest["latest_prompt_budget"]["retrieved_memory_tokens"] == 600
+    assert latest["latest_prompt_budget"]["preflight_compaction"]["compacted"] is True

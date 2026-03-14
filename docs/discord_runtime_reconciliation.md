@@ -32,6 +32,17 @@ What is still blocking real Discord operation:
 - repeated live-chat timeout behavior on the active `lmstudio` chat path
 - saving/staging/pushing the large current repo worktree cleanly
 
+Operational boundary from Snowglobe:
+
+- Snowglobe can prove the active Discord binding and inspect OpenClaw session/log evidence.
+- Snowglobe can probe the NIMO HTTP endpoint directly.
+- Snowglobe does **not** currently have a proven direct admin path into the NIMO LM Studio runtime:
+  - no `~/.ssh/config` entry
+  - no visible remote mount
+  - no machine-visible NIMO LM Studio config/state path
+
+So the next runtime stabilization step is a NIMO-host operator action, not another Snowglobe repo patch.
+
 ## Already Implemented In Repo
 
 ### 1. Routing control plane summary
@@ -181,6 +192,31 @@ Conclusion:
 - the live Discord route is already pointed at the NiMo-hosted 9B path
 - the repo does not currently prove that Discord is hitting a healthy chat-serving path end to end; it only proves the intended binding
 
+### Retry/failover truth
+
+Current Jarvis config is fail-closed:
+
+- primary: `lmstudio/qwen/qwen3.5-9b`
+- fallbacks: `[]`
+- Jarvis auth profiles: one (`lmstudio:default`)
+
+OpenClaw still logs generic lines like:
+
+- `Profile lmstudio:default timed out. Trying next account...`
+
+Local OpenClaw source shows that line is emitted before `advanceAuthProfile()` checks whether another account actually exists.
+
+So today that log line is potentially misleading:
+
+- it does **not** prove a second real Jarvis account/path is configured
+- with the current Jarvis config, it more likely means a generic internal retry/failover wrapper was entered on the same fail-closed path
+
+Operator truth should therefore distinguish:
+
+- configured path truth
+- real alternate configured path presence
+- generic internal retry semantics
+
 ### Current provider/model binding files actually in play
 
 Repo-side:
@@ -237,6 +273,29 @@ Conclusion:
 
 - timeout is now one of the active blockers on the live chat path
 - this still does not look like a repo routing-policy defect by itself
+
+### 3. Failure lifecycle truth
+
+Fresh Discord/OpenClaw evidence now shows a more precise order:
+
+1. request is bound correctly to:
+   - `lmstudio/qwen/qwen3.5-9b`
+   - `http://100.70.114.34:1234/v1`
+   - NIMO
+2. the first hard failure is:
+   - `Model unloaded.`
+3. the second failure is:
+   - timeout during a secondary internal step on the same provider path
+4. generic OpenClaw wording like:
+   - `Trying next account...`
+   is not proof of real configured path drift for Jarvis
+
+Current diagnosis priority order is therefore:
+
+1. model residency / unload / eviction on NIMO
+2. keep-loaded / pinning / prewarm
+3. timeout only after unload is solved
+4. prompt/runtime incompatibility only after unload is solved
 
 ### 3. Prompt template / session corruption cause
 

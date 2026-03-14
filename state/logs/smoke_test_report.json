@@ -1,17 +1,45 @@
 {
   "ok": true,
-  "timestamp_utc": "2026-03-12T00:43:02.720347+00:00",
+  "timestamp_utc": "2026-03-14T04:59:13.481231+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "steps": [
     {
       "step": "validate",
       "ok": true,
       "summary": {
-        "pass": 290,
-        "warn": 1,
+        "pass": 387,
+        "warn": 0,
         "fail": 0
       },
       "message": "validate passed"
+    },
+    {
+      "step": "shadowbroker_missing_config",
+      "ok": true,
+      "summary": {
+        "backend_status": "blocked_shadowbroker_not_configured",
+        "degraded_reason": "JARVIS_SHADOWBROKER_BASE_URL is not configured."
+      },
+      "message": "missing-config path reports blocked_shadowbroker_not_configured"
+    },
+    {
+      "step": "shadowbroker_mocked_success",
+      "ok": true,
+      "summary": {
+        "backend_status": "healthy",
+        "snapshot_id": "shadowbroker_smoke_snapshot",
+        "event_count": 1
+      },
+      "message": "mocked ShadowBroker success path returned a real normalized snapshot"
+    },
+    {
+      "step": "shadowbroker_bad_payload",
+      "ok": true,
+      "summary": {
+        "backend_status": "degraded_shadowbroker_bad_payload",
+        "degraded_reason": "JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+      },
+      "message": "mocked ShadowBroker bad-payload path is classified explicitly"
     },
     {
       "step": "runtime_regression_pack",
@@ -43,7 +71,7 @@
             "ok": true,
             "exit_code": 0,
             "payload_ok": true,
-            "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart router idempotency smoke 20260311_194259\",\n  \"task_id\": \"task_d6a43dbf6804\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_count_after_create\": 1,\n  \"approval_count_after_create\": 0,\n  \"second_route\": {\n    \"kind\": \"waiting_review\",\n    \"task_id\": \"task_d6a43dbf6804\",\n    \"review_id\": \"rev_6c9aa225d281\",\n    \"reviewer_role\": \"anton\",\n    \"status\": \"pending\",\n    \"message\": \"A review already exists and is still pending.\"\n  },\n  \"review_cou",
+            "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart router idempotency smoke 20260313_235907\",\n  \"task_id\": \"task_21c43b395516\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_count_after_create\": 1,\n  \"approval_count_after_create\": 0,\n  \"second_route\": {\n    \"kind\": \"waiting_review\",\n    \"task_id\": \"task_21c43b395516\",\n    \"review_id\": \"rev_1095a1c25fcd\",\n    \"reviewer_role\": \"anton\",\n    \"status\": \"pending\",\n    \"message\": \"A review already exists and is still pending.\"\n  },\n  \"review_cou",
             "stderr_head": ""
           },
           {
@@ -51,7 +79,7 @@
             "ok": true,
             "exit_code": 0,
             "payload_ok": true,
-            "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart ready-to-ship smoke 20260311_194300\",\n  \"task_id\": \"task_5b38b55d6b57\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_id\": \"rev_5a4de837a25c\",\n  \"status_after_review_approved\": \"waiting_approval\",\n  \"approval_id\": \"apr_3dcb246a2180\",\n  \"approval_status_after_decision\": \"approved\",\n  \"final_outcome_before_approval_decision\": \"candidate_ready_for_live_apply\",\n  \"candidate_artifact_id\": \"art_f3082547161b\",\n  \"final_task_status\": \"ready_to_sh",
+            "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart ready-to-ship smoke 20260313_235908\",\n  \"task_id\": \"task_2fc92453142d\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_id\": \"rev_578dfe78fb9d\",\n  \"status_after_review_approved\": \"waiting_approval\",\n  \"approval_id\": \"apr_a7b75481924b\",\n  \"approval_status_after_decision\": \"approved\",\n  \"final_outcome_before_approval_decision\": \"candidate_ready_for_live_apply\",\n  \"candidate_artifact_id\": \"art_2f6b21d69f42\",\n  \"final_task_status\": \"ready_to_sh",
             "stderr_head": ""
           },
           {
@@ -59,7 +87,7 @@
             "ok": true,
             "exit_code": 0,
             "payload_ok": true,
-            "stdout_head": "{\n  \"ok\": true,\n  \"temp_root\": \"/home/rollan/.openclaw/workspace/jarvis-v5/e2e_publish_complete_chain_6jkxntpu\",\n  \"task_id\": \"task_411c6d85ccd1\",\n  \"artifact_id\": \"art_42e630679142\",\n  \"intake_result\": {\n    \"kind\": \"task_created\",\n    \"task_created\": true,\n    \"task_id\": \"task_411c6d85ccd1\",\n    \"short_summary\": \"deploy live production service restart e2e publish-complete smoke\",\n    \"initial_status\": \"queued\",\n    \"final_status\": \"waiting_review\",\n    \"progress_lane\": \"#tasks\",\n    \"review_expected\": true,\n    \"approval_expected\": true,\n    \"task_type\": \"deploy\",\n    \"priority\": \"normal\",\n ",
+            "stdout_head": "{\n  \"ok\": true,\n  \"temp_root\": \"/home/rollan/.openclaw/workspace/jarvis-v5/e2e_publish_complete_chain_azjy9ejy\",\n  \"task_id\": \"task_aca69b9318e9\",\n  \"artifact_id\": \"art_a202fcc3cb9b\",\n  \"intake_result\": {\n    \"kind\": \"task_created\",\n    \"ok\": true,\n    \"task_created\": true,\n    \"task_id\": \"task_aca69b9318e9\",\n    \"short_summary\": \"deploy live production service restart e2e publish-complete smoke\",\n    \"initial_status\": \"queued\",\n    \"final_status\": \"waiting_review\",\n    \"progress_lane\": \"#tasks\",\n    \"review_expected\": true,\n    \"approval_expected\": true,\n    \"task_type\": \"deploy\",\n    \"priori",
             "stderr_head": ""
           }
         ]
@@ -129,8 +157,8 @@
           "operator_control_plane_checkpoints": 0,
           "operator_incident_reports": 0,
           "operator_incident_snapshots": 0,
-          "model_registry_entries": 3,
-          "capability_profiles": 3,
+          "model_registry_entries": 4,
+          "capability_profiles": 4,
           "routing_policies": 1,
           "routing_overrides": 0,
           "routing_requests": 0,
@@ -139,7 +167,7 @@
           "backend_assignments": 0,
           "backend_execution_requests": 0,
           "backend_execution_results": 0,
-          "degradation_policies": 8,
+          "degradation_policies": 15,
           "degradation_events": 0,
           "candidate_records": 0,
           "candidate_validations": 0,
@@ -210,7 +238,15 @@
           "operator_incident_snapshots": 0,
           "backend_health": 1,
           "accelerators": 1,
-          "eval_runs": 0
+          "eval_runs": 0,
+          "registered_nodes": 3,
+          "online_nodes": 1,
+          "burst_online_nodes": 0,
+          "task_leases": 0,
+          "active_task_leases": 0,
+          "expired_task_leases": 0,
+          "approved_skills": 0,
+          "skill_candidates": 0
         },
         "task_board_total": 33,
         "event_board_total": 50,
@@ -246,8 +282,8 @@
           "eval_results": 0,
           "eval_outcomes": 0,
           "eval_profiles": 4,
-          "model_registry_entries": 3,
-          "capability_profiles": 3,
+          "model_registry_entries": 4,
+          "capability_profiles": 4,
           "routing_policies": 1,
           "routing_overrides": 0,
           "routing_requests": 0,
@@ -259,9 +295,9 @@
           "backend_health": 1,
           "accelerators": 1,
           "token_budgets": 0,
-          "degradation_policies": 8,
+          "degradation_policies": 15,
           "degradation_events": 0,
-          "heartbeat_reports": 32,
+          "heartbeat_reports": 624,
           "browser_control_allowlists": 1,
           "voice_sessions": 1,
           "candidate_records": 0,
@@ -387,8 +423,8 @@
           "operator_control_plane_checkpoints": 0,
           "operator_incident_reports": 0,
           "operator_incident_snapshots": 0,
-          "model_registry_entries": 3,
-          "capability_profiles": 3,
+          "model_registry_entries": 4,
+          "capability_profiles": 4,
           "routing_policies": 1,
           "routing_overrides": 0,
           "routing_requests": 0,
@@ -397,7 +433,7 @@
           "backend_assignments": 0,
           "backend_execution_requests": 0,
           "backend_execution_results": 0,
-          "degradation_policies": 8,
+          "degradation_policies": 15,
           "degradation_events": 0,
           "candidate_records": 0,
           "candidate_validations": 0,
