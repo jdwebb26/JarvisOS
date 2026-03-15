@@ -215,6 +215,17 @@ def test_session_summary_exposes_prompt_budget_and_tool_exposure(tmp_path: Path)
                         "mode": "chat-minimal",
                         "reason": "simple_discord_chat",
                     },
+                    "rollingSummary": {
+                        "summary_id": "session_context_agent_jarvis_discord_channel_999",
+                        "chars": 840,
+                        "refreshedAt": "2026-03-14T05:00:00Z",
+                    },
+                    "retrieval": {
+                        "episodicCount": 2,
+                        "semanticCount": 1,
+                        "usedTokens": 320,
+                        "remainingBudgetTokens": 880,
+                    },
                     "promptBudget": {
                         "estimatedTotalTokens": 18123,
                         "safeThresholdTokens": 22000,
@@ -272,3 +283,115 @@ def test_session_summary_exposes_prompt_budget_and_tool_exposure(tmp_path: Path)
     assert latest["latest_prompt_budget"]["raw_tool_output_tokens"] == 3200
     assert latest["latest_prompt_budget"]["retrieved_memory_tokens"] == 600
     assert latest["latest_prompt_budget"]["preflight_compaction"]["compacted"] is True
+    assert latest["rolling_summary_stats"]["summary_id"] == "session_context_agent_jarvis_discord_channel_999"
+    assert latest["retrieval_stats"]["episodic_count"] == 2
+    assert latest["retrieval_stats"]["semantic_count"] == 1
+
+
+def test_session_summary_prefers_top_level_system_prompt_report_with_binding_raw_fallback(tmp_path: Path) -> None:
+    openclaw_root = tmp_path / ".openclaw"
+    session_id = "sess_budget_2"
+    session_key = "agent:jarvis:discord:channel:4242"
+    session_file = openclaw_root / "agents" / "jarvis" / "sessions" / f"{session_id}.jsonl"
+    top_level_report = {
+        "toolExposure": {"mode": "chat-minimal", "reason": "simple_discord_chat"},
+        "rollingSummary": {"summary_id": "top_level_summary", "chars": 144, "refreshedAt": "2026-03-14T06:00:00Z"},
+        "retrieval": {"episodicCount": 1, "semanticCount": 1, "usedTokens": 111, "remainingBudgetTokens": 1089},
+        "promptBudget": {"estimatedTotalTokens": 4444, "workingMemory": {"rawUserTurnWindow": 6, "userTurnsInSession": 2}},
+    }
+    binding_raw_report = {
+        "toolExposure": {"mode": "full", "reason": "stale_binding_raw"},
+        "rollingSummary": {"summary_id": "binding_raw_summary", "chars": 999, "refreshedAt": "2026-03-14T01:00:00Z"},
+        "retrieval": {"episodicCount": 9, "semanticCount": 9, "usedTokens": 999, "remainingBudgetTokens": 1},
+        "promptBudget": {"estimatedTotalTokens": 99999, "workingMemory": {"rawUserTurnWindow": 99, "userTurnsInSession": 99}},
+    }
+    _write_json(
+        openclaw_root / "agents" / "jarvis" / "sessions" / "sessions.json",
+        {
+            session_key: {
+                "sessionId": session_id,
+                "lastChannel": "discord",
+                "sessionFile": str(session_file),
+                "systemPromptReport": top_level_report,
+                "binding": {"raw": {"systemPromptReport": binding_raw_report}},
+            }
+        },
+    )
+    _write_jsonl(
+        session_file,
+        [
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "reply with only: pong"}]}},
+            {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "pong"}]}},
+        ],
+    )
+
+    summary = build_openclaw_discord_session_integrity_summary(repo_root=tmp_path, openclaw_root=openclaw_root)
+    latest = dict(summary["recent_discord_sessions"][0])
+
+    assert latest["tool_exposure_mode"] == "chat-minimal"
+    assert latest["rolling_summary_stats"]["summary_id"] == "top_level_summary"
+    assert latest["retrieval_stats"]["used_tokens"] == 111
+    assert latest["latest_prompt_budget"]["estimated_total_tokens"] == 4444
+
+
+def test_session_summary_classifies_true_front_door_discord_evidence(tmp_path: Path) -> None:
+    openclaw_root = tmp_path / ".openclaw"
+    session_id = "sess_frontdoor"
+    session_key = "agent:jarvis:discord:channel:777"
+    session_file = openclaw_root / "agents" / "jarvis" / "sessions" / f"{session_id}.jsonl"
+    _write_json(
+        openclaw_root / "agents" / "jarvis" / "sessions" / "sessions.json",
+        {
+            session_key: {
+                "sessionId": session_id,
+                "providerOverride": "lmstudio",
+                "modelOverride": "qwen/qwen3.5-35b-a3b",
+                "lastChannel": "discord",
+                "sessionFile": str(session_file),
+                "systemPromptReport": {
+                    "promptBudget": {"estimatedTotalTokens": 5555},
+                    "toolExposure": {"mode": "none"},
+                    "rollingSummary": {"chars": 123},
+                    "retrieval": {"remainingBudgetTokens": 1200},
+                },
+            }
+        },
+    )
+    _write_jsonl(
+        session_file,
+        [
+            {
+                "type": "message",
+                "timestamp": "2026-03-14T06:06:58.533Z",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Conversation info (untrusted metadata):\n```json\n{\"message_id\":\"m1\"}\n```\n\n"
+                                "Sender (untrusted metadata):\n```json\n{\"name\":\"rollan\"}\n```\n\n"
+                                "reply with only: pong"
+                            ),
+                        }
+                    ],
+                },
+            },
+            {
+                "type": "message",
+                "timestamp": "2026-03-14T06:07:35.677Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "pong"}],
+                },
+            },
+        ],
+    )
+
+    summary = build_openclaw_discord_session_integrity_summary(repo_root=tmp_path, openclaw_root=openclaw_root)
+    latest = dict(summary["recent_discord_sessions"][0])
+
+    assert latest["front_door_discord_ingress_detected"] is True
+    assert latest["front_door_assistant_reply_detected"] is True
+    assert latest["gateway_execution_evidence_detected"] is True
+    assert latest["has_source_owned_system_prompt_report"] is True

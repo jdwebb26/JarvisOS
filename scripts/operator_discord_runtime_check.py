@@ -208,6 +208,11 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
     shadowbroker_summary = dict(status.get("shadowbroker_summary") or {})
     extension_lane_status_summary = dict(status.get("extension_lane_status_summary") or {})
 
+    session_front_door_ingress = bool(latest_session.get("front_door_discord_ingress_detected"))
+    session_front_door_reply = bool(latest_session.get("front_door_assistant_reply_detected"))
+    session_gateway_execution_evidence = bool(latest_session.get("gateway_execution_evidence_detected"))
+    session_source_owned_report = bool(latest_session.get("has_source_owned_system_prompt_report"))
+
     active_provider = _nonempty(
         live_lane.get("selected_provider_id"),
         latest_task.get("provider_id"),
@@ -242,9 +247,9 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
         provider_runtime.get("host_name"),
     )
     active_endpoint = _nonempty(provider_runtime.get("base_url"))
-    route_selected = bool(live_lane.get("route_selected"))
-    backend_execution_attempted = bool(live_lane.get("backend_execution_attempted"))
-    latest_attempt_present = bool(latest_attempt)
+    route_selected = bool(live_lane.get("route_selected") or session_gateway_execution_evidence)
+    backend_execution_attempted = bool(live_lane.get("backend_execution_attempted") or session_gateway_execution_evidence)
+    latest_attempt_present = bool(latest_attempt or (session_front_door_ingress and session_front_door_reply))
     last_failure_category = str(
         _nonempty(
             live_lane.get("failure_category"),
@@ -310,6 +315,9 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
                 "route_selected": route_selected,
                 "backend_execution_attempted": backend_execution_attempted,
                 "bridge_attempt_present": latest_attempt_present,
+                "session_front_door_ingress_detected": session_front_door_ingress,
+                "session_gateway_execution_evidence_detected": session_gateway_execution_evidence,
+                "session_source_owned_report_detected": session_source_owned_report,
             },
         },
         {
@@ -419,6 +427,8 @@ def build_operator_discord_runtime_check(*, root: Path) -> dict[str, Any]:
                 "malformed_session_count": session_summary.get("malformed_session_count", 0),
                 "latest_malformed_session": latest_malformed or None,
                 "latest_session": latest_session or None,
+                "session_front_door_ingress_detected": session_front_door_ingress,
+                "session_gateway_execution_evidence_detected": session_gateway_execution_evidence,
             },
             "routing_control_plane_summary": {
                 "latest_selected_route": latest_selected_route or None,

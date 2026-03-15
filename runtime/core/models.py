@@ -1809,6 +1809,11 @@ class MemoryRetrievalRecord:
     source_artifact_id: Optional[str] = None
     source_trace_id: Optional[str] = None
     source_eval_result_id: Optional[str] = None
+    query_text: Optional[str] = None
+    retrieval_scope: str = "general"
+    retrieval_budget_tokens: int = 0
+    episodic_result_count: int = 0
+    semantic_result_count: int = 0
     include_contradicted: bool = False
     returned_memory_candidate_ids: list[str] = field(default_factory=list)
     result_count: int = 0
@@ -1826,6 +1831,11 @@ class MemoryRetrievalRecord:
         data.setdefault("source_artifact_id", None)
         data.setdefault("source_trace_id", None)
         data.setdefault("source_eval_result_id", None)
+        data.setdefault("query_text", None)
+        data.setdefault("retrieval_scope", "general")
+        data.setdefault("retrieval_budget_tokens", 0)
+        data.setdefault("episodic_result_count", 0)
+        data.setdefault("semantic_result_count", 0)
         data.setdefault("include_contradicted", False)
         data.setdefault("returned_memory_candidate_ids", [])
         data.setdefault("result_count", 0)

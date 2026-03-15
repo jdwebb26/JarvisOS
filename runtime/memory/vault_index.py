@@ -27,6 +27,12 @@ def vault_briefs_dir(root: Optional[Path] = None) -> Path:
     return path
 
 
+def vault_session_context_dir(root: Optional[Path] = None) -> Path:
+    path = vault_root(root) / "session_context"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def vault_index_path(root: Optional[Path] = None) -> Path:
     return vault_root(root) / "index.json"
 
@@ -150,6 +156,7 @@ def build_vault_index_summary(*, root: Optional[Path] = None) -> dict[str, Any]:
     rows = list_vault_items(root=root)
     artifact_rows = [row for row in rows if row.get("export_kind") == "approved_artifact"]
     brief_rows = [row for row in rows if row.get("export_kind") == "derived_brief"]
+    session_rows = [row for row in rows if row.get("export_kind") == "session_context_summary"]
     return {
         "vault_enabled": True,
         "non_authoritative": True,
@@ -158,6 +165,52 @@ def build_vault_index_summary(*, root: Optional[Path] = None) -> dict[str, Any]:
         "export_count": len(rows),
         "approved_artifact_export_count": len(artifact_rows),
         "brief_export_count": len(brief_rows),
+        "session_context_export_count": len(session_rows),
         "latest_export": rows[0] if rows else None,
         "searchable_item_count": len(rows),
     }
+
+
+def _session_context_export_id(session_key: str) -> str:
+    normalized = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(session_key or "session"))
+    return f"session_context_{normalized}"
+
+
+def session_context_path(session_key: str, *, root: Optional[Path] = None) -> Path:
+    return vault_session_context_dir(root) / f"{_session_context_export_id(session_key)}.json"
+
+
+def load_session_context_summary(session_key: str, *, root: Optional[Path] = None) -> dict[str, Any]:
+    path = session_context_path(session_key, root=root)
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def save_session_context_summary(payload: dict[str, Any], *, root: Optional[Path] = None) -> dict[str, Any]:
+    session_key = str(payload.get("session_key") or "").strip()
+    if not session_key:
+        raise ValueError("session_key is required for session context summary")
+    export_id = _session_context_export_id(session_key)
+    path = session_context_path(session_key, root=root)
+    row = dict(payload or {})
+    row["export_id"] = export_id
+    row["export_kind"] = "session_context_summary"
+    row["non_authoritative"] = True
+    path.write_text(json.dumps(row, indent=2) + "\n", encoding="utf-8")
+    update_vault_index(
+        {
+            "export_id": export_id,
+            "export_kind": "session_context_summary",
+            "title": str(row.get("title") or f"Session context summary: {session_key}"),
+            "summary": str(row.get("summary") or ""),
+            "exported_at": str(row.get("updated_at") or row.get("generated_at") or ""),
+            "source_refs": dict(row.get("source_refs") or {}),
+        },
+        root=root,
+    )
+    return row

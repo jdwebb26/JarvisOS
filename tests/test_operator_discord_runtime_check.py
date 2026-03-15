@@ -367,3 +367,103 @@ def test_operator_discord_runtime_check_suggests_runtime_truth_for_model_questio
     assert "lmstudio/qwen/qwen3.5-9b" in report["suggested_clean_reply"]
     assert "NIMO" in report["suggested_clean_reply"]
     assert "http://100.70.114.34:1234/v1" in report["suggested_clean_reply"]
+
+
+def test_operator_discord_runtime_check_accepts_true_front_door_session_evidence_when_transient_logs_are_missing(tmp_path: Path) -> None:
+    status = {
+        "generated_at": "2026-03-14T06:10:00Z",
+        "discord_live_ops_summary": {
+            "latest_discord_task": None,
+            "latest_discord_routing_refusal": None,
+            "live_lane_diagnostic": {
+                "route_selected": False,
+                "backend_execution_attempted": False,
+                "selected_provider_id": None,
+                "selected_model_name": None,
+                "selected_backend": None,
+                "selected_host_name": None,
+                "failure_category": "",
+                "failure_reason": "",
+            },
+        },
+        "openclaw_discord_bridge_summary": {
+            "latest_attempt": None,
+            "latest_failure": None,
+            "latest_successful_reply": None,
+        },
+        "openclaw_discord_session_summary": {
+            "malformed_session_count": 0,
+            "latest_malformed_session": None,
+            "recent_discord_sessions": [
+                {
+                    "session_key": "agent:jarvis:discord:channel:777",
+                    "selected_provider_id": "lmstudio",
+                    "selected_model_name": "qwen3.5-35b-a3b",
+                    "last_user_query": "Conversation info (untrusted metadata): ... reply with only: pong",
+                    "latest_assistant_reply_raw": "pong",
+                    "latest_user_facing_reply": "pong",
+                    "front_door_discord_ingress_detected": True,
+                    "front_door_assistant_reply_detected": True,
+                    "gateway_execution_evidence_detected": True,
+                    "has_source_owned_system_prompt_report": True,
+                    "tool_exposure_mode": "none",
+                    "tool_exposure_reason": "no_tools",
+                    "latest_prompt_budget": {
+                        "estimated_total_tokens": 6032,
+                        "safe_threshold_tokens": 144000,
+                        "hard_threshold_tokens": 164000,
+                        "over_safe_threshold": False,
+                        "over_hard_threshold": False,
+                        "raw_user_turn_window": 6,
+                        "user_turns_in_session": 3,
+                        "metadata_wrapper_tokens": 1,
+                        "raw_tool_output_tokens": 2,
+                        "retrieved_memory_tokens": 0,
+                        "rolling_session_summary_tokens": 427,
+                        "preflight_compaction": {"requested": False, "reason": "none", "compacted": False},
+                    },
+                    "rolling_summary_stats": {"summary_id": "", "chars": 1707, "refreshed_at": "2026-03-14T06:06:58Z"},
+                    "retrieval_stats": {"episodic_count": 0, "semantic_count": 0, "used_tokens": 0, "remaining_budget_tokens": 1200},
+                }
+            ],
+        },
+        "routing_control_plane_summary": {
+            "latest_selected_route": None,
+            "latest_route_state": "unknown",
+            "latest_route_legality": "unknown",
+        },
+        "shadowbroker_summary": {},
+        "extension_lane_status_summary": {"rows": []},
+    }
+    with (
+        patch("scripts.operator_discord_runtime_check.build_status", return_value=status),
+        patch(
+            "scripts.operator_discord_runtime_check._load_openclaw_agent_model_contract",
+            return_value={
+                "primary": "lmstudio/qwen/qwen3.5-9b",
+                "fallbacks": [],
+                "configured_fail_closed": True,
+            },
+        ),
+        patch("scripts.operator_discord_runtime_check._count_agent_auth_profiles", return_value=2),
+        patch(
+            "scripts.operator_discord_runtime_check._load_openclaw_provider_runtime",
+            return_value={
+                "provider_id": "lmstudio",
+                "base_url": "http://100.70.114.34:1234/v1",
+                "api": "openai-completions",
+                "host_classification": "NIMO",
+                "host_name": "NIMO",
+            },
+        ),
+    ):
+        report = build_operator_discord_runtime_check(root=tmp_path)
+
+    readiness = {row["name"]: row for row in report["readiness_criteria"]}
+    assert readiness["live_execution_evidence_present"]["ok"] is True
+    assert readiness["live_execution_evidence_present"]["details"]["route_selected"] is True
+    assert readiness["live_execution_evidence_present"]["details"]["backend_execution_attempted"] is True
+    assert readiness["live_execution_evidence_present"]["details"]["bridge_attempt_present"] is True
+    assert report["route_selected"] is True
+    assert report["backend_execution_attempted"] is True
+    assert "No fresh Discord route/execution evidence is present." not in report["blocking_reasons"]

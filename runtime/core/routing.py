@@ -43,6 +43,7 @@ from runtime.core.task_lease import get_active_lease
 from runtime.controls.control_store import assert_control_allows, get_effective_control_state
 from runtime.core.provenance_store import save_routing_provenance
 from runtime.core.modality_contracts import build_modality_summary, ensure_default_modality_contracts
+from runtime.core.agent_roster import build_agent_roster_summary
 
 
 ACTIVE_QWEN_MODELS = [
@@ -197,7 +198,77 @@ DEFAULT_RUNTIME_ROUTING_POLICY = {
             "allowed_families": ["qwen3.5"],
             "burst_allowed": False,
         },
+        "hal": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-35B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-122B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "archimedes": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-122B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-35B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "anton": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-122B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-35B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "hermes": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-122B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-35B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
         "scout": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-35B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-122B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "bowser": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-35B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-122B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "muse": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-35B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-9B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "ralph": {
             "preferred_provider": "qwen",
             "preferred_model": "Qwen3.5-35B",
             "preferred_host_role": NodeRole.PRIMARY.value,
@@ -1744,6 +1815,7 @@ def build_model_registry_summary(root: Optional[Path] = None) -> dict:
         "latest_runtime_route_resolution": _latest_runtime_route_resolution(latest),
         "latest_failed_routing_request": build_routing_failure_summary(latest_failed_request.to_dict() if latest_failed_request else None),
         "backend_assignment_summary": backend_assignment_summary,
+        "agent_roster_summary": build_agent_roster_summary(root=root_path),
     }
 
 

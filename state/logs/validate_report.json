@@ -1,7 +1,7 @@
 {
   "ok": true,
   "strict": false,
-  "timestamp_utc": "2026-03-14T04:59:07.316815+00:00",
+  "timestamp_utc": "2026-03-15T01:07:00.092112+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "requested_root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "summary": {
@@ -24,9 +24,9 @@
     },
     "default_nodes": [
       {
-        "node_profile_id": "node_22e678328e33",
-        "created_at": "2026-03-12T01:19:09.547445+00:00",
-        "updated_at": "2026-03-13T06:11:45.853431+00:00",
+        "node_profile_id": "node_c194f54395e3",
+        "created_at": "2026-03-14T23:00:46.586031+00:00",
+        "updated_at": "2026-03-15T01:05:47.491522+00:00",
         "actor": "system",
         "lane": "bootstrap",
         "node_name": "NIMO",
@@ -43,7 +43,8 @@
         ],
         "labels": [
           "live_primary",
-          "scaffolding_seed"
+          "always_on_runtime",
+          "qwen_first_default"
         ],
         "metadata": {
           "scaffolding_only": true,
@@ -56,9 +57,9 @@
             "qwen"
           ],
           "notes": [
-            "Primary durable node scaffold for 5.2 prep visibility."
+            "Primary always-on runtime host for Jarvis and Scout live serving."
           ],
-          "last_seen_at": "2026-03-13T06:11:45.853057+00:00",
+          "last_seen_at": "2026-03-15T01:05:47.491275+00:00",
           "last_heartbeat_status": "healthy",
           "last_current_task_count": 0
         },
@@ -1825,7 +1826,7 @@
       "status": "pass",
       "category": "research",
       "message": "Research backend abstraction and evidence bundle scaffolding are present.",
-      "details": "backends=1 healthy_backends=0 evidence_bundles=26"
+      "details": "backends=1 healthy_backends=0 evidence_bundles=36"
     },
     {
       "status": "pass",

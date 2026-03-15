@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "timestamp_utc": "2026-03-14T04:59:13.481231+00:00",
+  "timestamp_utc": "2026-03-15T01:08:14.760337+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "steps": [
     {
@@ -71,7 +71,7 @@
             "ok": true,
             "exit_code": 0,
             "payload_ok": true,
-            "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart router idempotency smoke 20260313_235907\",\n  \"task_id\": \"task_21c43b395516\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_count_after_create\": 1,\n  \"approval_count_after_create\": 0,\n  \"second_route\": {\n    \"kind\": \"waiting_review\",\n    \"task_id\": \"task_21c43b395516\",\n    \"review_id\": \"rev_1095a1c25fcd\",\n    \"reviewer_role\": \"anton\",\n    \"status\": \"pending\",\n    \"message\": \"A review already exists and is still pending.\"\n  },\n  \"review_cou",
+            "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart router idempotency smoke 20260314_200738\",\n  \"task_id\": \"task_3b8b0f2ee1bf\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_count_after_create\": 1,\n  \"approval_count_after_create\": 0,\n  \"second_route\": {\n    \"kind\": \"waiting_review\",\n    \"task_id\": \"task_3b8b0f2ee1bf\",\n    \"review_id\": \"rev_39f44e8b6e33\",\n    \"reviewer_role\": \"anton\",\n    \"status\": \"pending\",\n    \"message\": \"A review already exists and is still pending.\"\n  },\n  \"review_cou",
             "stderr_head": ""
           },
           {
@@ -79,7 +79,7 @@
             "ok": true,
             "exit_code": 0,
             "payload_ok": true,
-            "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart ready-to-ship smoke 20260313_235908\",\n  \"task_id\": \"task_2fc92453142d\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_id\": \"rev_578dfe78fb9d\",\n  \"status_after_review_approved\": \"waiting_approval\",\n  \"approval_id\": \"apr_a7b75481924b\",\n  \"approval_status_after_decision\": \"approved\",\n  \"final_outcome_before_approval_decision\": \"candidate_ready_for_live_apply\",\n  \"candidate_artifact_id\": \"art_2f6b21d69f42\",\n  \"final_task_status\": \"ready_to_sh",
+            "stdout_head": "{\n  \"ok\": true,\n  \"input\": \"task: deploy live production service restart ready-to-ship smoke 20260314_200756\",\n  \"task_id\": \"task_bff7a1a73d1c\",\n  \"created_kind\": \"task_created\",\n  \"created_route_kind\": \"review_requested\",\n  \"status_after_create\": \"waiting_review\",\n  \"review_id\": \"rev_7ee8a23bacb4\",\n  \"status_after_review_approved\": \"waiting_approval\",\n  \"approval_id\": \"apr_eafd852f113d\",\n  \"approval_status_after_decision\": \"approved\",\n  \"final_outcome_before_approval_decision\": \"candidate_ready_for_live_apply\",\n  \"candidate_artifact_id\": \"art_73d1d6f7ad8b\",\n  \"final_task_status\": \"ready_to_sh",
             "stderr_head": ""
           },
           {
@@ -87,7 +87,7 @@
             "ok": true,
             "exit_code": 0,
             "payload_ok": true,
-            "stdout_head": "{\n  \"ok\": true,\n  \"temp_root\": \"/home/rollan/.openclaw/workspace/jarvis-v5/e2e_publish_complete_chain_azjy9ejy\",\n  \"task_id\": \"task_aca69b9318e9\",\n  \"artifact_id\": \"art_a202fcc3cb9b\",\n  \"intake_result\": {\n    \"kind\": \"task_created\",\n    \"ok\": true,\n    \"task_created\": true,\n    \"task_id\": \"task_aca69b9318e9\",\n    \"short_summary\": \"deploy live production service restart e2e publish-complete smoke\",\n    \"initial_status\": \"queued\",\n    \"final_status\": \"waiting_review\",\n    \"progress_lane\": \"#tasks\",\n    \"review_expected\": true,\n    \"approval_expected\": true,\n    \"task_type\": \"deploy\",\n    \"priori",
+            "stdout_head": "{\n  \"ok\": true,\n  \"temp_root\": \"/home/rollan/.openclaw/workspace/jarvis-v5/e2e_publish_complete_chain_4zyix9c8\",\n  \"task_id\": \"task_dad7f05560c3\",\n  \"artifact_id\": \"art_26932afba55a\",\n  \"intake_result\": {\n    \"kind\": \"task_created\",\n    \"ok\": true,\n    \"task_created\": true,\n    \"task_id\": \"task_dad7f05560c3\",\n    \"short_summary\": \"deploy live production service restart e2e publish-complete smoke\",\n    \"initial_status\": \"queued\",\n    \"final_status\": \"waiting_review\",\n    \"progress_lane\": \"#tasks\",\n    \"review_expected\": true,\n    \"approval_expected\": true,\n    \"task_type\": \"deploy\",\n    \"priori",
             "stderr_head": ""
           }
         ]
@@ -119,7 +119,7 @@
           "promoted_memories": 0,
           "candidate_memories": 0,
           "contradicted_memories": 0,
-          "memory_retrievals": 0,
+          "memory_retrievals": 7,
           "memory_validations": 0,
           "memory_promotion_decisions": 0,
           "memory_rejection_decisions": 0,
@@ -297,7 +297,7 @@
           "token_budgets": 0,
           "degradation_policies": 15,
           "degradation_events": 0,
-          "heartbeat_reports": 624,
+          "heartbeat_reports": 704,
           "browser_control_allowlists": 1,
           "voice_sessions": 1,
           "candidate_records": 0,
@@ -331,7 +331,7 @@
           "digest_artifact_links": 0,
           "memory_candidates": 0,
           "memory_entries": 0,
-          "memory_retrievals": 0,
+          "memory_retrievals": 7,
           "memory_validations": 0,
           "memory_promotion_decisions": 0,
           "memory_rejection_decisions": 0,
@@ -385,7 +385,7 @@
           "promoted_memories": 0,
           "candidate_memories": 0,
           "contradicted_memories": 0,
-          "memory_retrievals": 0,
+          "memory_retrievals": 7,
           "memory_validations": 0,
           "memory_promotion_decisions": 0,
           "memory_rejection_decisions": 0,

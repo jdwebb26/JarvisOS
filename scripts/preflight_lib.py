@@ -49,6 +49,7 @@ from runtime.evals.replay_runner import build_eval_run_summary
 from runtime.browser.reporting import build_browser_action_summary
 from runtime.core.a2a_policy import build_a2a_policy_summary
 from runtime.core.routing import (
+    ensure_default_routing_contracts,
     legal_candidate_pool_for_runtime_policy_block,
     load_runtime_routing_policy,
     resolve_runtime_route_policy,
@@ -501,6 +502,7 @@ def _config_text(root: Path, rel: str) -> str:
 
 def validate_runtime_routing_policy_config(root: Path) -> list[Finding]:
     findings: list[Finding] = []
+    ensure_default_routing_contracts(root)
     path = runtime_routing_policy_path(root=root)
     if not path.exists():
         _add(

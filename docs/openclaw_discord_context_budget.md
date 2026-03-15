@@ -2,7 +2,7 @@
 
 Date: 2026-03-13
 
-This pass adds a bounded-context hotfix to the live OpenClaw embedded-run path.
+This branch now contains a source-owned bounded-context engine alongside the earlier live OpenClaw hotfix.
 
 ## Policy
 
@@ -30,11 +30,24 @@ This pass adds a bounded-context hotfix to the live OpenClaw embedded-run path.
   - field: `systemPromptReport.promptBudget`
   - field: `systemPromptReport.toolExposure`
 - Repo-side visibility:
-  - `runtime/integrations/openclaw_sessions.py`
+- `runtime/integrations/openclaw_sessions.py`
   - surfaced in the OpenClaw Discord session integrity summary as:
     - `latest_prompt_budget`
     - `tool_exposure_mode`
     - `tool_exposure_reason`
+    - `rolling_summary_stats`
+    - `retrieval_stats`
+
+## Source-Owned Runtime Path
+
+- Source-owned engine:
+  - `runtime/gateway/source_owned_context_engine.py`
+- Memory retrieval:
+  - `runtime/memory/governance.py`
+- Rolling summary artifact persistence:
+  - `runtime/memory/vault_index.py`
+- Summary construction:
+  - `runtime/memory/brief_builder.py`
 
 ## Verification
 
@@ -54,8 +67,7 @@ This pass adds a bounded-context hotfix to the live OpenClaw embedded-run path.
 
 ## Known Limitations
 
-- The hotfix is applied to the installed OpenClaw dist bundle, not repo-owned JS source.
-- Repo tests cover operator-visible reporting of the new budget fields, not the installed bundle execution path itself.
+- The source-owned engine is implemented and tested in-repo, but the installed OpenClaw runtime still needs explicit external wiring to call it for live turns.
 - The current preflight tool-exposure heuristic is intentionally narrow:
   - simple Discord chat gets no tools
   - task/code/file/shell-looking prompts still receive the full existing tool surface

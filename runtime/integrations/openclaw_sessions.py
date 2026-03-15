@@ -129,6 +129,11 @@ def _is_real_user_query(text: str) -> bool:
     return True
 
 
+def _is_front_door_discord_query(text: str) -> bool:
+    normalized = str(text or "").strip().lower()
+    return normalized.startswith("conversation info (untrusted metadata):")
+
+
 def _load_jsonl_rows(path: Path) -> tuple[list[dict[str, Any]], int]:
     rows: list[dict[str, Any]] = []
     parse_errors = 0
@@ -234,9 +239,15 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
     latest_user_facing_reply = ""
     latest_assistant_reply_findings: list[str] = []
     latest_assistant_reply_contaminated = False
-    system_prompt_report = dict(binding.get("raw", {}).get("systemPromptReport") or {})
+    latest_front_door_user_query = ""
+    latest_front_door_user_query_at = ""
+    raw_binding = dict(binding.get("raw") or {})
+    binding_raw_report = dict(dict(raw_binding.get("binding") or {}).get("raw") or {}).get("systemPromptReport") or {}
+    system_prompt_report = dict(raw_binding.get("systemPromptReport") or binding_raw_report or {})
     prompt_budget = dict(system_prompt_report.get("promptBudget") or {})
     tool_exposure = dict(system_prompt_report.get("toolExposure") or {})
+    rolling_summary = dict(system_prompt_report.get("rollingSummary") or {})
+    retrieval = dict(system_prompt_report.get("retrieval") or {})
     for row in rows:
         if row.get("type") == "custom" and row.get("customType") == "model-snapshot":
             data = dict(row.get("data") or {})
@@ -248,6 +259,9 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
         if role == "user" and _is_real_user_query(text):
             valid_user_query_count += 1
             last_user_query = text
+            if _is_front_door_discord_query(text):
+                latest_front_door_user_query = text
+                latest_front_door_user_query_at = str(row.get("timestamp") or "")
         if role == "assistant":
             latest_assistant_reply_raw = text or str(row.get("errorMessage") or "")
             sanitized = sanitize_user_facing_assistant_reply(latest_assistant_reply_raw)
@@ -273,6 +287,18 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
     malformed = bool(malformed_reason)
     session_id = str(binding.get("session_id") or "")
     session_key = str(binding.get("session_key") or "")
+    has_source_owned_report = any(
+        key in system_prompt_report for key in ("promptBudget", "toolExposure", "rollingSummary", "retrieval")
+    )
+    front_door_discord_ingress_detected = _is_front_door_discord_query(last_user_query)
+    front_door_assistant_reply_detected = bool(front_door_discord_ingress_detected and latest_assistant_reply_raw)
+    gateway_execution_evidence_detected = bool(
+        front_door_discord_ingress_detected
+        and latest_assistant_reply_raw
+        and has_source_owned_report
+        and selected_provider_id
+        and selected_model_name
+    )
     return {
         "session_key": session_key,
         "session_id": session_id,
@@ -299,10 +325,28 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
             "metadata_wrapper_tokens": int(dict(dict(prompt_budget.get("categories") or {}).get("metadataWrappers") or {}).get("tokens") or 0),
             "raw_tool_output_tokens": int(dict(dict(prompt_budget.get("categories") or {}).get("rawToolOutputs") or {}).get("tokens") or 0),
             "retrieved_memory_tokens": int(dict(dict(prompt_budget.get("categories") or {}).get("retrievedMemory") or {}).get("tokens") or 0),
+            "rolling_session_summary_tokens": int(dict(dict(prompt_budget.get("categories") or {}).get("rollingSessionSummary") or {}).get("tokens") or 0),
             "preflight_compaction": dict(prompt_budget.get("preflightCompaction") or {}),
         },
         "tool_exposure_mode": str(tool_exposure.get("mode") or ""),
         "tool_exposure_reason": str(tool_exposure.get("reason") or ""),
+        "rolling_summary_stats": {
+            "summary_id": str(rolling_summary.get("summary_id") or ""),
+            "chars": int(rolling_summary.get("chars") or 0),
+            "refreshed_at": str(rolling_summary.get("refreshedAt") or ""),
+        },
+        "retrieval_stats": {
+            "episodic_count": int(retrieval.get("episodicCount") or 0),
+            "semantic_count": int(retrieval.get("semanticCount") or 0),
+            "used_tokens": int(retrieval.get("usedTokens") or 0),
+            "remaining_budget_tokens": int(retrieval.get("remainingBudgetTokens") or 0),
+        },
+        "front_door_discord_ingress_detected": front_door_discord_ingress_detected,
+        "front_door_assistant_reply_detected": front_door_assistant_reply_detected,
+        "gateway_execution_evidence_detected": gateway_execution_evidence_detected,
+        "has_source_owned_system_prompt_report": has_source_owned_report,
+        "latest_front_door_user_query": latest_front_door_user_query,
+        "latest_front_door_user_query_at": latest_front_door_user_query_at,
         "explicit_template_error": explicit_template_error,
         "latest_template_error": latest_template_error,
         "last_template_error_at": last_template_error_at,

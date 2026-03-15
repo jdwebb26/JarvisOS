@@ -31,6 +31,7 @@ from runtime.core.rollback_store import build_rollback_summary
 from runtime.core.routing import build_model_registry_summary, build_routing_failure_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.modality_contracts import build_modality_summary
+from runtime.core.agent_roster import build_agent_roster_summary
 from runtime.core.subsystem_contracts import build_subsystem_contract_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
@@ -1018,6 +1019,7 @@ def build_status(root: Path) -> dict[str, Any]:
     control_events = [record.to_dict() for record in list_control_events(root=root)]
     blocked_control_actions = [record.to_dict() for record in list_blocked_actions(root=root)]
     routing_summary = build_model_registry_summary(root)
+    agent_roster_summary = build_agent_roster_summary(root=root)
     backend_assignment_summary = build_backend_assignment_summary(root=root)
     candidate_promotion_summary = build_candidate_summary(root)
     from runtime.memory.governance import build_memory_governance_summary
@@ -1437,6 +1439,7 @@ def build_status(root: Path) -> dict[str, Any]:
         "finished_recently": finished_recently,
         "candidate_artifacts": candidate_artifacts,
         "routing_summary": routing_summary,
+        "agent_roster_summary": agent_roster_summary,
         "routing_control_plane_summary": routing_control_plane_summary,
         "extension_lane_status_summary": extension_lane_status_summary,
         "lane_activation_summary": lane_activation_summary,
@@ -1587,9 +1590,10 @@ def build_status(root: Path) -> dict[str, Any]:
                 "latest_incident_code": (operator_incident_reports[-1] if operator_incident_reports else {}).get("incident_code"),
                 "latest_incident_severity": (operator_incident_reports[-1] if operator_incident_reports else {}).get("severity"),
                 "operator_incident_report_count": len(operator_incident_reports),
-                "operator_incident_snapshot_count": len(operator_incident_snapshots),
+            "operator_incident_snapshot_count": len(operator_incident_snapshots),
             },
             "model_registry_summary": routing_summary,
+            "agent_roster_summary": agent_roster_summary,
             "backend_assignment_summary": backend_assignment_summary,
             "candidate_promotion_summary": candidate_promotion_summary,
             "memory_discipline_summary": memory_discipline_summary,

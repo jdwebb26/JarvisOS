@@ -506,6 +506,7 @@ def build_state_export(root: Path) -> dict:
     routing_summary = build_model_registry_summary(root=root)
     routing_summary["latest_routing_decision"] = latest_routing_decision
     summary["routing_summary"] = routing_summary
+    summary["agent_roster_summary"] = routing_summary.get("agent_roster_summary", {})
     summary["workspace_registry_summary"] = summarize_workspace_registry(root=root, tasks=tasks, artifacts=artifacts, outputs=outputs)
     summary["world_ops_summary"] = build_world_ops_summary(root=root)
     summary["shadowbroker_summary"] = summarize_shadowbroker_backend(root=root)

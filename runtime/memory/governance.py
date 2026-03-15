@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import argparse
 import sys
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -37,6 +38,7 @@ from runtime.core.task_store import load_task
 
 
 MEMORY_BACKEND_ID = "memory_spine"
+TOKEN_CHAR_RATIO = 4
 
 
 def _state_dir(name: str, root: Optional[Path] = None) -> Path:
@@ -990,4 +992,116 @@ def retrieve_memory(
     return {
         "retrieval": retrieval.to_dict(),
         "items": [row.to_dict() for row in filtered],
+    }
+
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, (len(str(text or "")) + TOKEN_CHAR_RATIO - 1) // TOKEN_CHAR_RATIO)
+
+
+def _score_memory_entry(*, entry: MemoryEntryRecord, query_terms: set[str], preferred_classes: set[str]) -> float:
+    haystack = " ".join(
+        [
+            entry.memory_type,
+            entry.memory_class,
+            entry.structural_type,
+            entry.title,
+            entry.summary,
+            entry.content,
+        ]
+    ).lower()
+    term_hits = sum(1 for term in query_terms if term in haystack)
+    class_bonus = 0.25 if entry.memory_class in preferred_classes else 0.0
+    structure_bonus = 0.15 if entry.structural_type == "episodic" else 0.1
+    return float(entry.confidence_score) + class_bonus + structure_bonus + term_hits * 0.2
+
+
+def retrieve_memory_for_context(
+    *,
+    actor: str,
+    lane: str,
+    root: Optional[Path] = None,
+    query_text: str,
+    task_id: Optional[str] = None,
+    retrieval_budget_tokens: int = 1200,
+    episodic_limit: int = 4,
+    semantic_limit: int = 4,
+    promoted_only: bool = True,
+    include_contradicted: bool = False,
+) -> dict[str, object]:
+    root_path = Path(root or ROOT).resolve()
+    entries = list_memory_entries(root=root_path, task_id=task_id)
+    query_terms = set(re.findall(r"[a-z0-9_./-]{3,}", str(query_text or "").lower()))
+    filtered: list[MemoryEntryRecord] = []
+    returned_candidate_ids: list[str] = []
+    for entry in entries:
+        if promoted_only and entry.lifecycle_state != RecordLifecycleState.PROMOTED.value:
+            continue
+        contradiction_status = str((entry.contradiction_check or {}).get("status") or "")
+        if not include_contradicted and (contradiction_status == "contradicted" or entry.superseded_by):
+            continue
+        filtered.append(entry)
+        if entry.memory_candidate_id:
+            returned_candidate_ids.append(entry.memory_candidate_id)
+
+    episodic_rows = [row for row in filtered if row.structural_type == "episodic"]
+    semantic_rows = [row for row in filtered if row.structural_type != "episodic"]
+    episodic_rows.sort(key=lambda row: (_score_memory_entry(entry=row, query_terms=query_terms, preferred_classes={"decision_memory", "artifact_memory"}), row.updated_at), reverse=True)
+    semantic_rows.sort(key=lambda row: (_score_memory_entry(entry=row, query_terms=query_terms, preferred_classes={"operator_preference_memory", "risk_memory", "research_claim_memory"}), row.updated_at), reverse=True)
+
+    budget_remaining = max(0, int(retrieval_budget_tokens))
+    selected_episodic: list[MemoryEntryRecord] = []
+    selected_semantic: list[MemoryEntryRecord] = []
+    used_tokens = 0
+    for bucket, limit, sink in (
+        (episodic_rows, max(0, episodic_limit), selected_episodic),
+        (semantic_rows, max(0, semantic_limit), selected_semantic),
+    ):
+        for row in bucket:
+            if len(sink) >= limit:
+                break
+            entry_text = "\n".join(part for part in [row.title, row.summary, row.content] if part)
+            entry_tokens = _estimate_tokens(entry_text)
+            if sink and used_tokens + entry_tokens > retrieval_budget_tokens:
+                continue
+            if not sink and entry_tokens > retrieval_budget_tokens and retrieval_budget_tokens > 0:
+                continue
+            sink.append(row)
+            used_tokens += entry_tokens
+            budget_remaining = max(0, retrieval_budget_tokens - used_tokens)
+            if budget_remaining <= 0:
+                break
+        if budget_remaining <= 0:
+            break
+
+    retrieval = MemoryRetrievalRecord(
+        memory_retrieval_id=new_id("memget"),
+        created_at=now_iso(),
+        updated_at=now_iso(),
+        actor=actor,
+        lane=lane,
+        promoted_only=promoted_only,
+        task_id=task_id,
+        query_text=query_text[:2000] or None,
+        retrieval_scope="context_engine",
+        retrieval_budget_tokens=max(0, int(retrieval_budget_tokens)),
+        episodic_result_count=len(selected_episodic),
+        semantic_result_count=len(selected_semantic),
+        include_contradicted=include_contradicted,
+        returned_memory_candidate_ids=[
+            row.memory_candidate_id for row in [*selected_episodic, *selected_semantic] if row.memory_candidate_id
+        ],
+        result_count=len(selected_episodic) + len(selected_semantic),
+    )
+    save_memory_retrieval(retrieval, root=root_path)
+    for row in [*selected_episodic, *selected_semantic]:
+        row.last_retrieved_at = retrieval.updated_at
+        save_memory_entry(row, root=root_path)
+
+    return {
+        "retrieval": retrieval.to_dict(),
+        "episodic": [row.to_dict() for row in selected_episodic],
+        "semantic": [row.to_dict() for row in selected_semantic],
+        "used_tokens": used_tokens,
+        "remaining_budget_tokens": budget_remaining,
     }

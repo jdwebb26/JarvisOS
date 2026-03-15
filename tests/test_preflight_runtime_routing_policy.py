@@ -39,7 +39,6 @@ def test_preflight_runtime_routing_policy_passes_with_good_policy(tmp_path: Path
     assert all(row.status == "pass" for row in findings)
     assert any(row.message == "Runtime routing policy config is valid." for row in findings)
 
-
 def test_preflight_runtime_routing_policy_fails_on_malformed_json(tmp_path: Path):
     _write_runtime_policy(tmp_path, "{ invalid json")
 
