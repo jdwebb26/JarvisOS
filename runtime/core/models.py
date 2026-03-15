@@ -176,6 +176,8 @@ class DegradationEventStatus(StrEnum):
     RECORDED = "recorded"
     APPLIED = "applied"
     BLOCKED = "blocked"
+    RECOVERED = "recovered"
+    CLEARED = "cleared"
 
 
 class EvalDerivedOutcome(StrEnum):
@@ -930,6 +932,8 @@ class DegradationEventRecord:
     retry_policy: dict[str, Any] = field(default_factory=dict)
     status: str = DegradationEventStatus.RECORDED.value
     reason: str = ""
+    resolved_at: Optional[str] = None
+    resolution_reason: str = ""
     source_refs: dict[str, Any] = field(default_factory=dict)
     schema_version: str = CORE_SCHEMA_VERSION
     version: str = LEGACY_RECORD_VERSION
@@ -950,6 +954,8 @@ class DegradationEventRecord:
         data.setdefault("retry_policy", {})
         data.setdefault("status", DegradationEventStatus.RECORDED.value)
         data.setdefault("reason", "")
+        data.setdefault("resolved_at", None)
+        data.setdefault("resolution_reason", "")
         data.setdefault("source_refs", {})
         return cls(**data)
 

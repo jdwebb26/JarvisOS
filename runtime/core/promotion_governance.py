@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.controls.control_store import assert_control_allows, build_control_summary, list_blocked_actions
 from runtime.core.candidate_store import find_candidate_for_artifact, list_candidates
+from runtime.core.degradation_policy import record_degradation_event
 from runtime.core.models import ApprovalStatus, ControlBlockedActionRecord, ControlRunState, RecordLifecycleState, ReviewStatus, new_id, now_iso
 from runtime.core.task_store import load_task, task_dependency_summary
 from runtime.controls.control_store import save_blocked_action
@@ -80,6 +81,31 @@ def _record_governance_block(
     metadata: Optional[dict] = None,
     root: Optional[Path] = None,
 ) -> None:
+    metadata_payload = dict(metadata or {})
+    policy_block_kind = str(metadata_payload.get("policy_block_kind") or "")
+    degradation_subsystem = ""
+    if policy_block_kind == "review_gate_uncleared":
+        degradation_subsystem = "reviewer_lane"
+    elif policy_block_kind == "approval_gate_uncleared":
+        degradation_subsystem = "auditor_lane"
+    if degradation_subsystem:
+        record_degradation_event(
+            subsystem=degradation_subsystem,
+            actor=actor,
+            lane=lane,
+            task_id=task_id,
+            failure_category=policy_block_kind,
+            reason=reason,
+            source_refs={
+                **metadata_payload,
+                "blocked_action_kind": action,
+                "execution_backend": execution_backend,
+                "provider_id": provider_id,
+                "security_posture_reduced": False,
+            },
+            status="applied",
+            root=root,
+        )
     save_blocked_action(
         ControlBlockedActionRecord(
             blocked_action_id=new_id("ctlblk"),
@@ -92,7 +118,7 @@ def _record_governance_block(
             lane=lane,
             effective_status=ControlRunState.ACTIVE.value,
             reason=reason,
-            metadata=dict(metadata or {}),
+            metadata=metadata_payload,
         ),
         root=root,
     )

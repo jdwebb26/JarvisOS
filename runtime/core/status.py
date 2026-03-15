@@ -359,9 +359,10 @@ def build_discord_live_ops_summary(
         route_selected = bool(routing_meta.get("routing_decision_id"))
         backend_execution_attempted = latest_backend is not None
         timeout_stage = ""
-        if last_failure_category == "model_timeout":
+        timeout_failure_category = backend_failure_category or last_failure_category
+        if timeout_failure_category == "model_timeout":
             timeout_stage = "model"
-        elif last_failure_category in {"backend_timeout", "external_runtime_unreachable"}:
+        elif timeout_failure_category in {"backend_timeout", "external_runtime_unreachable"}:
             timeout_stage = "backend"
         row = {
             "task_id": task.task_id,
@@ -393,7 +394,7 @@ def build_discord_live_ops_summary(
             "degraded_fallback_action": fallback_action,
             "degraded_fallback_attempted": bool(fallback_action and fallback_action != "no_local_fallback" and fallback_allowed is not False),
             "degraded_fallback_blocked": fallback_allowed is False,
-            "degraded_fallback_legal": fallback_allowed is not False if fallback_action else None,
+            "degraded_fallback_legal": False if fallback_allowed is False else (True if fallback_action else None),
             "degraded_fallback_legality_reasons": list(degradation_refs.get("fallback_legality_reasons") or []),
             "governance_blocked_action_id": (latest_blocked or {}).get("blocked_action_id"),
             "governance_block_reason": (latest_blocked or {}).get("reason"),

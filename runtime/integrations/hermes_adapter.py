@@ -36,6 +36,7 @@ from runtime.core.degradation_policy import (
     fallback_allowed as degradation_fallback_allowed,
     ensure_default_degradation_policies,
     load_degradation_policy_for_subsystem,
+    recover_degradation_event,
     record_degradation_event,
 )
 from runtime.core.models import ApprovalStatus, AuthorityClass, ReviewStatus, TaskStatus, new_id, now_iso
@@ -735,6 +736,20 @@ def execute_hermes_task(
             )
 
     if result.status == SUCCESS_STATUS:
+        degradation_policy = load_degradation_policy_for_subsystem(HERMES_BACKEND_ID, root=root_path)
+        if degradation_policy is not None and degradation_policy.auto_recover:
+            recover_degradation_event(
+                subsystem=HERMES_BACKEND_ID,
+                actor=actor,
+                lane=lane,
+                reason="Hermes bridge recovered after a successful bounded run.",
+                source_refs={
+                    "hermes_request_id": request.request_id,
+                    "hermes_result_id": result.result_id,
+                    "recovered_by_result_id": result.result_id,
+                },
+                root=root_path,
+            )
         artifact_content = result.content
         if evidence_bundle is not None:
             artifact_content = artifact_content.rstrip() + f"\n\nEvidence bundle: {evidence_bundle['bundle_id']}\n"

@@ -289,6 +289,24 @@ def list_degradation_events(root: Optional[Path] = None) -> list[DegradationEven
     return _load_rows(degradation_events_dir(root), DegradationEventRecord)
 
 
+def latest_degradation_event_for_subsystem(
+    subsystem: str,
+    *,
+    include_resolved: bool = True,
+    root: Optional[Path] = None,
+) -> Optional[DegradationEventRecord]:
+    normalized = str(subsystem or "").strip()
+    if not normalized:
+        return None
+    for row in list_degradation_events(root=root):
+        if row.subsystem != normalized:
+            continue
+        if not include_resolved and row.status in {DegradationEventStatus.RECOVERED.value, DegradationEventStatus.CLEARED.value}:
+            continue
+        return row
+    return None
+
+
 def load_degradation_policy_for_subsystem(subsystem: str, *, root: Optional[Path] = None) -> Optional[DegradationPolicyRecord]:
     for row in list_degradation_policies(root=root):
         if row.subsystem == subsystem:
@@ -355,11 +373,11 @@ def list_active_degradation_modes(root: Optional[Path] = None) -> list[dict[str,
     ensure_default_degradation_policies(root=root)
     latest_by_subsystem: dict[str, DegradationEventRecord] = {}
     for event in list_degradation_events(root=root):
-        if event.status not in {DegradationEventStatus.RECORDED.value, DegradationEventStatus.APPLIED.value}:
-            continue
         latest_by_subsystem.setdefault(event.subsystem, event)
     active = []
     for subsystem, event in sorted(latest_by_subsystem.items()):
+        if event.status not in {DegradationEventStatus.RECORDED.value, DegradationEventStatus.APPLIED.value, DegradationEventStatus.BLOCKED.value}:
+            continue
         active.append(
             {
                 "subsystem": subsystem,
@@ -369,6 +387,8 @@ def list_active_degradation_modes(root: Optional[Path] = None) -> list[dict[str,
                 "requires_operator_notification": event.requires_operator_notification,
                 "degradation_event_id": event.degradation_event_id,
                 "reason": event.reason,
+                "resolved_at": event.resolved_at,
+                "resolution_reason": event.resolution_reason,
             }
         )
     return active
@@ -568,10 +588,39 @@ def record_degradation_event(
             retry_policy=dict(policy.retry_policy) if policy and policy.retry_policy else mode_profile["retry_policy"],
             status=status,
             reason=reason,
+            resolved_at=None,
+            resolution_reason="",
             source_refs=dict(source_refs or {}),
         ),
         root=root,
     )
+
+
+def recover_degradation_event(
+    *,
+    subsystem: str,
+    actor: str,
+    lane: str,
+    reason: str,
+    source_refs: Optional[dict[str, Any]] = None,
+    root: Optional[Path] = None,
+) -> Optional[DegradationEventRecord]:
+    latest = latest_degradation_event_for_subsystem(subsystem, include_resolved=True, root=root)
+    if latest is None:
+        return None
+    if latest.status in {DegradationEventStatus.RECOVERED.value, DegradationEventStatus.CLEARED.value}:
+        return latest
+    latest.status = DegradationEventStatus.RECOVERED.value
+    latest.actor = actor
+    latest.lane = lane
+    latest.updated_at = now_iso()
+    latest.resolved_at = latest.updated_at
+    latest.resolution_reason = reason
+    latest.source_refs = {
+        **dict(latest.source_refs or {}),
+        **dict(source_refs or {}),
+    }
+    return save_degradation_event(latest, root=root)
 
 
 def build_degradation_summary(root: Optional[Path] = None) -> dict:
@@ -582,12 +631,15 @@ def build_degradation_summary(root: Optional[Path] = None) -> dict:
     status_counts: dict[str, int] = {}
     mode_counts: dict[str, int] = {}
     operator_notification_count = 0
+    resolved_event_count = 0
     for row in events:
         subsystem_counts[row.subsystem] = subsystem_counts.get(row.subsystem, 0) + 1
         status_counts[row.status] = status_counts.get(row.status, 0) + 1
         mode_counts[row.degradation_mode] = mode_counts.get(row.degradation_mode, 0) + 1
         if row.requires_operator_notification:
             operator_notification_count += 1
+        if row.status in {DegradationEventStatus.RECOVERED.value, DegradationEventStatus.CLEARED.value}:
+            resolved_event_count += 1
     active_modes = list_active_degradation_modes(root=root)
     return {
         "degradation_policy_count": len(policies),
@@ -597,9 +649,11 @@ def build_degradation_summary(root: Optional[Path] = None) -> dict:
         "degradation_event_mode_counts": mode_counts,
         "active_degradation_modes": active_modes,
         "active_degradation_mode_count": len(active_modes),
+        "resolved_degradation_event_count": resolved_event_count,
         "operator_notification_required_event_count": operator_notification_count,
         "latest_degradation_policy": policies[0].to_dict() if policies else None,
         "latest_degradation_event": events[0].to_dict() if events else None,
+        "recent_degradation_events": [row.to_dict() for row in events[:10]],
     }
 
 
