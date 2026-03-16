@@ -133,8 +133,9 @@ async function _runTurn({ handle, text, requestId }) {
         await _runBridge(requestPath, resultPath);
         const resultText = (await fs.readFile(resultPath, "utf8")).trim();
         const resultPayload = resultText ? JSON.parse(resultText) : {};
+        const contentPreview = String(resultPayload.content || "").replace(/\s+/g, " ").slice(0, 200);
         await _appendLog(
-            `session=${handle?.sessionKey || "unknown"} request=${requestPath} result=${resultPath} preview=${preview}`
+            `session=${handle?.sessionKey || "unknown"} status=${resultPayload.status || "?"} content_len=${String(resultPayload.content || "").length} content_preview=${contentPreview}`
         );
         return resultPayload;
     } catch (error) {
@@ -160,7 +161,7 @@ async function* _runTurnIterator(input) {
         const content = String(result.content || "").trim();
         if (TOOL_CALL_PATTERN.test(content)) {
             await _appendLog(
-                `session=${input.handle?.sessionKey || "unknown"} TOOL_MARKUP_FILTERED raw_preview=${content.slice(0, 200)}`
+                `session=${input.handle?.sessionKey || "unknown"} EMIT=tool_markup_filtered raw_preview=${content.slice(0, 200)}`
             );
             yield {
                 type: "text_delta",
@@ -172,12 +173,19 @@ async function* _runTurnIterator(input) {
             return;
         }
         if (content) {
+            await _appendLog(
+                `session=${input.handle?.sessionKey || "unknown"} EMIT=text_delta stream=output len=${content.length} preview=${content.slice(0, 120).replace(/\s+/g, " ")}`
+            );
             yield {
                 type: "text_delta",
                 text: content,
                 stream: "output",
                 tag: "agent_message_chunk",
             };
+        } else {
+            await _appendLog(
+                `session=${input.handle?.sessionKey || "unknown"} EMIT=done_only content_empty=true`
+            );
         }
         yield {
             type: "done",
