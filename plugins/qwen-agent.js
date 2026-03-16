@@ -154,9 +154,23 @@ async function* _runTurnIterator(input) {
         yield { type: "done", stopReason: "error" };
         return;
     }
+    const TOOL_CALL_PATTERN = /<tool_call[\s\S]*?<\/tool_call>/i;
     try {
         const result = await _runTurn({ handle: input.handle, text: prompt, requestId: input.requestId });
         const content = String(result.content || "").trim();
+        if (TOOL_CALL_PATTERN.test(content)) {
+            await _appendLog(
+                `session=${input.handle?.sessionKey || "unknown"} TOOL_MARKUP_FILTERED raw_preview=${content.slice(0, 200)}`
+            );
+            yield {
+                type: "text_delta",
+                text: "(Qwen is processing your request.)",
+                stream: "output",
+                tag: "agent_message_chunk",
+            };
+            yield { type: "done", stopReason: "tool_markup_filtered" };
+            return;
+        }
         if (content) {
             yield {
                 type: "text_delta",

@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
+import re
 import sys
 import tempfile
 import uuid
@@ -19,6 +21,26 @@ from runtime.core import qwen_agent_smoke
 QWEN_REQUEST_ENV = "JARVIS_QWEN_REQUEST_FILE"
 QWEN_RESULT_ENV = "JARVIS_QWEN_RESULT_FILE"
 QWEN_MODE_ENV = "JARVIS_QWEN_BRIDGE_MODE"
+
+_TOOL_CALL_RE = re.compile(r"<tool_call\b[^>]*>[\s\S]*?</tool_call\s*>", re.IGNORECASE)
+
+
+def _contains_tool_markup(text: str) -> bool:
+    return bool(_TOOL_CALL_RE.search(text))
+
+
+def _strip_tool_calls(text: str) -> str:
+    return _TOOL_CALL_RE.sub("", text).strip()
+
+
+def _append_bridge_log(msg: str) -> None:
+    log_path = os.environ.get("JARVIS_QWEN_BRIDGE_LOG", "/tmp/qwen_acp_bridge.log")
+    try:
+        ts = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] {msg}\n")
+    except Exception:
+        pass
 
 def _resolve_path(arg_value: str | None, env_name: str) -> Path | None:
     if arg_value:
@@ -42,11 +64,11 @@ def _summarize_chunks(chunks: list[Any]) -> tuple[str, list[Any]]:
         nonlocal last_answer
         if isinstance(payload, dict) and payload.get("role") == "assistant":
             content = _strip_text(str(payload.get("content") or ""))
-            if content:
+            if content and not _contains_tool_markup(content):
                 last_answer = content
         elif isinstance(payload, str):
             trimmed = _strip_text(payload)
-            if trimmed:
+            if trimmed and not _contains_tool_markup(trimmed):
                 last_answer = trimmed
 
     for chunk in chunks:
@@ -132,6 +154,15 @@ def _process_request(request_path: Path, result_path: Path, bridge_mode: str | N
         return _handle_healthcheck(result_path, request)
     prompt = _build_prompt(request)
     answer, chunks = _run_qwen_agent(prompt)
+    # Final sanitization: strip any tool markup that escaped the loop
+    if _contains_tool_markup(answer):
+        _append_bridge_log(
+            f"TOOL_MARKUP_IN_ANSWER stripped raw_preview={answer[:300]}"
+        )
+        answer = _strip_tool_calls(answer) or "(Qwen is processing your request.)"
+    elif not answer:
+        _append_bridge_log("EMPTY_ANSWER no clean assistant text produced (tool loop may have timed out)")
+        answer = "(Qwen is processing your request.)"
     payload = _build_response_payload(request, answer, chunks)
     _write_result(result_path, payload)
     return payload
