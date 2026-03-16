@@ -493,17 +493,21 @@ def list_agent_ids() -> list[str]:
 
 
 def _allowed_skill_names_for_agent(agent_id: str) -> list[str]:
-    normalized = infer_agent_id(agent_id=agent_id)
-    # Fail-closed: return empty list for unknown agents — do NOT fall back to jarvis.
-    # infer_agent_id() already guarantees a known agent ID, so this should never be empty
-    # for a configured agent.
+    # Fail-closed: check CANONICAL_AGENT_ROSTER directly — do NOT delegate to
+    # infer_agent_id() which falls back to "jarvis" for unknowns.
+    normalized = str(agent_id or "").strip().lower()
+    if normalized not in CANONICAL_AGENT_ROSTER:
+        return []
     allowlist = AGENT_SKILL_ALLOWLIST.get(normalized) or []
     return _normalize_skill_names(list(allowlist))
 
 
 def _allowed_tool_names_for_agent(agent_id: str) -> list[str]:
-    normalized = infer_agent_id(agent_id=agent_id)
-    # Fail-closed: return empty list for unknown agents — do NOT fall back to jarvis.
+    # Fail-closed: check CANONICAL_AGENT_ROSTER directly — do NOT delegate to
+    # infer_agent_id() which falls back to "jarvis" for unknowns.
+    normalized = str(agent_id or "").strip().lower()
+    if normalized not in CANONICAL_AGENT_ROSTER:
+        return []
     allowlist = AGENT_TOOL_ALLOWLIST.get(normalized) or []
     return [str(item).strip().lower() for item in allowlist if str(item).strip()]
 
@@ -604,6 +608,19 @@ def filter_skills_prompt_for_agent(
     *,
     root: Optional[Path] = None,
 ) -> dict[str, Any]:
+    # Fail-closed: unknown agents get no skills — do NOT fall through to jarvis profile.
+    _norm = str(agent_id or "").strip().lower()
+    if _norm not in CANONICAL_AGENT_ROSTER:
+        return {
+            "agentId": _norm or "unknown",
+            "beforeCount": 0,
+            "afterCount": 0,
+            "dropReasons": {"unknown_agent": 1},
+            "skillsPrompt": "",
+            "loadedSkillNames": [],
+            "loadedSkillCategories": [],
+            "policy": {},
+        }
     profile = get_agent_profile(agent_id)
     policy = _skill_policy_for_agent(profile["agent_id"])
     prompt = str(skills_prompt or "").strip()
@@ -729,6 +746,17 @@ def filter_tools_for_agent(
     agent_id: str,
     tools: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    # Fail-closed: unknown agents get no tools — do NOT fall through to jarvis profile.
+    _norm = str(agent_id or "").strip().lower()
+    if _norm not in CANONICAL_AGENT_ROSTER:
+        return {
+            "agentId": _norm or "unknown",
+            "beforeCount": len(tools),
+            "afterCount": 0,
+            "droppedCount": len(tools),
+            "dropReasons": {"unknown_agent": len(tools)} if tools else {},
+            "tools": [],
+        }
     profile = get_agent_profile(agent_id)
     allowed_names = set(_allowed_tool_names_for_agent(profile["agent_id"]))
     denied_name_tokens = [str(token).lower() for token in profile.get("denied_tool_name_tokens") or []]

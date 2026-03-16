@@ -32,7 +32,7 @@ Interpretation:
 - `agent_dir` means the runtime is falling back to `~/.openclaw/agents/<id>/agent/<name>`
 - `workspace_base` means the run kept the workspace-loaded file for that basename
 
-Because the current config now points agentDir at the parent folders, the verifier should show `top_level_agent_root` as the active source for every `AGENTS/SOUL/TOOLS/IDENTITY/BOOTSTRAP` basename that was moved up, leaving `agent_dir` for the legacy backups.
+Because `agentDir` in `openclaw.json` points directly at `~/.openclaw/agents/<id>/`, the verifier shows `agent_dir` as the active source for `BOOTSTRAP.md`, `SOUL.md`, `TOOLS.md`, `IDENTITY.md`, and other per-agent basenames. The `top_level_agent_root` source would only be active if `agentDir` pointed at a subdirectory (e.g., `~/.openclaw/agents/<id>/agent/`), in which case files in the parent folder would resolve first. In the current config `agent_dir` is the correct and expected active label.
 
 Note:
 
