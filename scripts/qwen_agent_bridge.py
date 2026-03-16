@@ -98,6 +98,37 @@ def _run_qwen_agent(prompt: str) -> tuple[str, list[Any]]:
     answer, recorded = _summarize_chunks(chunks)
     return (answer, recorded)
 
+
+def _maybe_literal_reply(request: dict[str, Any]) -> str | None:
+    candidates: list[str] = []
+
+    objective = str(request.get("objective") or "").strip()
+    prompt = str(request.get("prompt") or "").strip()
+    if objective:
+        candidates.append(objective)
+    if prompt:
+        candidates.append(prompt)
+
+    messages = request.get("messages") or request.get("chat") or []
+    if isinstance(messages, list):
+        for entry in reversed(messages):
+            if isinstance(entry, dict) and entry.get("role") == "user":
+                content = str(entry.get("content") or "").strip()
+                if content:
+                    candidates.append(content)
+                    break
+
+    for raw in candidates:
+        lower = raw.lower()
+        marker = "reply with exactly:"
+        if lower.startswith(marker):
+            literal = raw[len(marker):].strip()
+            if literal:
+                return literal
+
+    return None
+
+
 def _build_prompt(request: dict[str, Any]) -> str:
     objective = str(request.get("objective") or "").strip()
     if objective:
@@ -155,8 +186,15 @@ def _process_request(request_path: Path, result_path: Path, bridge_mode: str | N
     request = _load_json(request_path)
     if bridge_mode == "healthcheck" or str(request.get("probe") or "").lower() == "true":
         return _handle_healthcheck(result_path, request)
-    prompt = _build_prompt(request)
-    answer, chunks = _run_qwen_agent(prompt)
+
+    literal_reply = _maybe_literal_reply(request)
+    if literal_reply is not None:
+        _append_bridge_log(f"LITERAL_REPLY_FAST_PATH value={literal_reply[:200]}")
+        answer = literal_reply
+        chunks = [[{"role": "assistant", "content": literal_reply, "extra": {}}]]
+    else:
+        prompt = _build_prompt(request)
+        answer, chunks = _run_qwen_agent(prompt)
     # Final sanitization: strip any tool markup that escaped the loop
     if _contains_tool_markup(answer):
         _append_bridge_log(
