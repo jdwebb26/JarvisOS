@@ -170,7 +170,7 @@ Verify current state with: `python3 scripts/verify_openclaw_bootstrap_runtime.py
 | **anton** | embedded | `memory_get`, `memory_search`, `message`, `read`, `session_status`, `sessions_history`, `sessions_list` | `model-usage`, `session-logs` |
 | **hermes** | embedded | `gateway`, `memory_get`, `memory_search`, `message`, `process`, `read`, `session_status`, `sessions_history`, `sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_yield` | `blogwatcher`, `goplaces`, `model-usage`, `session-logs`, `summarize` |
 | **scout** | embedded | `image`, `process`, `read`, `session_status`, `sessions_history`, `sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_yield`, `web_fetch`, `web_search` | `blogwatcher`, `goplaces`, `session-logs`, `summarize`, `xurl` |
-| **bowser** | embedded | `browser`, `browser_navigate`, `process`, `session_status`, `sessions_history`, `sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_yield` | `session-logs` |
+| **bowser** | embedded | `browser`, `process`, `session_status`, `sessions_history`, `sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_yield` | `session-logs` |
 | **muse** | embedded | `image`, `message`, `read`, `tts` | `sag`, `session-logs`, `songsee`, `summarize` |
 | **ralph** | embedded | `cron`, `memory_get`, `memory_search`, `process`, `session_status`, `sessions_history`, `sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_yield` | `ordercli`, `session-logs` |
 

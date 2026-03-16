@@ -202,7 +202,7 @@ def test_agent_specific_tool_exposure_drops_specialist_tools_for_jarvis(tmp_path
         tools=[
             {"name": "read", "description": "Read file", "parameters": {"type": "object"}},
             {"name": "web_search", "description": "Search the web", "parameters": {"type": "object"}},
-            {"name": "browser_navigate", "description": "Browser navigation", "parameters": {"type": "object"}},
+            {"name": "browser", "description": "Browser automation", "parameters": {"type": "object"}},
             {"name": "exec", "description": "Run shell command", "parameters": {"type": "object"}},
         ],
         channel="discord",
@@ -218,12 +218,12 @@ def test_agent_specific_tool_exposure_drops_specialist_tools_for_jarvis(tmp_path
 def test_agent_specific_skill_loading_filters_before_prompt_assembly(tmp_path: Path) -> None:
     # Tool names must exactly match AGENT_TOOL_ALLOWLIST entries (name-based allowlist, not category).
     # read + exec: in hal's allowlist, NOT in bowser's
-    # browser_navigate: in bowser's allowlist, NOT in hal's
+    # browser: in bowser's allowlist, NOT in hal's
     # jarvis uses discord channel → chat-minimal → no tools exposed regardless
     tools = [
         {"name": "read", "description": "Read file", "parameters": {"type": "object"}},
         {"name": "exec", "description": "Run shell command", "parameters": {"type": "object"}},
-        {"name": "browser_navigate", "description": "Browser navigation", "parameters": {"type": "object"}},
+        {"name": "browser", "description": "Browser automation", "parameters": {"type": "object"}},
     ]
     jarvis_packet = build_context_packet(
         root=tmp_path,
@@ -280,9 +280,9 @@ def test_agent_specific_skill_loading_filters_before_prompt_assembly(tmp_path: P
     assert hal_packet["loadedSkills"]["loadedSkillNames"] == ["coding-agent", "session-logs"]
     assert hal_packet["systemPromptReport"]["loadedTools"]["visibleToolNames"] == ["read", "exec"]
     assert hal_packet["systemPromptReport"]["agentRuntimeLoadout"]["providerId"] == "qwen"
-    # bowser (tasks channel): only session-logs passes bowser's skill allowlist; only browser_navigate passes tool allowlist
+    # bowser (tasks channel): only session-logs passes bowser's skill allowlist; only browser passes tool allowlist
     assert bowser_packet["loadedSkills"]["loadedSkillNames"] == ["session-logs"]
-    assert bowser_packet["systemPromptReport"]["loadedTools"]["visibleToolNames"] == ["browser_navigate"]
+    assert bowser_packet["systemPromptReport"]["loadedTools"]["visibleToolNames"] == ["browser"]
 
 
 def test_hard_threshold_blocks_unsafe_send(tmp_path: Path) -> None:

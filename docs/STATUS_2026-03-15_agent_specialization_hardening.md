@@ -45,7 +45,7 @@ session ran, the reconstructed view reflects current policy, not what actually r
 `tests/test_source_owned_context_engine.py` — the test for agent-specific skill loading was using
 fake skill names not in `config/skill_inventory.json`, causing `_normalize_skill_names()` to silently
 drop them. Fixed to use real inventory names (`discord`, `voice-call`, `coding-agent`, `session-logs`,
-`blogwatcher`, `sag`), real tool names (`read`, `exec`, `browser_navigate`), and was added to the
+`blogwatcher`, `sag`), real tool names (`read`, `exec`, `browser`), and was added to the
 `__main__` block so it runs on direct execution.
 
 ---
@@ -69,7 +69,7 @@ drop them. Fixed to use real inventory names (`discord`, `voice-call`, `coding-a
 |---|---|---|
 | ACP harness for HAL | `acp_ready` — NOT active | `acp.enabled=false` in `openclaw.json`; activate by flipping `acp.enabled=true` and changing HAL's `runtime.type` to `"acp"` |
 | ACP for Hermes | future candidate | Will follow same steps as HAL once HAL is validated |
-| Bowser browser bridge | scaffold only | `browser`/`browser_navigate` tools are in allowlist but host does not pass them in live sessions yet |
+| Bowser browser bridge | scaffold only | `browser` tool is in allowlist but host does not pass it in live sessions yet |
 | Hermes live daemon | blocked by external runtime | Adapter seam exists; availability depends on external runtime |
 | Ralph full autonomy loop | blocked by external runtime | Memory/consolidation intent scaffolded; full loop blocked |
 

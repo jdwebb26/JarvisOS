@@ -137,7 +137,6 @@ AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
     ),
     "bowser": (
         "browser",
-        "browser_navigate",
         "process",
         "sessions_list",
         "sessions_history",
