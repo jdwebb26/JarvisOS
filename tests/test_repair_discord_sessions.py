@@ -10,6 +10,7 @@ from runtime.integrations.openclaw_sessions import (
     build_openclaw_discord_session_integrity_summary,
     repair_discord_sessions,
     sanitize_user_facing_assistant_reply,
+    scan_all_specialist_channel_sessions,
 )
 from scripts.preflight_lib import build_doctor_report
 
@@ -445,3 +446,61 @@ def test_extract_text_deduplicates_duplicate_text_dict_items() -> None:
 
     # Plain string passthrough unchanged
     assert _extract_text(reply) == reply
+
+
+def test_scan_all_specialist_channel_sessions_detects_stale_and_real(tmp_path: Path) -> None:
+    """scan_all_specialist_channel_sessions returns entries from all agent dirs."""
+    openclaw_root = tmp_path / ".openclaw"
+
+    def _write_sessions(agent_dir_name: str, entries: dict) -> None:
+        sessions_dir = openclaw_root / "agents" / agent_dir_name / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        (sessions_dir / "sessions.json").write_text(json.dumps(entries) + "\n", encoding="utf-8")
+
+    # Real scout session
+    _write_sessions("scout", {
+        "agent:scout:discord:channel:111": {
+            "sessionId": "scout-sess-1",
+            "updatedAt": 2000,
+            "groupChannel": "#flowstate",
+            "displayName": "discord:guild#flowstate",
+        }
+    })
+
+    # Stale legacy builder session on HAL's channel
+    _write_sessions("builder", {
+        "agent:builder:discord:channel:222": {
+            "sessionId": "builder-sess-old",
+            "updatedAt": 1000,
+            "groupChannel": "#crew",
+            "displayName": "discord:guild#crew",
+        }
+    })
+
+    # Non-Discord session (should be excluded)
+    _write_sessions("hal", {
+        "agent:hal:main": {
+            "sessionId": "hal-main",
+            "updatedAt": 1500,
+        }
+    })
+
+    results = scan_all_specialist_channel_sessions(openclaw_root=openclaw_root)
+
+    # Only Discord channel sessions
+    assert len(results) == 2
+    channel_ids = {r["channel_id"] for r in results}
+    assert "111" in channel_ids
+    assert "222" in channel_ids
+
+    scout_row = next(r for r in results if r["channel_id"] == "111")
+    assert scout_row["session_agent_id"] == "scout"
+    assert scout_row["dir_agent_id"] == "scout"
+    assert scout_row["session_id"] == "scout-sess-1"
+
+    builder_row = next(r for r in results if r["channel_id"] == "222")
+    assert builder_row["session_agent_id"] == "builder"
+    assert builder_row["dir_agent_id"] == "builder"
+
+    # Should be sorted newest-first
+    assert results[0]["updated_at"] >= results[1]["updated_at"]

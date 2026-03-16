@@ -10,6 +10,7 @@ from runtime.core.agent_roster import (
     _allowed_skill_names_for_agent,
     _allowed_tool_names_for_agent,
     build_agent_roster_summary,
+    build_delegation_receipt,
     filter_skills_prompt_for_agent,
     filter_tools_for_agent,
 )
@@ -186,6 +187,47 @@ def test_unknown_agent_is_fail_closed_in_filter_functions() -> None:
     assert {t["name"] for t in jarvis_tools["tools"]} == {"read", "message"}
 
 
+def test_build_delegation_receipt_verified_and_unverified() -> None:
+    # Verified: session_key matches agent:<to_agent>:*
+    receipt = build_delegation_receipt(
+        from_agent="jarvis",
+        to_agent="scout",
+        method="message_tool",
+        session_key="agent:scout:discord:channel:1471376970259628032",
+        session_id="a0cfbbd1",
+        model_id="lmstudio/qwen3.5-35b-a3b",
+        provider_id="lmstudio",
+        visible_tools=["read", "web_search", "web_fetch"],
+        evidence_summary="Scout Discord session confirmed",
+    )
+    assert receipt["verified"] is True
+    assert receipt["fromAgent"] == "jarvis"
+    assert receipt["toAgent"] == "scout"
+    assert receipt["method"] == "message_tool"
+    assert "web_search" in receipt["visibleTools"]
+
+    # Unverified: generic jarvis subagent session_key
+    fake = build_delegation_receipt(
+        from_agent="jarvis",
+        to_agent="anton",
+        method="sessions_spawn_agentId",
+        session_key="agent:jarvis:subagent:de58e956-6909-4a73-9f86-e3bfcc6aecde",
+        model_id="lmstudio/qwen/qwen3.5-9b",
+    )
+    assert fake["verified"] is False
+    assert "does not match" in fake["verifiedReason"]
+
+    # Unverified: no session_key at all
+    empty = build_delegation_receipt(from_agent="jarvis", to_agent="hal", method="message_tool")
+    assert empty["verified"] is False
+    assert "no session_key provided" in empty["verifiedReason"]
+
+    # DELEGATION_WIRING has delegation_method field on all entries
+    from runtime.core.agent_roster import DELEGATION_WIRING
+    for entry in DELEGATION_WIRING:
+        assert "delegation_method" in entry, f"DELEGATION_WIRING entry missing delegation_method: {entry}"
+
+
 def test_status_snapshot_and_export_surface_agent_roster_summary(tmp_path: Path) -> None:
     status = build_status(tmp_path)
     snapshot = build_operator_snapshot(tmp_path)
@@ -201,5 +243,6 @@ if __name__ == "__main__":
     test_agent_roster_tool_scoping_keeps_jarvis_leaner_than_specialists()
     test_generic_skill_blocks_are_not_implicitly_loaded_for_jarvis()
     test_unknown_agent_is_fail_closed_in_filter_functions()
+    test_build_delegation_receipt_verified_and_unverified()
     test_status_snapshot_and_export_surface_agent_roster_summary(Path("tmp_agent_roster_two"))
     print("test_agent_roster: PASS")

@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.agent_roster import (
     AGENT_SKILL_ALLOWLIST,
+    CANONICAL_AGENT_ROSTER,
     build_agent_roster_summary,
     build_agent_runtime_loadout,
     get_agent_runtime_type,
@@ -20,6 +21,7 @@ from runtime.core.agent_roster import (
     _allowed_skill_names_for_agent,
     _allowed_tool_names_for_agent,
 )
+from runtime.integrations.openclaw_sessions import scan_all_specialist_channel_sessions
 
 
 DEFAULT_OPENCLAW_ROOT = Path.home() / ".openclaw"
@@ -253,6 +255,102 @@ def _resolve_agent_sources(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _inspect_specialist_channel_sessions(config: dict[str, Any], openclaw_root: Path) -> dict[str, Any]:
+    """Cross-reference openclaw.json Discord bindings with actual live session directories.
+
+    For each Discord channel binding, reports which agent actually has the session for that
+    channel (which may differ from the configured agentId if legacy agent names are still
+    present in the agents directory).
+
+    Status values:
+      ok                  — configured agentId matches the session_agent_id in the session key
+      stale_legacy_session— a legacy / pre-rename agent (e.g. builder, reviewer) has the session;
+                            the configured agentId has no Discord session for this channel yet
+      wrong_canonical_agent— a different canonical agent (not the configured one) has the session
+      no_session_yet      — no Discord session exists for this channel at all; will be created on
+                            first inbound message
+    """
+    canonical_ids = set(CANONICAL_AGENT_ROSTER.keys())
+
+    # Read bindings from openclaw.json
+    expected_bindings: list[dict[str, Any]] = []
+    for binding in config.get("bindings", []):
+        match = binding.get("match") or {}
+        if match.get("channel") != "discord":
+            continue
+        peer = match.get("peer") or {}
+        channel_id = str(peer.get("id") or "").strip()
+        agent_id = str(binding.get("agentId") or "").strip().lower()
+        if channel_id and agent_id:
+            expected_bindings.append({"expected_agent_id": agent_id, "channel_id": channel_id})
+
+    # Scan all agent session directories
+    all_sessions = scan_all_specialist_channel_sessions(openclaw_root=openclaw_root)
+    sessions_by_channel: dict[str, list[dict[str, Any]]] = {}
+    for s in all_sessions:
+        sessions_by_channel.setdefault(s["channel_id"], []).append(s)
+
+    # Build per-channel audit rows
+    channel_rows: list[dict[str, Any]] = []
+    for binding in expected_bindings:
+        expected = binding["expected_agent_id"]
+        cid = binding["channel_id"]
+        channel_sessions = sessions_by_channel.get(cid, [])
+
+        correct = [s for s in channel_sessions if s["session_agent_id"] == expected]
+        stale_legacy = [s for s in channel_sessions if s["session_agent_id"] != expected and s["session_agent_id"] not in canonical_ids]
+        wrong_canonical = [s for s in channel_sessions if s["session_agent_id"] != expected and s["session_agent_id"] in canonical_ids]
+
+        if correct:
+            status = "ok"
+        elif not channel_sessions:
+            status = "no_session_yet"
+        elif wrong_canonical:
+            status = "wrong_canonical_agent"
+        else:
+            status = "stale_legacy_session"
+
+        channel_rows.append({
+            "channel_id": cid,
+            "expected_agent_id": expected,
+            "status": status,
+            "correct_sessions": [{"session_key": s["session_key"], "session_id": s["session_id"], "updated_at": s["updated_at"], "group_channel": s["group_channel"]} for s in correct],
+            "stale_legacy_sessions": [{"session_key": s["session_key"], "dir_agent_id": s["dir_agent_id"], "sessions_file": s["sessions_file"], "updated_at": s["updated_at"]} for s in stale_legacy],
+            "wrong_canonical_sessions": [{"session_key": s["session_key"], "dir_agent_id": s["dir_agent_id"], "updated_at": s["updated_at"]} for s in wrong_canonical],
+        })
+
+    # Find legacy ghost sessions not accounted for in any binding
+    bound_channels = {b["channel_id"] for b in expected_bindings}
+    ghost_sessions = [
+        {"session_key": s["session_key"], "channel_id": s["channel_id"], "dir_agent_id": s["dir_agent_id"], "updated_at": s["updated_at"]}
+        for s in all_sessions
+        if s["channel_id"] not in bound_channels
+    ]
+
+    ok_count = sum(1 for r in channel_rows if r["status"] == "ok")
+    stale_count = sum(1 for r in channel_rows if r["status"] == "stale_legacy_session")
+    missing_count = sum(1 for r in channel_rows if r["status"] == "no_session_yet")
+    wrong_count = sum(1 for r in channel_rows if r["status"] == "wrong_canonical_agent")
+
+    return {
+        "channelBindingAudit": channel_rows,
+        "ghostSessions": ghost_sessions,
+        "summary": {
+            "ok": ok_count,
+            "stale_legacy_session": stale_count,
+            "no_session_yet": missing_count,
+            "wrong_canonical_agent": wrong_count,
+        },
+        "operatorNote": (
+            "Stale legacy sessions (builder, reviewer) hold the active Discord state for their channel. "
+            "The host will create a new specialist session on next inbound message. "
+            "To force the new session now: delete the stale entry from the agent's sessions/sessions.json "
+            "and archive the corresponding .jsonl file."
+            if stale_count > 0 else ""
+        ),
+    }
+
+
 def _build_report(config_path: Path, handler_path: Path, bundle_path: Path, agent_ids: list[str] | None) -> dict[str, Any]:
     config = _load_json(config_path)
     repo_root = Path(__file__).resolve().parents[1]
@@ -287,6 +385,7 @@ def _build_report(config_path: Path, handler_path: Path, bundle_path: Path, agen
             agent["runtimeExposure"]["sessionDataAvailable"] = True
         else:
             agent["runtimeExposure"] = {"sessionDataAvailable": False}
+    specialist_channels = _inspect_specialist_channel_sessions(config, DEFAULT_OPENCLAW_ROOT)
     return {
         "configPath": str(config_path),
         "installedRuntime": {
@@ -301,6 +400,7 @@ def _build_report(config_path: Path, handler_path: Path, bundle_path: Path, agen
             "repoSourceOwnedEngine": str((Path(__file__).resolve().parents[1] / "runtime" / "gateway" / "source_owned_context_engine.py").resolve()),
         },
         "agents": agents,
+        "specialistChannelAudit": specialist_channels,
         "agentRosterSummary": build_agent_roster_summary(root=repo_root),
     }
 
@@ -398,6 +498,37 @@ def _print_human(report: dict[str, Any]) -> None:
             print(f"  Session snapshot: {' | '.join(parts)}")
 
 
+def _print_specialist_channel_audit(report: dict[str, Any]) -> None:
+    audit = report.get("specialistChannelAudit") or {}
+    summary = audit.get("summary") or {}
+    rows = audit.get("channelBindingAudit") or []
+    ghosts = audit.get("ghostSessions") or []
+    print()
+    print("=== Specialist channel audit ===")
+    print(f"  ok={summary.get('ok', 0)}  stale_legacy={summary.get('stale_legacy_session', 0)}  no_session_yet={summary.get('no_session_yet', 0)}  wrong_canonical={summary.get('wrong_canonical_agent', 0)}")
+    for row in rows:
+        cid = row["channel_id"]
+        expected = row["expected_agent_id"]
+        status = row["status"]
+        icon = "✓" if status == "ok" else ("?" if status == "no_session_yet" else "✗")
+        print(f"  {icon} channel:{cid} → expected:{expected}  status:{status}")
+        for s in row.get("correct_sessions", []):
+            print(f"      real session: {s['session_key']}  (channel: {s.get('group_channel', '')})")
+        for s in row.get("stale_legacy_sessions", []):
+            print(f"      STALE legacy session: {s['session_key']} in {s['sessions_file']}")
+            print(f"        → Host will create agent:{expected}:discord:channel:{cid} on next inbound message.")
+            print(f"        → To force now: remove stale entry from {s['sessions_file']}")
+        for s in row.get("wrong_canonical_sessions", []):
+            print(f"      WRONG canonical agent: {s['session_key']}")
+    if ghosts:
+        print(f"  Ghost sessions (channel not in bindings config):")
+        for g in ghosts:
+            print(f"    {g['session_key']}  channel:{g['channel_id']}")
+    note = audit.get("operatorNote") or ""
+    if note:
+        print(f"  Note: {note}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify the live OpenClaw bootstrap wiring for agent-specific runtime files.")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="Path to ~/.openclaw/openclaw.json")
@@ -417,6 +548,7 @@ def main() -> int:
         print(json.dumps(report, indent=2))
     else:
         _print_human(report)
+        _print_specialist_channel_audit(report)
     return 0
 
 

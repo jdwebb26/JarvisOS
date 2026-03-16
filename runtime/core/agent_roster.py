@@ -444,13 +444,18 @@ REVIEW_HIERARCHY = {
 }
 
 DELEGATION_WIRING = [
-    {"from_agent": "jarvis", "to_agent": "hal", "task_classes": ["code", "deploy"], "status": "policy_backed", "source": "runtime/core/agent_roster.py"},
-    {"from_agent": "hal", "to_agent": "archimedes", "task_classes": ["code", "deploy", "review"], "status": "wired", "source": "runtime/core/decision_router.py"},
-    {"from_agent": "archimedes", "to_agent": "anton", "task_classes": ["deploy", "quant", "high_stakes", "approval"], "status": "wired", "source": "runtime/core/decision_router.py"},
-    {"from_agent": "jarvis", "to_agent": "scout", "task_classes": ["research", "docs"], "status": "policy_backed", "source": "runtime/core/agent_roster.py"},
-    {"from_agent": "scout", "to_agent": "hermes", "task_classes": ["research", "quant"], "status": "implemented_but_blocked_by_external_runtime", "source": "runtime/integrations/hermes_adapter.py"},
-    {"from_agent": "jarvis", "to_agent": "bowser", "task_classes": ["multimodal", "browser"], "status": "scaffold_only", "source": "config/policies.yaml"},
-    {"from_agent": "jarvis", "to_agent": "ralph", "task_classes": ["flowstate", "maintenance", "general"], "status": "implemented_but_blocked_by_external_runtime", "source": "runtime/core/agent_roster.py"},
+    # delegation_method values:
+    #   "message_tool"    — Jarvis uses the `message` tool to post to the specialist's Discord channel
+    #   "decision_router" — internal routing via decision_router.py, which posts to the specialist's channel
+    #   "external_adapter"— blocked until external runtime is available
+    #   "scaffold_only"   — not implemented
+    {"from_agent": "jarvis", "to_agent": "hal", "task_classes": ["code", "deploy"], "status": "policy_backed", "source": "runtime/core/agent_roster.py", "delegation_method": "message_tool", "note": "Use message tool to HAL's #crew channel. sessions_spawn without agentId creates a jarvis subagent, NOT hal."},
+    {"from_agent": "hal", "to_agent": "archimedes", "task_classes": ["code", "deploy", "review"], "status": "wired", "source": "runtime/core/decision_router.py", "delegation_method": "decision_router", "note": "decision_router.py posts completed work to Archimedes' #outputs channel for code review."},
+    {"from_agent": "archimedes", "to_agent": "anton", "task_classes": ["deploy", "quant", "high_stakes", "approval"], "status": "wired", "source": "runtime/core/decision_router.py", "delegation_method": "decision_router", "note": "decision_router.py escalates high-stakes items to Anton's #review channel."},
+    {"from_agent": "jarvis", "to_agent": "scout", "task_classes": ["research", "docs"], "status": "policy_backed", "source": "runtime/core/agent_roster.py", "delegation_method": "message_tool", "note": "Use message tool to Scout's #flowstate channel. Scout has a real live Discord session."},
+    {"from_agent": "scout", "to_agent": "hermes", "task_classes": ["research", "quant"], "status": "implemented_but_blocked_by_external_runtime", "source": "runtime/integrations/hermes_adapter.py", "delegation_method": "external_adapter"},
+    {"from_agent": "jarvis", "to_agent": "bowser", "task_classes": ["multimodal", "browser"], "status": "scaffold_only", "source": "config/policies.yaml", "delegation_method": "scaffold_only"},
+    {"from_agent": "jarvis", "to_agent": "ralph", "task_classes": ["flowstate", "maintenance", "general"], "status": "implemented_but_blocked_by_external_runtime", "source": "runtime/core/agent_roster.py", "delegation_method": "external_adapter"},
 ]
 
 REVIEW_LANE_SUMMARY = {
@@ -738,6 +743,54 @@ def build_agent_runtime_loadout(
         "loadedTools": loaded_tools,
         "reviewHierarchy": dict(REVIEW_HIERARCHY),
         "delegationTargets": [row["to_agent"] for row in DELEGATION_WIRING if row["from_agent"] == profile["agent_id"]],
+    }
+
+
+def build_delegation_receipt(
+    *,
+    from_agent: str,
+    to_agent: str,
+    method: str,
+    session_key: str = "",
+    session_id: str = "",
+    model_id: str = "",
+    provider_id: str = "",
+    visible_tools: Optional[list[str]] = None,
+    evidence_summary: str = "",
+) -> dict[str, Any]:
+    """Return a structured delegation receipt.
+
+    ``verified`` is True only when ``session_key`` starts with ``agent:<to_agent>:`` — meaning
+    a real specialist session was observed, not a generic subagent created by ``sessions_spawn``
+    without an ``agentId``.
+
+    ``method`` should be one of: ``message_tool``, ``decision_router``, ``sessions_spawn_agentId``,
+    ``direct_discord_channel``, ``unknown``.
+    """
+    to_agent_norm = str(to_agent or "").strip().lower()
+    session_key_str = str(session_key or "").strip()
+    verified = bool(session_key_str) and session_key_str.startswith(f"agent:{to_agent_norm}:")
+    unverified_reason = ""
+    if not verified:
+        if not session_key_str:
+            unverified_reason = "no session_key provided — delegation not confirmed"
+        elif not session_key_str.startswith(f"agent:{to_agent_norm}:"):
+            unverified_reason = (
+                f"session_key '{session_key_str}' does not match agent:{to_agent_norm}:* "
+                f"— likely a generic subagent, not a real specialist session"
+            )
+    return {
+        "fromAgent": str(from_agent or "").strip().lower(),
+        "toAgent": to_agent_norm,
+        "method": str(method or "unknown"),
+        "sessionKey": session_key_str,
+        "sessionId": str(session_id or ""),
+        "modelId": str(model_id or ""),
+        "providerId": str(provider_id or ""),
+        "visibleTools": list(visible_tools or []),
+        "evidenceSummary": str(evidence_summary or ""),
+        "verified": verified,
+        "verifiedReason": f"session_key confirms agent:{to_agent_norm}:* session" if verified else unverified_reason,
     }
 
 

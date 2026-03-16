@@ -407,6 +407,62 @@ def build_openclaw_discord_session_integrity_summary(
     }
 
 
+def scan_all_specialist_channel_sessions(
+    *,
+    openclaw_root: Optional[Path] = None,
+) -> list[dict[str, Any]]:
+    """Scan all agent directories under ~/.openclaw/agents/ for Discord channel sessions.
+
+    Returns one entry per ``agent:X:discord:channel:Y`` session key found across all agent
+    directories.  The ``dir_agent_id`` is the folder name (may be a legacy ID like ``builder``
+    or ``reviewer``); ``session_agent_id`` is extracted from the session key itself.  Sorted
+    newest-first by ``updated_at``.
+    """
+    root = resolve_openclaw_root(openclaw_root=openclaw_root)
+    if root is None:
+        return []
+    agents_dir = root / "agents"
+    if not agents_dir.exists():
+        return []
+    results: list[dict[str, Any]] = []
+    for agent_subdir in sorted(agents_dir.iterdir()):
+        if not agent_subdir.is_dir():
+            continue
+        dir_agent_id = agent_subdir.name
+        sessions_file = agent_subdir / "sessions" / "sessions.json"
+        if not sessions_file.exists():
+            continue
+        try:
+            index = json.loads(sessions_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for session_key, entry in index.items():
+            if not isinstance(entry, dict):
+                continue
+            # Only Discord channel sessions
+            if ":discord:channel:" not in session_key:
+                continue
+            parts = session_key.split(":")
+            # Expected format: agent:<agent_id>:discord:channel:<channel_id>
+            if len(parts) < 5 or parts[0] != "agent":
+                continue
+            session_agent_id = parts[1]
+            channel_id = parts[4]
+            results.append({
+                "dir_agent_id": dir_agent_id,
+                "session_agent_id": session_agent_id,
+                "session_key": session_key,
+                "channel_id": channel_id,
+                "session_id": str(entry.get("sessionId") or ""),
+                "updated_at": int(entry.get("updatedAt") or 0),
+                "group_channel": str(entry.get("groupChannel") or ""),
+                "display_name": str(entry.get("displayName") or ""),
+                "sessions_file": str(sessions_file),
+            })
+    results.sort(key=lambda r: r["updated_at"], reverse=True)
+    return results
+
+
 def repair_discord_sessions(
     *,
     repo_root: Optional[Path] = None,
