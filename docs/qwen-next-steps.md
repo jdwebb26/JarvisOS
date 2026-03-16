@@ -19,6 +19,6 @@ Current runtime regression pack is green:
 
 ## Keep
 
-- Keep `qwen_agent_smoke.py` as the safe standalone entry point.
+- Keep `qwen_agent_smoke.py` as the safe standalone entry point and continue wiring the script through `scripts/qwen_agent_health.py` whenever the agent bridge must be verified.
 - Keep `qwen_task_adapter.py` read-only for now.
 - Use Qwen for workspace inspection, runtime summaries, and doc/artifact generation.

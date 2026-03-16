@@ -81,6 +81,11 @@ This document summarizes the **actual runtime code** currently present in three 
 
 ### Status: **Smoke test runner only**. Provides basic file I/O tools for Qwen agent but lacks full orchestration, state management, or production deployment. Empty config/docs indicate incomplete setup.
 
+### Health probe & integration seam
+- **`scripts/qwen_agent_health.py`** – a lightweight wrapper around `runtime/core/qwen_agent_smoke.py` that instantiates `Assistant` with the existing workspace tools, sends a configurable prompt, and prints the agent’s sanitized response (JSON output is available with `--json`).
+- **Runtime contract** – the script reuses the same envvars as the smoke runner (`JARVIS_WORKSPACE`, `QWEN_AGENT_MODEL_SERVER`, `QWEN_AGENT_MODEL`, `QWEN_AGENT_API_KEY`, `QWEN_AGENT_ENABLE_THINKING`, `QWEN_AGENT_USE_RAW_API`, `QWEN_AGENT_THOUGHT_IN_CONTENT`) so any future OpenClaw bootstrap can run `python3 scripts/qwen_agent_health.py --prompt "probe" --state` to confirm the Qwen-Agent bridge is ready.
+- **Result flow** – assistant outputs remain pure text, but the workspace tools already target `/home/rollan/.openclaw/workspace/tasks` and `/home/rollan/.openclaw/workspace/tasks/results`, so a downstream runner can scan `results/*.md` and publish them back to Discord or Jarvis as artifacts. The health probe documents this contract and can be extended into automated monitors before wiring the live lane.
+
 ---
 
 ## Overall Assessment
