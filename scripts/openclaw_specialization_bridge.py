@@ -16,6 +16,14 @@ NETWORK_GUARD_LABEL = "runtime_network_interface_guard"
 
 REPLACEMENTS: tuple[tuple[str, str], ...] = (
     (
+        # DEFAULT_TOOL_ALLOW is the sandbox tool allowlist. web_search/web_fetch are omitted
+        # from the default, so sandboxed agents (Scout) never receive them in toolsRaw.
+        # Adding them here lets Scout's Python-side allowlist gate them correctly while
+        # agents that don't have web tools in their AGENT_TOOL_ALLOWLIST still get nothing.
+        'const DEFAULT_TOOL_ALLOW = [\n\t"exec",\n\t"process",\n\t"read",\n\t"write",\n\t"edit",\n\t"apply_patch",\n\t"image",\n\t"sessions_list",\n\t"sessions_history",\n\t"sessions_send",\n\t"sessions_spawn",\n\t"sessions_yield",\n\t"subagents",\n\t"session_status"\n];',
+        'const DEFAULT_TOOL_ALLOW = [\n\t"exec",\n\t"process",\n\t"read",\n\t"write",\n\t"edit",\n\t"apply_patch",\n\t"image",\n\t"sessions_list",\n\t"sessions_history",\n\t"sessions_send",\n\t"sessions_spawn",\n\t"sessions_yield",\n\t"subagents",\n\t"session_status",\n\t"web_search",\n\t"web_fetch"\n];',
+    ),
+    (
         'const candidate = path.resolve(workspaceDir, "scripts", "source_owned_context_engine_cli.py");\n\tif (existsSync(candidate)) return candidate;\n\tthrow new Error(`Source-owned context engine CLI not found: ${candidate}`);',
         'const candidates = [\n\t\tpath.resolve(workspaceDir, "scripts", "source_owned_context_engine_cli.py"),\n\t\tpath.resolve(workspaceDir, "jarvis-v5", "scripts", "source_owned_context_engine_cli.py"),\n\t\tpath.resolve(process.cwd(), "scripts", "source_owned_context_engine_cli.py"),\n\t\tpath.resolve(process.env.HOME || "", ".openclaw", "workspace", "jarvis-v5", "scripts", "source_owned_context_engine_cli.py")\n\t];\n\tfor (const candidate of candidates) {\n\t\tif (existsSync(candidate)) return candidate;\n\t}\n\tthrow new Error(`Source-owned context engine CLI not found: ${candidates[0]}`);',
     ),
@@ -216,6 +224,7 @@ export { bootstrapExtraFilesHook as default };
 
 def _check_bundle_state(text: str) -> dict[str, bool]:
     return {
+        "sandbox_default_tool_allow_web_tools": '\t"web_search",\n\t"web_fetch"\n];\nconst DEFAULT_TOOL_DENY' in text,
         NETWORK_GUARD_LABEL: "function listTailnetAddresses() {\n\tconst ipv4 = [];\n\tconst ipv6 = [];\n\tlet ifaces;\n\ttry {\n\t\tifaces = os.networkInterfaces();\n\t}\n\tcatch {\n\t\treturn {\n\t\t\tipv4: [],\n\t\t\tipv6: []\n\t\t};\n\t}\n" in text
         and "function pickPrimaryLanIPv4() {\n\tlet nets;\n\ttry {\n\t\tnets = os.networkInterfaces();\n\t}\n\tcatch {\n\t\treturn;\n\t}\n" in text,
         "bridge_payload_fields": 'skills_prompt: typeof params.skillsPrompt === "string" ? params.skillsPrompt : ""' in text
