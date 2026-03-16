@@ -208,5 +208,27 @@
       "burst_allowed": false
     }
   },
-  "channel_overrides": {}
+  "channel_overrides": {},
+  "acp_scaffold": {
+    "enabled": false,
+    "notes": [
+      "ACP (Agent Control Protocol) harness support is scaffolded here but NOT active.",
+      "To activate: set acp.enabled=true in openclaw.json AND change the target agent's runtime.type to 'acp'.",
+      "HAL is the first designated acp_ready agent (runtime_type=acp_ready in AGENT_RUNTIME_TYPES).",
+      "Jarvis must remain embedded — it is the front door and control plane for Discord sessions.",
+      "Hermes is the second ACP candidate but must not be flipped until HAL is validated end-to-end.",
+      "All agents default to embedded runtime. Default behaviour is fully preserved while acp.enabled=false."
+    ],
+    "runtime_types": {
+      "jarvis":     "embedded",
+      "hal":        "acp_ready",
+      "archimedes": "embedded",
+      "anton":      "embedded",
+      "hermes":     "embedded",
+      "scout":      "embedded",
+      "bowser":     "embedded",
+      "muse":       "embedded",
+      "ralph":      "embedded"
+    }
+  }
 }
