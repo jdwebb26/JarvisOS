@@ -195,6 +195,7 @@ def _resolve_agent_sources(entry: dict[str, Any]) -> dict[str, Any]:
     agent_dir = Path(str(entry.get("agentDir") or "")).expanduser().resolve()
     agent_root = agent_dir.parent
     workspace_dir = Path(str(entry.get("workspace") or "")).expanduser().resolve()
+    runtime_config = dict(entry.get("runtime") or {})
     files: dict[str, Any] = {}
     top_level_direct_runtime: dict[str, Any] = {}
 
@@ -252,6 +253,7 @@ def _resolve_agent_sources(entry: dict[str, Any]) -> dict[str, Any]:
         "bootstrapFiles": files,
         "sessionSnapshot": session_snapshot,
         "_sessionEntry": session_entry,
+        "configuredRuntime": runtime_config,
     }
 
 
@@ -424,7 +426,15 @@ def _print_human(report: dict[str, Any]) -> None:
             print("  missing from ~/.openclaw/openclaw.json agents.list")
             continue
         runtime_type = get_agent_runtime_type(agent["agentId"])
-        print(f"  runtime_type: {runtime_type}")
+        print(f"  runtime_type (repo): {runtime_type}")
+        configured_runtime = agent.get("configuredRuntime") or {}
+        configured_type = str(configured_runtime.get("type") or "embedded")
+        print(f"  runtime_type (config): {configured_type}")
+        acp_config = configured_runtime.get("acp") or {}
+        backend_label = acp_config.get("backend") or configured_runtime.get("backend")
+        if backend_label or acp_config.get("cwd"):
+            cwd_value = acp_config.get("cwd") or ""
+            print(f"    configured backend: {backend_label or '(default)'} cwd: {cwd_value or '(default)'}")
         for name in TARGET_TOP_LEVEL_FILES:
             row = agent["topLevelTargetFiles"][name]
             print(

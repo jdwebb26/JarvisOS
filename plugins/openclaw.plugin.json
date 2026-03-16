@@ -1,0 +1,12 @@
+{
+  "id": "qwen-agent",
+  "name": "Qwen ACP Backend",
+  "description": "ACP runtime backend for the Qwen-Agent bridge",
+  "version": "0.1.0",
+  "main": "./qwen-agent.js",
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true
+  }
+}
