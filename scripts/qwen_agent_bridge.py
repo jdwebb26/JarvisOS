@@ -22,7 +22,7 @@ QWEN_REQUEST_ENV = "JARVIS_QWEN_REQUEST_FILE"
 QWEN_RESULT_ENV = "JARVIS_QWEN_RESULT_FILE"
 QWEN_MODE_ENV = "JARVIS_QWEN_BRIDGE_MODE"
 
-_TOOL_CALL_RE = re.compile(r"<tool_call\b[^>]*>[\s\S]*?</tool_call\s*>", re.IGNORECASE)
+_TOOL_CALL_RE = re.compile(r"<tool_call\b[^>]*>(?:[\s\S]*?</tool_call\s*>|[\s\S]*)", re.IGNORECASE)
 
 
 def _contains_tool_markup(text: str) -> bool:
@@ -30,7 +30,10 @@ def _contains_tool_markup(text: str) -> bool:
 
 
 def _strip_tool_calls(text: str) -> str:
-    return _TOOL_CALL_RE.sub("", text).strip()
+    cleaned = _TOOL_CALL_RE.sub("", text)
+    if "<tool_call" in cleaned.lower():
+        cleaned = cleaned.split("<tool_call", 1)[0]
+    return cleaned.strip()
 
 
 def _append_bridge_log(msg: str) -> None:

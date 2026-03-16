@@ -155,7 +155,7 @@ async function* _runTurnIterator(input) {
         yield { type: "done", stopReason: "error" };
         return;
     }
-    const TOOL_CALL_PATTERN = /<tool_call[\s\S]*?<\/tool_call>/i;
+    const TOOL_CALL_PATTERN = /<tool_call\b/i;
     try {
         const result = await _runTurn({ handle: input.handle, text: prompt, requestId: input.requestId });
         const content = String(result.content || "").trim();
