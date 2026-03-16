@@ -6,7 +6,13 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from runtime.core.agent_roster import filter_tools_for_agent, infer_agent_id
+from runtime.core.agent_roster import (
+    build_agent_runtime_loadout,
+    filter_skills_prompt_for_agent,
+    filter_tools_for_agent,
+    infer_agent_id,
+    summarize_visible_tools,
+)
 from runtime.core.models import now_iso
 from runtime.memory.brief_builder import build_session_context_brief_payload
 from runtime.memory.governance import retrieve_memory_for_context
@@ -47,15 +53,18 @@ def _extract_text(content: Any) -> str:
         parts: list[str] = []
         for item in content:
             if isinstance(item, str):
-                if item.strip():
-                    parts.append(item.strip())
+                text = item.strip()
+                if text:
+                    if not parts or parts[-1] != text:
+                        parts.append(text)
                 continue
             if not isinstance(item, dict):
                 continue
             if item.get("type") == "text":
                 text = str(item.get("text") or "").strip()
                 if text:
-                    parts.append(text)
+                    if not parts or parts[-1] != text:
+                        parts.append(text)
             elif item.get("type") == "toolCall":
                 try:
                     parts.append(json.dumps(item.get("arguments") or {}, sort_keys=True))
@@ -325,8 +334,11 @@ def build_context_packet(
     current_prompt: str,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]],
+    skills_prompt: str = "",
     agent_id: str = "",
     channel: str = "discord",
+    provider_id: str = "",
+    model_id: str = "",
     context_window_tokens: int = 200000,
     raw_user_turn_window: int = DEFAULT_RAW_USER_TURN_WINDOW,
     retrieval_budget_tokens: int = DEFAULT_RETRIEVAL_BUDGET_TOKENS,
@@ -339,6 +351,7 @@ def build_context_packet(
     distilled_messages, distillation = _apply_distillation(messages, raw_user_turn_window=raw_user_turn_window)
     recent_messages = _bounded_recent_messages(distilled_messages, raw_user_turn_window=raw_user_turn_window)
     prior_summary = load_session_context_summary(session_key, root=root)
+    skill_loadout = filter_skills_prompt_for_agent(resolved_agent_id, skills_prompt, root=root)
     retrieval = retrieve_memory_for_context(
         actor="source_owned_context_engine",
         lane=channel,
@@ -365,6 +378,15 @@ def build_context_packet(
     save_session_context_summary(rolling_summary, root=root)
     tool_exposure = _select_tool_exposure(current_prompt, tools, channel=channel, agent_id=resolved_agent_id)
     visible_tools = list(tool_exposure.get("tools") or [])
+    loaded_tools = summarize_visible_tools(visible_tools, agent_id=resolved_agent_id)
+    agent_runtime_loadout = build_agent_runtime_loadout(
+        agent_id=resolved_agent_id,
+        skills_prompt=skills_prompt,
+        tools=visible_tools,
+        provider_id=provider_id,
+        model_id=model_id,
+        root=root,
+    )
     budget = _build_prompt_budget(
         system_prompt=system_prompt,
         recent_messages=recent_messages,
@@ -431,6 +453,16 @@ def build_context_packet(
             "dropReasons": dict(tool_exposure.get("dropReasons") or {}),
         },
         "visibleTools": visible_tools,
+        "filteredSkillsPrompt": str(skill_loadout.get("skillsPrompt") or ""),
+        "loadedSkills": {
+            "beforeCount": int(skill_loadout.get("beforeCount") or 0),
+            "loadedSkillCount": int(skill_loadout.get("afterCount") or 0),
+            "loadedSkillNames": list(skill_loadout.get("loadedSkillNames") or []),
+            "loadedSkillCategories": list(skill_loadout.get("loadedSkillCategories") or []),
+            "dropReasons": dict(skill_loadout.get("dropReasons") or {}),
+        },
+        "loadedTools": loaded_tools,
+        "agentRuntimeLoadout": agent_runtime_loadout,
         "promptBudget": budget,
         "summaryStats": summary_stats,
         "blocked": blocked,
@@ -452,5 +484,14 @@ def build_context_packet(
                 "usedTokens": retrieval.get("used_tokens") or 0,
                 "remainingBudgetTokens": retrieval.get("remaining_budget_tokens") or 0,
             },
+            "loadedSkills": {
+                "beforeCount": int(skill_loadout.get("beforeCount") or 0),
+                "loadedSkillCount": int(skill_loadout.get("afterCount") or 0),
+                "loadedSkillNames": list(skill_loadout.get("loadedSkillNames") or []),
+                "loadedSkillCategories": list(skill_loadout.get("loadedSkillCategories") or []),
+                "dropReasons": dict(skill_loadout.get("dropReasons") or {}),
+            },
+            "loadedTools": loaded_tools,
+            "agentRuntimeLoadout": agent_runtime_loadout,
         },
     }

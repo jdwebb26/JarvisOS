@@ -93,11 +93,13 @@ def _extract_text(content: Any) -> str:
                 if item.get("type") == "text":
                     text = str(item.get("text") or "").strip()
                     if text:
-                        chunks.append(text)
+                        if not chunks or chunks[-1] != text:
+                            chunks.append(text)
             elif isinstance(item, str):
                 text = item.strip()
                 if text:
-                    chunks.append(text)
+                    if not chunks or chunks[-1] != text:
+                        chunks.append(text)
         return "\n".join(chunks)
     if isinstance(content, dict):
         return str(content.get("text") or "").strip()
@@ -248,6 +250,9 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
     tool_exposure = dict(system_prompt_report.get("toolExposure") or {})
     rolling_summary = dict(system_prompt_report.get("rollingSummary") or {})
     retrieval = dict(system_prompt_report.get("retrieval") or {})
+    loaded_skills = dict(system_prompt_report.get("loadedSkills") or {})
+    loaded_tools = dict(system_prompt_report.get("loadedTools") or {})
+    agent_runtime_loadout = dict(system_prompt_report.get("agentRuntimeLoadout") or {})
     for row in rows:
         if row.get("type") == "custom" and row.get("customType") == "model-snapshot":
             data = dict(row.get("data") or {})
@@ -330,6 +335,25 @@ def inspect_discord_session_binding(binding: dict[str, Any]) -> dict[str, Any]:
         },
         "tool_exposure_mode": str(tool_exposure.get("mode") or ""),
         "tool_exposure_reason": str(tool_exposure.get("reason") or ""),
+        "loaded_skill_stats": {
+            "before_count": int(loaded_skills.get("beforeCount") or 0),
+            "loaded_skill_count": int(loaded_skills.get("loadedSkillCount") or 0),
+            "loaded_skill_names": list(loaded_skills.get("loadedSkillNames") or []),
+            "loaded_skill_categories": list(loaded_skills.get("loadedSkillCategories") or []),
+            "drop_reasons": dict(loaded_skills.get("dropReasons") or {}),
+        },
+        "loaded_tool_stats": {
+            "visible_tool_count": int(loaded_tools.get("visibleToolCount") or 0),
+            "visible_tool_names": list(loaded_tools.get("visibleToolNames") or []),
+            "visible_tool_categories": list(loaded_tools.get("visibleToolCategories") or []),
+        },
+        "agent_runtime_loadout": {
+            "agent_id": str(agent_runtime_loadout.get("agentId") or tool_exposure.get("agentId") or ""),
+            "provider_id": str(agent_runtime_loadout.get("providerId") or selected_provider_id or ""),
+            "model_id": str(agent_runtime_loadout.get("modelId") or selected_model_name or ""),
+            "status": str(agent_runtime_loadout.get("status") or ""),
+            "delegation_targets": list(agent_runtime_loadout.get("delegationTargets") or []),
+        },
         "rolling_summary_stats": {
             "summary_id": str(rolling_summary.get("summary_id") or ""),
             "chars": int(rolling_summary.get("chars") or 0),

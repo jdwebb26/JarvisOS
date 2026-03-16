@@ -6,6 +6,7 @@ from runtime.core.status import build_status
 from runtime.dashboard.operator_snapshot import build_operator_snapshot
 from runtime.dashboard.state_export import build_state_export
 from runtime.integrations.openclaw_sessions import (
+    _extract_text,
     build_openclaw_discord_session_integrity_summary,
     repair_discord_sessions,
     sanitize_user_facing_assistant_reply,
@@ -298,6 +299,9 @@ def test_session_summary_prefers_top_level_system_prompt_report_with_binding_raw
         "rollingSummary": {"summary_id": "top_level_summary", "chars": 144, "refreshedAt": "2026-03-14T06:00:00Z"},
         "retrieval": {"episodicCount": 1, "semanticCount": 1, "usedTokens": 111, "remainingBudgetTokens": 1089},
         "promptBudget": {"estimatedTotalTokens": 4444, "workingMemory": {"rawUserTurnWindow": 6, "userTurnsInSession": 2}},
+        "loadedSkills": {"beforeCount": 4, "loadedSkillCount": 2, "loadedSkillNames": ["session_handoff", "voice_tts"], "loadedSkillCategories": ["coordination", "voice"]},
+        "loadedTools": {"visibleToolCount": 1, "visibleToolNames": ["session_status"], "visibleToolCategories": ["coordination"]},
+        "agentRuntimeLoadout": {"agentId": "jarvis", "providerId": "qwen", "modelId": "Qwen3.5-9B", "status": "wired", "delegationTargets": ["hal", "scout", "ralph"]},
     }
     binding_raw_report = {
         "toolExposure": {"mode": "full", "reason": "stale_binding_raw"},
@@ -332,6 +336,9 @@ def test_session_summary_prefers_top_level_system_prompt_report_with_binding_raw
     assert latest["rolling_summary_stats"]["summary_id"] == "top_level_summary"
     assert latest["retrieval_stats"]["used_tokens"] == 111
     assert latest["latest_prompt_budget"]["estimated_total_tokens"] == 4444
+    assert latest["loaded_skill_stats"]["loaded_skill_names"] == ["session_handoff", "voice_tts"]
+    assert latest["loaded_tool_stats"]["visible_tool_names"] == ["session_status"]
+    assert latest["agent_runtime_loadout"]["agent_id"] == "jarvis"
 
 
 def test_session_summary_classifies_true_front_door_discord_evidence(tmp_path: Path) -> None:
@@ -395,3 +402,46 @@ def test_session_summary_classifies_true_front_door_discord_evidence(tmp_path: P
     assert latest["front_door_assistant_reply_detected"] is True
     assert latest["gateway_execution_evidence_detected"] is True
     assert latest["has_source_owned_system_prompt_report"] is True
+
+
+def test_extract_text_deduplicates_duplicate_text_dict_items() -> None:
+    # Regression: streaming path can write both a partial-chunk string and a final
+    # {"type":"text"} dict with the same body, or two identical text dicts.
+    # Fix uses adjacent-duplicate collapse only — non-adjacent repeats are kept.
+    reply = "pong\nWant to try spawning them as subagents instead?"
+
+    # Two identical {"type":"text"} dicts — the canonical duplication scenario
+    content_two_dicts = [
+        {"type": "text", "text": reply},
+        {"type": "text", "text": reply},
+    ]
+    assert _extract_text(content_two_dicts) == reply
+
+    # A raw string item followed by an identical {"type":"text"} dict
+    content_str_then_dict = [reply, {"type": "text", "text": reply}]
+    assert _extract_text(content_str_then_dict) == reply
+
+    # A {"type":"text"} dict followed by a raw string with the same body
+    content_dict_then_str = [{"type": "text", "text": reply}, reply]
+    assert _extract_text(content_dict_then_str) == reply
+
+    # Two DIFFERENT text items must still be joined (not silently dropped)
+    content_different = [
+        {"type": "text", "text": "first part"},
+        {"type": "text", "text": "second part"},
+    ]
+    assert _extract_text(content_different) == "first part\nsecond part"
+
+    # Non-adjacent repeat: A B A must be preserved as "A\nB\nA"
+    content_aba = [
+        {"type": "text", "text": "A"},
+        {"type": "text", "text": "B"},
+        {"type": "text", "text": "A"},
+    ]
+    assert _extract_text(content_aba) == "A\nB\nA"
+
+    # Single item — no change in behaviour
+    assert _extract_text([{"type": "text", "text": reply}]) == reply
+
+    # Plain string passthrough unchanged
+    assert _extract_text(reply) == reply

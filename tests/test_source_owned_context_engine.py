@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import MemoryEntryRecord, RecordLifecycleState, now_iso
-from runtime.gateway.source_owned_context_engine import build_context_packet
+from runtime.gateway.source_owned_context_engine import _extract_text, build_context_packet
 from runtime.integrations.openclaw_sessions import build_openclaw_discord_session_integrity_summary
 from runtime.memory.governance import save_memory_entry
 from runtime.memory.vault_index import load_session_context_summary
@@ -391,6 +391,24 @@ def test_persisted_session_store_exposes_source_owned_report_fields_end_to_end(t
     assert latest["retrieval_stats"]["remaining_budget_tokens"] >= 0
 
 
+def test_extract_text_adjacent_duplicate_collapse() -> None:
+    # Regression: adjacent identical text items must be collapsed; non-adjacent repeats preserved.
+    reply = "pong\nWant to try spawning them as subagents instead?"
+
+    # Adjacent identical dicts — the duplication scenario from streaming assembly
+    assert _extract_text([{"type": "text", "text": reply}, {"type": "text", "text": reply}]) == reply
+    # Adjacent identical raw strings
+    assert _extract_text([reply, reply]) == reply
+    # Adjacent str then identical dict
+    assert _extract_text([reply, {"type": "text", "text": reply}]) == reply
+    # Non-adjacent A B A must be preserved
+    assert _extract_text([{"type": "text", "text": "A"}, {"type": "text", "text": "B"}, {"type": "text", "text": "A"}]) == "A\nB\nA"
+    # Two distinct items unchanged
+    assert _extract_text([{"type": "text", "text": "first"}, {"type": "text", "text": "second"}]) == "first\nsecond"
+    # Plain string passthrough
+    assert _extract_text(reply) == reply
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp_one:
         test_long_discord_thread_prompt_budget_stabilizes_and_summary_persists(Path(tmp_one))
@@ -406,4 +424,5 @@ if __name__ == "__main__":
         test_cli_bridge_returns_source_owned_engine_fields(Path(tmp_six))
     with tempfile.TemporaryDirectory() as tmp_seven:
         test_persisted_session_store_exposes_source_owned_report_fields_end_to_end(Path(tmp_seven))
+    test_extract_text_adjacent_duplicate_collapse()
     print("test_source_owned_context_engine: PASS")
