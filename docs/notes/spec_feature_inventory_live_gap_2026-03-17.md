@@ -482,3 +482,66 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - `state/lane_activation/searxng.json` — result file after activation
 
 **Proof it is live**: `lane_activation/searxng.json` shows `configured=True, healthy=True, status="completed"`. Scout can run `web_search` tool and return actual search results from SearXNG.
+## 2026-03-17 — Post-merge live validation update
+
+Merged branch `audit/parallel-runs-2026-03-17` into `main` and pushed to `origin/main`.
+
+### Repo state
+- **Branch**: `main`
+- **Merge commit**: `1afda5a`
+- **Status at validation time**: clean working tree before inventory-only edits
+
+### Live gateway state
+- **Gateway service**: `openclaw-gateway.service` active/running
+- **Health endpoint**: `http://127.0.0.1:18789/health` returned `{"ok":true,"status":"live"}`
+- **Discord**: logged in as Jarvis and channels resolved successfully after restart/reconnect
+
+### Kitt runtime validation
+- **Status**: LIVE
+- **Proof**: `openclaw agent --agent kitt --message "Reply with exactly: KITT_LIVE_OK" --json`
+- **Observed provider/model**: `nvidia` / `moonshotai/kimi-k2.5`
+- **Observed response**: `KITT_LIVE_OK`
+
+### SearXNG web search validation
+- **Status**: LIVE
+- **Backend**: local SearXNG at `http://localhost:8888`
+- **Direct backend proof**: `/search?q=VIX+index&format=json` returned Yahoo Finance VIX result
+- **Agent proof**: `openclaw agent --agent kitt --message "Use web_search and tell me one result for VIX index. Keep it to one line." --json`
+- **Observed result**: Kitt returned Yahoo Finance VIX result in one line
+- **Interpretation**: patched multi-bundle SearXNG path is functioning live through agent web_search
+
+### HAL runtime validation
+- **Status**: LIVE for normal agent execution
+- **Proof**: `openclaw agent --agent hal --message "Reply with exactly: HAL_LIVE_OK" --json`
+- **Observed provider/model**: `lmstudio` / `qwen3.5-35b-a3b`
+- **Observed response**: `HAL_LIVE_OK`
+
+### HAL ACP validation
+- **Status**: PARTIAL / DIRECT ACP PROOF ONLY
+- **Direct ACP proof**:
+  - wrapper server script launched `openclaw acp --session agent:hal:main`
+  - `openclaw acp client` returned `ACP_DIRECT_OK`
+  - ACP client showed `[end_turn]`
+- **Interpretation**: ACP path is reachable and completes a direct session
+- **Remaining gap**: gateway journal did not emit strong ACP/acpx session evidence for the direct proof, and Discord-initiated HAL ACP dispatch is still not conclusively evidenced from logs
+
+### Inventory of merged work now on main
+- context engine session turn ceiling + memory flush
+- operator checkpoint cadence + provenance freshness
+- preflight drift + backend dependency checks
+- SearXNG patch verification hardening
+- Kitt NVIDIA/Kimi routing + executor wiring
+- backend dispatch + HAL handoff
+- operator gateway inbound seam + status lookup fix
+
+### Current confidence summary
+- **Kitt on NVIDIA/Kimi**: confirmed live
+- **Kitt web_search via SearXNG**: confirmed live
+- **HAL normal execution on LM Studio**: confirmed live
+- **HAL ACP direct session**: confirmed in bounded direct-client proof
+- **HAL ACP via Discord/gateway-originated production path**: still needs cleaner proof/telemetry
+
+### Recommended next proof target
+Capture one unambiguous HAL ACP production-path proof with either:
+1. Discord-initiated HAL turn that shows ACP/acpx session evidence in logs, or
+2. explicit gateway-side ACP telemetry added to make the dispatch path operator-visible.
