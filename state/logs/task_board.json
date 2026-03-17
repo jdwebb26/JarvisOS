@@ -5,35 +5,93 @@
       "summary": "deploy live production service restart router idempotency smoke 20260309_120403",
       "task_type": "deploy",
       "status": "ready_to_ship",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "router_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 1
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Candidate file generated and armed for live apply.",
+      "last_error": "",
       "related_review_ids": [
         "rev_429125f80d5e"
       ],
       "related_approval_ids": [
         "apr_fe7e884155a7"
       ],
-      "updated_at": "2026-03-10T02:28:45.963859+00:00"
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
+      "updated_at": "2026-03-10T03:02:00.726187"
     },
     {
       "task_id": "task_cec3239feefb",
       "summary": "deploy live production service restart ready-to-ship smoke 20260309_121638",
       "task_type": "deploy",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "ready_to_ship_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 1
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [
         "rev_3f8e740e2c45"
       ],
       "related_approval_ids": [
         "apr_fbdec31901b6"
       ],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T21:20:02.730694"
     },
     {
@@ -41,17 +99,46 @@
       "summary": "deploy live production service restart ready-to-ship smoke 20260309_121131",
       "task_type": "deploy",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "ready_to_ship_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 1
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [
         "rev_0e7fa7d2ac68"
       ],
       "related_approval_ids": [
         "apr_54d59595e889"
       ],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T18:54:29.407561+00:00"
     },
     {
@@ -59,17 +146,46 @@
       "summary": "deploy live production service restart task-store transition smoke 20260309_120722",
       "task_type": "deploy",
       "status": "queued",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "task_store_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 1
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_8e6666ba005d"
       ],
       "related_approval_ids": [
         "apr_430eb52b4c1c"
       ],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T17:07:22.777179+00:00"
     },
     {
@@ -77,15 +193,44 @@
       "summary": "patch python function bug in executor regression smoke 20260309_115921",
       "task_type": "code",
       "status": "waiting_review",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "intake_regression",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_fa264f7f6b49"
       ],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T16:59:21.140495+00:00"
     },
     {
@@ -93,15 +238,44 @@
       "summary": "deploy live production service restart regression smoke 20260309_115921",
       "task_type": "deploy",
       "status": "waiting_review",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "intake_regression",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_311836e4a3e6"
       ],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T16:59:21.125582+00:00"
     },
     {
@@ -109,15 +283,44 @@
       "summary": "patch python function bug in executor intake auto route smoke 20260309_115607",
       "task_type": "code",
       "status": "waiting_review",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "intake_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_657fba34ce3a"
       ],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T16:56:07.508907+00:00"
     },
     {
@@ -125,15 +328,44 @@
       "summary": "deploy live production service restart intake auto route smoke 20260309_115607",
       "task_type": "deploy",
       "status": "waiting_review",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "intake_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_74ea3848cac1"
       ],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T16:56:07.440564+00:00"
     },
     {
@@ -141,13 +373,42 @@
       "summary": "patch python function bug in executor intake auto route smoke 20260309_114750",
       "task_type": "code",
       "status": "queued",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "intake_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T16:47:50.594119+00:00"
     },
     {
@@ -155,13 +416,42 @@
       "summary": "deploy live production service restart intake auto route smoke 20260309_114742",
       "task_type": "deploy",
       "status": "queued",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "intake_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T16:47:42.324529+00:00"
     },
     {
@@ -169,17 +459,46 @@
       "summary": "deploy live production service restart approval smoke 20260309_113335",
       "task_type": "deploy",
       "status": "queued",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "approval_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 1
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_bd6ffbd2651c"
       ],
       "related_approval_ids": [
         "apr_a0eea60d98e3"
       ],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T16:33:35.566914+00:00"
     },
     {
@@ -187,17 +506,46 @@
       "summary": "deploy live production service restart smoke 20260309_112853",
       "task_type": "deploy",
       "status": "waiting_approval",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "handoff_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 1
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_bf9ef2799d9b"
       ],
       "related_approval_ids": [
         "apr_3f7c8486d081"
       ],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T16:28:53.493665+00:00"
     },
     {
@@ -205,15 +553,44 @@
       "summary": "patch python function bug in executor",
       "task_type": "code",
       "status": "waiting_review",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "gap_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_9111dfd351ae"
       ],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T15:46:05.493141+00:00"
     },
     {
@@ -221,15 +598,44 @@
       "summary": "deploy live production service restart",
       "task_type": "deploy",
       "status": "waiting_review",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "gap_smoke",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "",
+      "last_error": "",
       "related_review_ids": [
         "rev_69dfc967a002"
       ],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T15:46:05.454958+00:00"
     },
     {
@@ -237,13 +643,42 @@
       "summary": "smoke test runtime pipeline 2f083365",
       "task_type": "code",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:56:30.433430+00:00"
     },
     {
@@ -251,13 +686,42 @@
       "summary": "complete from artifact queued guard cfa-guard-1773016697",
       "task_type": "general",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "normal",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": false,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:45:07.689146+00:00"
     },
     {
@@ -265,13 +729,42 @@
       "summary": "publish artifact only verification pubonly-1773016545",
       "task_type": "general",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:44:06.184622+00:00"
     },
     {
@@ -279,13 +772,42 @@
       "summary": "complete from artifact clean verification cfa-clean-1773016629",
       "task_type": "general",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "normal",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": false,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:37:09.533656+00:00"
     },
     {
@@ -293,13 +815,42 @@
       "summary": "complete_from_artifact disposable flow cfa-1773016337",
       "task_type": "general",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "normal",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": false,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:34:03.263863+00:00"
     },
     {
@@ -307,13 +858,42 @@
       "summary": "smoke test runtime pipeline 80d9471a",
       "task_type": "code",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:31:27.403766+00:00"
     },
     {
@@ -321,17 +901,46 @@
       "summary": "deploy production runtime gate flow gateflow-1773015476",
       "task_type": "deploy",
       "status": "shipped",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 1
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [
         "rev_733345efc3fc"
       ],
       "related_approval_ids": [
         "apr_251e535b842c"
       ],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:24:53.035852+00:00"
     },
     {
@@ -339,13 +948,42 @@
       "summary": "fresh ship_task transition check shipfresh-1773014924",
       "task_type": "deploy",
       "status": "shipped",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:08:44.668002+00:00"
     },
     {
@@ -353,13 +991,42 @@
       "summary": "advance_running functional check advrun-1773014535",
       "task_type": "code",
       "status": "shipped",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-09T00:03:09.695478+00:00"
     },
     {
@@ -367,13 +1034,42 @@
       "summary": "smoke test runtime pipeline 2f693b4e",
       "task_type": "code",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T23:50:39.092913+00:00"
     },
     {
@@ -381,13 +1077,42 @@
       "summary": "smoke test runtime pipeline 62d2232d",
       "task_type": "code",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T21:40:07.442394+00:00"
     },
     {
@@ -395,13 +1120,42 @@
       "summary": "smoke test runtime pipeline 50639fce",
       "task_type": "code",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T06:43:15.765841+00:00"
     },
     {
@@ -409,13 +1163,42 @@
       "summary": "smoke test runtime pipeline ea04b0d1",
       "task_type": "code",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T06:43:15.287186+00:00"
     },
     {
@@ -423,15 +1206,44 @@
       "summary": "build the minimum durable runtime spine",
       "task_type": "general",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "normal",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 1
+      },
       "review_required": false,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [
         "apr_8ce6f4573eef"
       ],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T05:42:53.510399+00:00"
     },
     {
@@ -439,13 +1251,42 @@
       "summary": "build the minimum durable runtime spine",
       "task_type": "general",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "normal",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": false,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T05:40:50.202893+00:00"
     },
     {
@@ -453,17 +1294,46 @@
       "summary": "deploy the new jarvis v5 gateway service wiring",
       "task_type": "deploy",
       "status": "shipped",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "high_stakes",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-122B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-122B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 1
+      },
       "review_required": true,
       "approval_required": true,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [
         "rev_699a02b49d84"
       ],
       "related_approval_ids": [
         "apr_1003f1bd9d45"
       ],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T04:17:15.524482+00:00"
     },
     {
@@ -471,15 +1341,44 @@
       "summary": "patch the intake code path for gateway routing",
       "task_type": "code",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [
         "rev_6be8e19e7f7a"
       ],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T03:42:44.805849+00:00"
     },
     {
@@ -487,13 +1386,42 @@
       "summary": "add artifact linkage from task outputs back into related_artifact_ids",
       "task_type": "general",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "normal",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 0,
+        "approval_link_count": 0
+      },
       "review_required": false,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T03:30:01.399064+00:00"
     },
     {
@@ -501,15 +1429,44 @@
       "summary": "patch the gateway ack formatting for review responses",
       "task_type": "code",
       "status": "completed",
+      "lifecycle_state": "working",
       "priority": "normal",
       "risk_level": "risky",
+      "execution_backend": "unassigned",
+      "producer_backend": "unassigned",
       "assigned_model": "Qwen3.5-35B",
+      "producer_metadata": {
+        "assigned_model": "Qwen3.5-35B",
+        "backend_run_id": null,
+        "source_lane": "jarvis",
+        "future_reroute_ready": false
+      },
+      "evidence_metadata": {
+        "candidate_artifact_count": 0,
+        "promoted_artifact_present": false,
+        "impacted_output_count": 0
+      },
+      "provenance_metadata": {
+        "review_link_count": 1,
+        "approval_link_count": 0
+      },
       "review_required": true,
       "approval_required": false,
+      "promoted_artifact_id": null,
+      "candidate_artifact_ids": [],
+      "demoted_artifact_ids": [],
+      "revoked_artifact_ids": [],
+      "impacted_output_ids": [],
+      "checkpoint_summary": "Task completed.",
+      "last_error": "",
       "related_review_ids": [
         "rev_11d9cfda5552"
       ],
       "related_approval_ids": [],
+      "control_status": "active",
+      "control_run_state": "active",
+      "control_safety_mode": "normal",
+      "control_reasons": [],
       "updated_at": "2026-03-08T02:11:40.220036+00:00"
     }
   ],

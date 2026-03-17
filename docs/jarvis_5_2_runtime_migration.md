@@ -41,5 +41,15 @@ That means:
 - operators can see backend health and degraded posture before reroute logic changes
 - replay/scoring seams exist before routing decisions depend on them
 - bootstrap, validate, smoke, and handoff flows understand the new state dirs before core routing behavior is touched
+- external sidecars such as ShadowBroker can be mirrored into Jarvis operator surfaces without becoming authoritative runtime truth
 
 The intent is to make future 5.2 routing work additive, reviewable, and reversible rather than a control-plane rewrite.
+
+## External OSINT sidecars
+
+ShadowBroker is an external OSINT sidecar, not a control plane.
+
+- Jarvis may ingest ShadowBroker snapshots for evidence-backed research and operator visibility.
+- Jarvis durable state remains authoritative.
+- ShadowBroker does not directly decide approvals, promotions, or routing legality.
+- If ShadowBroker is missing or degraded, the doctor/status/handoff seams should show reduced coverage explicitly instead of implying healthy real-time intake.

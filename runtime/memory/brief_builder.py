@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 from runtime.dashboard.operator_snapshot import build_operator_snapshot
 from runtime.dashboard.state_export import build_state_export
+from runtime.core.models import now_iso
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -131,3 +132,45 @@ def build_weekly_brief_payload(*, root: Optional[Path] = None) -> dict[str, Any]
             "latest_candidate_id": (candidate.get("latest_candidate") or {}).get("candidate_id"),
         },
     )
+
+
+def build_session_context_brief_payload(
+    *,
+    session_key: str,
+    objective: str,
+    unresolved_questions: list[str],
+    active_constraints: list[str],
+    recent_decisions: list[str],
+    tool_findings: list[str],
+    operator_preferences: list[str],
+    source_refs: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    sections = [
+        ("Current Objective", [objective or "No active objective captured."]),
+        ("Unresolved Questions", unresolved_questions or ["None."]),
+        ("Active Constraints", active_constraints or ["None."]),
+        ("Recent Decisions", recent_decisions or ["None."]),
+        ("Tool Findings", tool_findings or ["None."]),
+        ("Operator Preferences", operator_preferences or ["None."]),
+    ]
+    payload = _brief_payload(
+        brief_kind="session_context",
+        title=f"Session Context Summary: {session_key}",
+        summary=objective or "Rolling session context summary.",
+        sections=sections,
+        source_refs=source_refs or {},
+    )
+    payload.update(
+        {
+            "session_key": session_key,
+            "objective": objective,
+            "unresolved_questions": list(unresolved_questions or []),
+            "active_constraints": list(active_constraints or []),
+            "recent_decisions": list(recent_decisions or []),
+            "tool_findings": list(tool_findings or []),
+            "operator_preferences": list(operator_preferences or []),
+            "generated_at": now_iso(),
+            "updated_at": now_iso(),
+        }
+    )
+    return payload

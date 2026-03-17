@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import importlib
+import ipaddress
 import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,19 +28,44 @@ from runtime.dashboard.runtime_5_2_prep import (
 from runtime.core.heartbeat_reports import build_node_health_summary
 from runtime.core.node_registry import ensure_default_nodes
 from runtime.core.task_lease import build_task_lease_summary
+from runtime.core.workspace_registry import summarize_workspace_registry
 from runtime.integrations.research_backends import build_research_backend_summary
+from runtime.integrations.hermes_adapter import build_hermes_summary
+from runtime.integrations.lane_activation import summarize_lane_activation
+from runtime.integrations.autoresearch_adapter import build_autoresearch_summary
 from runtime.memory.vault_export import build_vault_export_summary
 from runtime.researchlab.experiment_store import build_experiment_summary
 from runtime.researchlab.evidence_bundle import build_evidence_bundle_summary
+from runtime.adaptation_lab.summary import summarize_adaptation_lab
+from runtime.integrations.shadowbroker_adapter import (
+    fetch_shadowbroker_snapshot,
+    summarize_shadowbroker_backend,
+    validate_shadowbroker_runtime,
+)
+from runtime.optimizer.eval_gate import summarize_optimizer_lane
+from runtime.world_ops.summary import build_world_ops_summary
 from runtime.skills.skill_scheduler import build_skill_scheduler_summary
 from runtime.evals.replay_runner import build_eval_run_summary
+from runtime.browser.reporting import build_browser_action_summary
+from runtime.core.a2a_policy import build_a2a_policy_summary
 from runtime.core.routing import (
+    ensure_default_routing_contracts,
     legal_candidate_pool_for_runtime_policy_block,
     load_runtime_routing_policy,
     resolve_runtime_route_policy,
     runtime_routing_policy_path,
 )
-from runtime.core.status import build_discord_live_ops_summary, build_openclaw_discord_bridge_summary
+from runtime.core.status import (
+    build_discord_live_ops_summary,
+    build_extension_lane_status_summary,
+    build_local_model_lane_proof_summary,
+    build_openclaw_discord_bridge_summary,
+    build_openclaw_discord_session_summary,
+    build_routing_control_plane_summary,
+)
+from runtime.core.degradation_policy import build_degradation_summary
+from runtime.core.heartbeat_reports import build_heartbeat_report_summary
+from runtime.core.routing import build_model_registry_summary
 
 ROOT = resolve_repo_root(Path(__file__).resolve().parents[1])
 WORKSPACE = ROOT / "workspace"
@@ -59,6 +86,9 @@ REQUIRED_DIRS = [
     "runtime/evals",
     "runtime/ralph",
     "runtime/memory",
+    "runtime/world_ops",
+    "runtime/adaptation_lab",
+    "runtime/optimizer",
     "runtime/skills",
     "runtime/ui",
     "scripts",
@@ -110,6 +140,22 @@ REQUIRED_DIRS = [
     "state/nodes",
     "state/worker_heartbeats",
     "state/task_leases",
+    "state/workspaces",
+    "state/world_ops_feeds",
+    "state/world_ops_events",
+    "state/world_ops_briefs",
+    "state/world_ops_snapshots",
+    "state/shadowbroker_snapshots",
+    "state/shadowbroker_events",
+    "state/shadowbroker_backend_health",
+    "state/shadowbroker_briefs",
+    "state/lane_activation",
+    "state/lane_activation_runs",
+    "state/adaptation_jobs",
+    "state/adaptation_datasets",
+    "state/adaptation_results",
+    "state/optimizer_runs",
+    "state/optimizer_variants",
     "state/experiments",
     "state/skills",
     "state/skill_candidates",
@@ -194,8 +240,11 @@ REQUIRED_DIRS = [
 REQUIRED_FILES = [
     "README.md",
     "docs/deployment.md",
+    "docs/external_lane_activation.md",
+    "docs/operator_go_live_checklist.md",
     "docs/operations.md",
     "docs/runtime-regression-runbook.md",
+    ".env.external-lanes.example",
     "config/app.example.yaml",
     "config/channels.example.yaml",
     "config/models.example.yaml",
@@ -204,6 +253,11 @@ REQUIRED_FILES = [
     "scripts/doctor.py",
     "scripts/generate_config.py",
     "scripts/operator_checkpoint_action_pack.py",
+    "scripts/operator_activate_external_lanes.py",
+    "scripts/operator_activate_local_model_lanes.py",
+    "scripts/operator_discord_runtime_check.py",
+    "scripts/operator_go_live_gate.py",
+    "scripts/repair_discord_sessions.py",
     "scripts/operator_action_executor.py",
     "scripts/operator_action_ledger.py",
     "scripts/operator_action_explain.py",
@@ -357,6 +411,9 @@ KEY_MODULES = [
     "runtime.evals.scorers",
     "runtime.researchlab.experiment_store",
     "runtime.researchlab.optimizer",
+    "runtime.optimizer.dspy_runner",
+    "runtime.optimizer.variant_store",
+    "runtime.optimizer.eval_gate",
     "runtime.ralph.consolidator",
     "runtime.memory.governance",
     "runtime.core.publish_complete",
@@ -389,6 +446,7 @@ QWEN_HINTS = ["family: qwen3.5", "qwen_only: true", "Qwen3.5-"]
 EXPECTED_CHANNEL_KEYS = ["jarvis", "tasks", "outputs", "review", "audit", "code_review", "flowstate"]
 _LOCALHOST_HOSTS = {"127.0.0.1", "localhost", "::1"}
 _URL_RE = re.compile(r"https?://([^/\s:]+)")
+_SHADOWBROKER_STALE_SNAPSHOT_SECONDS = int(os.environ.get("JARVIS_SHADOWBROKER_STALE_SNAPSHOT_SECONDS") or 3600)
 
 
 @dataclass
@@ -444,6 +502,7 @@ def _config_text(root: Path, rel: str) -> str:
 
 def validate_runtime_routing_policy_config(root: Path) -> list[Finding]:
     findings: list[Finding] = []
+    ensure_default_routing_contracts(root)
     path = runtime_routing_policy_path(root=root)
     if not path.exists():
         _add(
@@ -555,6 +614,205 @@ def validate_runtime_routing_policy_config(root: Path) -> list[Finding]:
     return findings
 
 
+def check_routing_policy_openclaw_drift(root: Path) -> list[Finding]:
+    """Advisory check: detect drift between runtime_routing_policy.json and openclaw.json.
+
+    Reuses the sync logic from sync_routing_policy_to_openclaw.py in dry-run mode.
+    Emits warn-level findings when the two configs disagree on agent model assignments.
+    """
+    findings: list[Finding] = []
+    policy_path = root / "config" / "runtime_routing_policy.json"
+    openclaw_path = Path.home() / ".openclaw" / "openclaw.json"
+
+    if not policy_path.exists() or not openclaw_path.exists():
+        _add(
+            findings,
+            "pass",
+            "drift",
+            "Routing-policy ↔ openclaw.json drift check skipped (one or both files absent).",
+            details=f"policy_exists={policy_path.exists()} openclaw_exists={openclaw_path.exists()}",
+        )
+        return findings
+
+    try:
+        from scripts.sync_routing_policy_to_openclaw import compute_sync_plan
+
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        openclaw = json.loads(openclaw_path.read_text(encoding="utf-8"))
+        changes = compute_sync_plan(policy, openclaw)
+    except Exception as exc:
+        _add(
+            findings,
+            "warn",
+            "drift",
+            "Routing-policy ↔ openclaw.json drift check failed to run.",
+            "Ensure scripts/sync_routing_policy_to_openclaw.py is importable and both JSON files are valid.",
+            str(exc),
+        )
+        return findings
+
+    if not changes:
+        _add(
+            findings,
+            "pass",
+            "drift",
+            "Routing policy and openclaw.json agent model configs are in sync.",
+        )
+    else:
+        for change in changes:
+            _add(
+                findings,
+                "warn",
+                "drift",
+                f"Routing-policy ↔ openclaw.json drift: agent `{change['agent_id']}` field `{change['field']}` "
+                f"is `{change['current']}` in openclaw.json but policy wants `{change['desired']}`.",
+                "Run `python3 scripts/sync_routing_policy_to_openclaw.py` to re-sync, or update the routing policy.",
+                change.get("reason", ""),
+            )
+    return findings
+
+
+# Maps routing-policy preferred_provider values to the BackendRuntime identifier
+# used by backend_dispatch when the task is dispatched on the Python execution track.
+_PROVIDER_TO_PYTHON_BACKEND: dict[str, str] = {
+    "nvidia": "nvidia_executor",
+}
+# Providers handled entirely by the embedded gateway (not Python dispatch).
+_GATEWAY_HANDLED_PROVIDERS: set[str] = {"qwen", "lmstudio", "local"}
+
+
+def check_backend_adapter_coverage(root: Path) -> list[Finding]:
+    """Advisory check: verify that every routed execution backend has a wired adapter.
+
+    Walks agent_policies in the routing policy.  For each agent whose
+    preferred_provider maps to a Python-track backend, checks that
+    backend_dispatch has a wired adapter for it.  Gateway-handled providers
+    (qwen/lmstudio) are skipped because they never reach Python dispatch.
+    """
+    findings: list[Finding] = []
+    policy_path = root / "config" / "runtime_routing_policy.json"
+
+    if not policy_path.exists():
+        _add(
+            findings,
+            "pass",
+            "backend_coverage",
+            "Backend adapter coverage check skipped (routing policy absent).",
+        )
+        return findings
+
+    try:
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _add(
+            findings,
+            "warn",
+            "backend_coverage",
+            "Backend adapter coverage check failed to parse routing policy.",
+            details=str(exc),
+        )
+        return findings
+
+    from runtime.executor.backend_dispatch import list_registered_backends
+    registry = list_registered_backends()
+    wired = set(registry.get("wired") or [])
+    gateway_handled = set(registry.get("gateway_handled") or [])
+
+    agent_policies = policy.get("agent_policies") or {}
+    gaps: list[str] = []
+
+    for agent_id, ap in sorted(agent_policies.items()):
+        provider = str(ap.get("preferred_provider") or "").lower()
+        if not provider or provider in _GATEWAY_HANDLED_PROVIDERS:
+            continue
+        expected_backend = _PROVIDER_TO_PYTHON_BACKEND.get(provider)
+        if expected_backend is None:
+            _add(
+                findings,
+                "warn",
+                "backend_coverage",
+                f"Agent `{agent_id}` uses provider `{provider}` which has no known Python-track backend mapping.",
+                "Add a mapping in _PROVIDER_TO_PYTHON_BACKEND or confirm this provider is gateway-handled.",
+                f"agent_id={agent_id} preferred_provider={provider}",
+            )
+            continue
+        if expected_backend in wired or expected_backend in gateway_handled:
+            continue
+        gaps.append(f"{agent_id}→{expected_backend}(provider={provider})")
+
+    if gaps:
+        for gap in gaps:
+            _add(
+                findings,
+                "warn",
+                "backend_coverage",
+                f"Backend adapter gap: {gap} — routed backend has no wired adapter in backend_dispatch.",
+                "Wire the adapter in runtime/executor/backend_dispatch.py or adjust the routing policy.",
+                f"wired={sorted(wired)} gateway_handled={sorted(gateway_handled)}",
+            )
+    else:
+        _add(
+            findings,
+            "pass",
+            "backend_coverage",
+            "All routed execution backends have wired adapters or are gateway-handled.",
+            details=f"wired={sorted(wired)} gateway_handled={sorted(gateway_handled)}",
+        )
+
+    return findings
+
+
+# Maps Python-track backends to the third-party packages they require at runtime.
+_BACKEND_REQUIRED_PACKAGES: dict[str, list[str]] = {
+    "nvidia_executor": ["requests"],
+    "qwen_agent_bridge": ["qwen_agent", "numpy"],
+}
+
+
+def check_backend_dependency_health(root: Path) -> list[Finding]:
+    """Advisory check: verify that Python packages required by wired backends are importable.
+
+    Reports the active Python interpreter and, for each wired backend that has
+    declared dependencies in _BACKEND_REQUIRED_PACKAGES, checks whether the
+    required package can be imported.  Failures are warn-level (advisory) since
+    the backend may not be actively routed.
+    """
+    findings: list[Finding] = []
+    python_exe = sys.executable
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
+    _add(
+        findings,
+        "pass",
+        "dependency_health",
+        f"Validating backend dependencies under Python {python_version}.",
+        details=f"executable={python_exe}",
+    )
+
+    for backend, packages in sorted(_BACKEND_REQUIRED_PACKAGES.items()):
+        for package in packages:
+            try:
+                importlib.import_module(package)
+                _add(
+                    findings,
+                    "pass",
+                    "dependency_health",
+                    f"Backend `{backend}` dependency `{package}` is importable.",
+                    details=f"python={python_exe}",
+                )
+            except ImportError:
+                _add(
+                    findings,
+                    "warn",
+                    "dependency_health",
+                    f"Backend `{backend}` dependency `{package}` is NOT importable under Python {python_version}.",
+                    f"Install `{package}` into {python_exe} (`{python_exe} -m pip install {package}`) or switch to an interpreter that has it.",
+                    f"python={python_exe} backend={backend} package={package}",
+                )
+
+    return findings
+
+
 def _non_localhost_urls(text: str) -> list[str]:
     hosts: list[str] = []
     for match in _URL_RE.findall(text or ""):
@@ -562,6 +820,29 @@ def _non_localhost_urls(text: str) -> list[str]:
         if host and host not in _LOCALHOST_HOSTS:
             hosts.append(host)
     return sorted(set(hosts))
+
+
+def _trusted_runtime_hosts(hosts: list[str]) -> tuple[list[str], list[str]]:
+    trusted: list[str] = []
+    untrusted: list[str] = []
+    for host in hosts:
+        normalized = str(host or "").strip().lower()
+        if not normalized:
+            continue
+        try:
+            ip = ipaddress.ip_address(normalized)
+            if not ip.is_global:
+                trusted.append(normalized)
+            else:
+                untrusted.append(normalized)
+            continue
+        except ValueError:
+            pass
+        if normalized.endswith(".local") or normalized.endswith(".internal") or "." not in normalized:
+            trusted.append(normalized)
+        else:
+            untrusted.append(normalized)
+    return sorted(set(trusted)), sorted(set(untrusted))
 
 
 def run_validate(root: Path, *, strict: bool = False) -> dict:
@@ -672,14 +953,23 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
         elif rel.endswith("models.yaml"):
             _add(findings, "pass", "config", "config/models.yaml is pinned to Qwen 3.5.")
             remote_hosts = _non_localhost_urls(text)
-            if remote_hosts:
+            trusted_hosts, untrusted_hosts = _trusted_runtime_hosts(remote_hosts)
+            if untrusted_hosts:
                 _add(
                     findings,
                     "fail",
                     "config",
                     "config/models.yaml includes non-localhost model endpoints.",
                     "Keep default runtime endpoints on localhost/127.0.0.1 unless a reviewed exception is explicitly intended.",
-                    ", ".join(remote_hosts),
+                    ", ".join(untrusted_hosts),
+                )
+            elif trusted_hosts:
+                _add(
+                    findings,
+                    "pass",
+                    "config",
+                    "config/models.yaml uses trusted non-public runtime endpoints.",
+                    details=", ".join(trusted_hosts),
                 )
             else:
                 _add(findings, "pass", "config", "config/models.yaml keeps model endpoints on localhost.")
@@ -702,6 +992,9 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
                 _add(findings, "pass", "config", "config/channels.yaml includes the expected operator channel names.")
 
     findings.extend(validate_runtime_routing_policy_config(root))
+    findings.extend(check_routing_policy_openclaw_drift(root))
+    findings.extend(check_backend_adapter_coverage(root))
+    findings.extend(check_backend_dependency_health(root))
 
     for rel in ["state/logs", "workspace/out", "workspace/vault"]:
         error = _write_probe(root / rel)
@@ -716,11 +1009,16 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     degraded_state = build_degraded_state_summary(root=root)
     node_health = build_node_health_summary(root=root)
     task_lease_summary = build_task_lease_summary(root=root)
+    workspace_registry_summary = summarize_workspace_registry(root=root)
     skill_scheduler_summary = build_skill_scheduler_summary(root=root)
     vault_summary = build_vault_export_summary(root=root)
     experiment_summary = build_experiment_summary(root=root)
     research_backend_summary = build_research_backend_summary(root=root)
     evidence_bundle_summary = build_evidence_bundle_summary(root=root)
+    world_ops_summary = build_world_ops_summary(root=root)
+    shadowbroker_summary = summarize_shadowbroker_backend(root=root)
+    adaptation_lab_summary = summarize_adaptation_lab(root=root)
+    optimizer_summary = summarize_optimizer_lane(root=root)
 
     if backend_health["snapshot_count"]:
         _add(findings, "pass", "runtime_prep", "Backend health scaffolding is present.")
@@ -773,6 +1071,51 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             f"active={task_lease_summary['active_task_lease_count']} "
             f"expired={task_lease_summary['expired_task_lease_count']} "
             f"requeued={task_lease_summary['requeued_task_lease_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "runtime_prep",
+        "Workspace registry is present and keeps jarvis-v5 as central runtime truth.",
+        details=(
+            f"workspaces={workspace_registry_summary['workspace_count']} "
+            f"default_home={workspace_registry_summary['default_home_workspace_id']} "
+            f"operator_approved={workspace_registry_summary['operator_approved_workspace_count']} "
+            f"writable={workspace_registry_summary['writable_workspace_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "world_ops",
+        "World-ops sidecar summary is readable and remains non-authoritative.",
+        details=(
+            f"active_feeds={world_ops_summary['active_feed_count']} "
+            f"degraded_feeds={world_ops_summary['degraded_feed_count']} "
+            f"recent_events={world_ops_summary['recent_event_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "adaptation_lab",
+        "Adaptation lab sidecar summary is readable and remains eval/operator gated.",
+        details=(
+            f"datasets={adaptation_lab_summary['dataset_count']} "
+            f"jobs={adaptation_lab_summary['job_count']} "
+            f"blocked_jobs={adaptation_lab_summary['blocked_job_count']}"
+        ),
+    )
+    _add(
+        findings,
+        "pass",
+        "optimizer",
+        "DSPy optimizer summary is readable and remains eval/operator gated.",
+        details=(
+            f"variants={optimizer_summary['variant_summary']['variant_count']} "
+            f"runs={optimizer_summary['optimizer_run_count']} "
+            f"blocked_runs={optimizer_summary['blocked_run_count']}"
         ),
     )
     _add(
@@ -951,6 +1294,36 @@ def build_doctor_report(root: Path) -> dict:
     skill_scheduler_summary = build_skill_scheduler_summary(root=root)
     discord_live_ops_summary = build_discord_live_ops_summary(root=root)
     openclaw_discord_bridge_summary = build_openclaw_discord_bridge_summary(root=root)
+    openclaw_discord_session_summary = build_openclaw_discord_session_summary(root=root)
+    routing_control_plane_summary = build_routing_control_plane_summary(
+        routing_summary=build_model_registry_summary(root),
+        degradation_summary=build_degradation_summary(root),
+        heartbeat_summary=build_heartbeat_report_summary(root=root),
+    )
+    world_ops_summary = build_world_ops_summary(root=root)
+    adaptation_lab_summary = summarize_adaptation_lab(root=root)
+    optimizer_summary = summarize_optimizer_lane(root=root)
+    local_model_lane_proof_summary = build_local_model_lane_proof_summary(root=root)
+    hermes_summary = build_hermes_summary(root=root)
+    autoresearch_summary = build_autoresearch_summary(root=root)
+    browser_action_summary = build_browser_action_summary(root=root)
+    a2a_policy_summary = build_a2a_policy_summary(root=root)
+    extension_lane_status_summary = build_extension_lane_status_summary(
+        shadowbroker_summary=shadowbroker_summary,
+        world_ops_summary=world_ops_summary,
+        autoresearch_summary=autoresearch_summary,
+        adaptation_lab_summary=adaptation_lab_summary,
+        optimizer_summary=optimizer_summary,
+        hermes_summary=hermes_summary,
+        research_backend_summary=build_research_backend_summary(root=root),
+        browser_action_summary=browser_action_summary,
+        a2a_policy_summary=a2a_policy_summary,
+        local_model_lane_proof_summary=local_model_lane_proof_summary,
+    )
+    lane_activation_summary = summarize_lane_activation(
+        root=root,
+        extension_lane_status_summary=extension_lane_status_summary,
+    )
     live_lane_diagnostic = dict(discord_live_ops_summary.get("live_lane_diagnostic") or {})
 
     _add(findings, "pass", "runtime_state", "State directories are readable.", details=f"tasks={tasks_count} approvals={approvals_count} reviews={reviews_count} outputs={outputs_count} controls={controls_count} research_campaigns={research_campaigns_count} run_traces={run_traces_count} eval_results={eval_results_count} consolidation_runs={consolidation_runs_count} memory_retrievals={memory_retrievals_count}")
@@ -1094,6 +1467,145 @@ def build_doctor_report(root: Path) -> dict:
                 ),
             )
 
+    if openclaw_discord_session_summary.get("malformed_session_count"):
+        latest_malformed = dict(openclaw_discord_session_summary.get("latest_malformed_session") or {})
+        _add(
+            findings,
+            "warn",
+            "openclaw_session",
+            f"Malformed external Discord session detected: {latest_malformed.get('malformed_reason') or 'invalid_session_history'}.",
+            latest_malformed.get("operator_action_required")
+            or "Run `python3 scripts/repair_discord_sessions.py --repair-all-malformed --repair`.",
+            details=(
+                f"session_id={latest_malformed.get('session_id') or 'unknown'} "
+                f"model={latest_malformed.get('selected_model_name') or latest_malformed.get('model_override') or 'unknown'} "
+                f"compactions={latest_malformed.get('compaction_count', 0)}"
+            ),
+        )
+
+    if world_ops_summary.get("degraded_feed_count"):
+        _add(
+            findings,
+            "warn",
+            "world_ops",
+            "One or more world-ops feeds are degraded or unavailable.",
+            "Inspect world_ops_summary and the latest feed/error state before trusting external world-status inputs.",
+            details=(
+                f"active_feeds={world_ops_summary.get('active_feed_count', 0)} "
+                f"degraded_feeds={world_ops_summary.get('degraded_feed_count', 0)} "
+                f"recent_events={world_ops_summary.get('recent_event_count', 0)}"
+            ),
+        )
+    else:
+        _add(
+            findings,
+            "pass",
+            "world_ops",
+            "World-ops sidecar summary is available.",
+            details=(
+                f"active_feeds={world_ops_summary.get('active_feed_count', 0)} "
+                f"recent_events={world_ops_summary.get('recent_event_count', 0)}"
+            ),
+        )
+    shadowbroker_runtime = validate_shadowbroker_runtime()
+    if str(shadowbroker_runtime.get("status") or "") == "blocked_shadowbroker_invalid_config":
+        _add(
+            findings,
+            "fail",
+            "shadowbroker",
+            "ShadowBroker sidecar config is invalid.",
+            "Fix JARVIS_SHADOWBROKER_BASE_URL / JARVIS_SHADOWBROKER_TIMEOUT_SECONDS before operator use.",
+            details=str(shadowbroker_runtime.get("reason") or ""),
+        )
+    elif not shadowbroker_summary.get("configured"):
+        _add(
+            findings,
+            "warn",
+            "shadowbroker",
+            "ShadowBroker sidecar is not configured.",
+            "Configure JARVIS_SHADOWBROKER_BASE_URL if you want ShadowBroker-backed OSINT snapshots.",
+        )
+    elif not shadowbroker_summary.get("healthy"):
+        _add(
+            findings,
+            "warn",
+            "shadowbroker",
+            "ShadowBroker sidecar is configured but degraded or unreachable.",
+            "Inspect shadowbroker_summary and the external ShadowBroker service/runtime.",
+            details=str(shadowbroker_summary.get("degraded_reason") or shadowbroker_summary.get("backend_status") or ""),
+        )
+    elif shadowbroker_summary.get("latest_snapshot_age_seconds") is not None and int(shadowbroker_summary.get("latest_snapshot_age_seconds") or 0) > _SHADOWBROKER_STALE_SNAPSHOT_SECONDS:
+        _add(
+            findings,
+            "warn",
+            "shadowbroker",
+            "ShadowBroker sidecar is healthy but the latest snapshot is stale.",
+            "Refresh ShadowBroker collection before claiming current OSINT coverage.",
+            details=(
+                f"snapshot_age_seconds={shadowbroker_summary.get('latest_snapshot_age_seconds')} "
+                f"stale_threshold_seconds={_SHADOWBROKER_STALE_SNAPSHOT_SECONDS}"
+            ),
+        )
+    else:
+        _add(
+            findings,
+            "pass",
+            "shadowbroker",
+            "ShadowBroker sidecar summary is available.",
+            details=(
+                f"recent_events={shadowbroker_summary.get('recent_event_count', 0)} "
+                f"evidence_bundles={shadowbroker_summary.get('evidence_bundle_count', 0)}"
+            ),
+        )
+
+    if adaptation_lab_summary.get("blocked_job_count"):
+        _add(
+            findings,
+            "warn",
+            "adaptation_lab",
+            "One or more adaptation jobs are blocked by missing runtime requirements or pending gates.",
+            "Inspect adaptation_lab_summary before treating fine-tuning as available.",
+            details=(
+                f"jobs={adaptation_lab_summary.get('job_count', 0)} "
+                f"blocked_jobs={adaptation_lab_summary.get('blocked_job_count', 0)}"
+            ),
+        )
+    else:
+        _add(
+            findings,
+            "pass",
+            "adaptation_lab",
+            "Adaptation lab summary is available and promotion remains blocked by default.",
+            details=(
+                f"datasets={adaptation_lab_summary.get('dataset_count', 0)} "
+                f"jobs={adaptation_lab_summary.get('job_count', 0)}"
+            ),
+        )
+    if optimizer_summary.get("blocked_run_count"):
+        _add(
+            findings,
+            "warn",
+            "optimizer",
+            "One or more DSPy optimizer runs are blocked by missing runtime requirements or pending gates.",
+            "Inspect optimizer_summary before treating DSPy optimization as available.",
+            details=(
+                f"variants={optimizer_summary.get('variant_summary', {}).get('variant_count', 0)} "
+                f"runs={optimizer_summary.get('optimizer_run_count', 0)} "
+                f"blocked_runs={optimizer_summary.get('blocked_run_count', 0)}"
+            ),
+        )
+    else:
+        _add(
+            findings,
+            "pass",
+            "optimizer",
+            "DSPy optimizer summary is available and remains eval/operator gated.",
+            details=(
+                f"variants={optimizer_summary.get('variant_summary', {}).get('variant_count', 0)} "
+                f"runs={optimizer_summary.get('optimizer_run_count', 0)}"
+            ),
+        )
+
     state_export = root / "state" / "logs" / "state_export.json"
     if state_export.exists():
         _add(findings, "pass", "operator", "state_export.json is present for operator/dashboard visibility.")
@@ -1158,7 +1670,16 @@ def build_doctor_report(root: Path) -> dict:
         "next_actions": next_actions,
         "regression_pack": regression["payload"] if regression["ok"] else None,
         "live_lane_diagnostic": live_lane_diagnostic,
+        "routing_control_plane_summary": routing_control_plane_summary,
         "openclaw_discord_bridge_summary": openclaw_discord_bridge_summary,
+        "openclaw_discord_session_summary": openclaw_discord_session_summary,
+        "world_ops_summary": world_ops_summary,
+        "shadowbroker_summary": shadowbroker_summary,
+        "adaptation_lab_summary": adaptation_lab_summary,
+        "optimizer_summary": optimizer_summary,
+        "local_model_lane_proof_summary": local_model_lane_proof_summary,
+        "extension_lane_status_summary": extension_lane_status_summary,
+        "lane_activation_summary": lane_activation_summary,
     }
 
 
@@ -1183,6 +1704,7 @@ def render_doctor_report(report: dict) -> str:
         ),
     ]
     live_lane = report.get("live_lane_diagnostic") or {}
+    routing_truth = report.get("routing_control_plane_summary") or {}
     if live_lane:
         lines.append(
             "live_lane: "
@@ -1191,6 +1713,17 @@ def render_doctor_report(report: dict) -> str:
             f"failure_category={live_lane.get('failure_category') or 'none'} "
             f"selected_model={live_lane.get('selected_model_name') or 'unknown'} "
             f"selected_host={live_lane.get('selected_host_name') or 'unknown'}"
+        )
+    if routing_truth:
+        lines.append(
+            "routing_truth: "
+            f"state={routing_truth.get('latest_route_state')} "
+            f"legality={routing_truth.get('latest_route_legality')} "
+            f"fallback_blocked={routing_truth.get('fallback_blocked_for_safety')} "
+            f"primary_posture={routing_truth.get('primary_runtime_posture')} "
+            f"burst_posture={routing_truth.get('burst_capacity_posture')} "
+            f"model={(routing_truth.get('latest_selected_route') or {}).get('model_name') or 'unknown'} "
+            f"host={(routing_truth.get('latest_selected_route') or {}).get('host_name') or 'unknown'}"
         )
     bridge = report.get("openclaw_discord_bridge_summary") or {}
     if bridge:
@@ -1202,6 +1735,57 @@ def render_doctor_report(report: dict) -> str:
             f"latest_model={latest_attempt.get('selected_model_name') or 'unknown'} "
             f"latest_provider={latest_attempt.get('selected_provider_id') or 'unknown'} "
             f"latest_failure={latest_failure.get('failure_class') or 'none'}"
+        )
+    session_summary = report.get("openclaw_discord_session_summary") or {}
+    if session_summary:
+        latest_malformed = session_summary.get("latest_malformed_session") or {}
+        lines.append(
+            "openclaw_sessions: "
+            f"detected={session_summary.get('detected_session_count', 0)} "
+            f"malformed={session_summary.get('malformed_session_count', 0)} "
+            f"latest_reason={latest_malformed.get('malformed_reason') or 'none'} "
+            f"latest_session_id={latest_malformed.get('session_id') or 'none'}"
+        )
+    shadowbroker = report.get("shadowbroker_summary") or {}
+    if shadowbroker:
+        lines.append(
+            "shadowbroker: "
+            f"configured={shadowbroker.get('configured')} "
+            f"healthy={shadowbroker.get('healthy')} "
+            f"status={shadowbroker.get('backend_status') or 'unknown'} "
+            f"recent_events={shadowbroker.get('recent_event_count', 0)} "
+            f"evidence_bundles={shadowbroker.get('evidence_bundle_count', 0)} "
+            f"snapshot_age_s={shadowbroker.get('latest_snapshot_age_seconds')} "
+            f"latency_ms={((shadowbroker.get('backend_latency_summary') or {}).get('latest_latency_ms'))}"
+        )
+    extension_lanes = report.get("extension_lane_status_summary") or {}
+    if extension_lanes:
+        counts = extension_lanes.get("classification_counts") or {}
+        lines.append(
+            "extension_lanes: "
+            f"live={counts.get('live_and_usable', 0)} "
+            f"blocked={counts.get('implemented_but_blocked_by_external_runtime', 0)} "
+            f"scaffold={counts.get('scaffold_only', 0)} "
+            f"deprecated={counts.get('deprecated_alias', 0)}"
+        )
+    lane_activation = report.get("lane_activation_summary") or {}
+    if lane_activation:
+        lines.append(
+            "lane_activation: "
+            f"live={lane_activation.get('live_lane_count', 0)} "
+            f"blocked={lane_activation.get('blocked_lane_count', 0)} "
+            f"degraded={lane_activation.get('degraded_lane_count', 0)} "
+            f"not_run={lane_activation.get('never_activated_count', 0)}"
+        )
+    local_model_lane_proof = report.get("local_model_lane_proof_summary") or {}
+    if local_model_lane_proof:
+        proof_rows = {str(row.get("lane") or ""): row for row in list(local_model_lane_proof.get("rows") or [])}
+        unsloth = proof_rows.get("adaptation_lab_unsloth", {})
+        dspy = proof_rows.get("optimizer_dspy", {})
+        lines.append(
+            "local_model_proofs: "
+            f"unsloth={unsloth.get('latest_activation_status', 'not_run')}/{unsloth.get('latest_runtime_status', 'not_run')} "
+            f"dspy={dspy.get('latest_activation_status', 'not_run')}/{dspy.get('latest_runtime_status', 'not_run')}"
         )
     for category, items in report["groups"].items():
         noteworthy = [item for item in items if item["status"] != "pass"]
@@ -1231,6 +1815,109 @@ def _run_python_json(root: Path, cmd: list[str]) -> dict:
         return {"ok": False, "message": f"non-JSON output: {stdout[:800]}"}
 
 
+class _ShadowbrokerFakeResponse:
+    def __init__(self, body: str, *, status: int = 200) -> None:
+        self._body = body.encode("utf-8")
+        self.status = status
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+
+def smoke_shadowbroker_missing_config(root: Path) -> dict:
+    result = fetch_shadowbroker_snapshot(feed_id="shadowbroker_smoke_missing", root=root)
+    ok = result.get("backend_status") == "blocked_shadowbroker_not_configured"
+    return {
+        "ok": ok,
+        "summary": {
+            "backend_status": result.get("backend_status"),
+            "degraded_reason": result.get("degraded_reason"),
+        },
+        "message": (
+            "missing-config path reports blocked_shadowbroker_not_configured"
+            if ok
+            else f"unexpected missing-config status: {result.get('backend_status')}"
+        ),
+    }
+
+
+def smoke_shadowbroker_mocked_success(root: Path) -> dict:
+    def _fake_urlopen(url: str, *, headers: dict[str, str], timeout_seconds: float, verify_ssl: bool):
+        if url.endswith("/healthz"):
+            return _ShadowbrokerFakeResponse("{}", status=200)
+        return _ShadowbrokerFakeResponse(
+            """{
+  "snapshot_id": "shadowbroker_smoke_snapshot",
+  "events": [
+    {
+      "event_id": "shadowbroker_smoke_event",
+      "title": "Smoke test event",
+      "summary": "Controlled ShadowBroker smoke payload.",
+      "region": "global",
+      "event_type": "smoke_signal",
+      "risk_posture": "low",
+      "url": "https://shadowbroker.example/smoke"
+    }
+  ]
+}""",
+            status=200,
+        )
+
+    with patch("runtime.integrations.shadowbroker_adapter._urlopen", side_effect=_fake_urlopen):
+        result = fetch_shadowbroker_snapshot(
+            feed_id="shadowbroker_smoke_success",
+            metadata_override={"base_url": "https://shadowbroker.invalid", "timeout_seconds": 5, "verify_ssl": True},
+            root=root,
+        )
+    ok = bool(result.get("ok")) and (result.get("snapshot") or {}).get("snapshot_id") == "shadowbroker_smoke_snapshot"
+    return {
+        "ok": ok,
+        "summary": {
+            "backend_status": result.get("backend_status"),
+            "snapshot_id": (result.get("snapshot") or {}).get("snapshot_id"),
+            "event_count": len(result.get("normalized_events") or []),
+        },
+        "message": (
+            "mocked ShadowBroker success path returned a real normalized snapshot"
+            if ok
+            else "mocked ShadowBroker success path did not return the expected normalized snapshot"
+        ),
+    }
+
+
+def smoke_shadowbroker_bad_payload(root: Path) -> dict:
+    def _fake_urlopen(url: str, *, headers: dict[str, str], timeout_seconds: float, verify_ssl: bool):
+        if url.endswith("/healthz"):
+            return _ShadowbrokerFakeResponse("{}", status=200)
+        return _ShadowbrokerFakeResponse("{bad json", status=200)
+
+    with patch("runtime.integrations.shadowbroker_adapter._urlopen", side_effect=_fake_urlopen):
+        result = fetch_shadowbroker_snapshot(
+            feed_id="shadowbroker_smoke_bad_payload",
+            metadata_override={"base_url": "https://shadowbroker.invalid", "timeout_seconds": 5, "verify_ssl": True},
+            root=root,
+        )
+    ok = result.get("backend_status") == "degraded_shadowbroker_bad_payload"
+    return {
+        "ok": ok,
+        "summary": {
+            "backend_status": result.get("backend_status"),
+            "degraded_reason": result.get("degraded_reason"),
+        },
+        "message": (
+            "mocked ShadowBroker bad-payload path is classified explicitly"
+            if ok
+            else f"unexpected bad-payload status: {result.get('backend_status')}"
+        ),
+    }
+
+
 def run_smoke(root: Path) -> dict:
     root = root.resolve()
     steps: list[dict] = []
@@ -1251,6 +1938,60 @@ def run_smoke(root: Path) -> dict:
             "root": str(root),
             "steps": steps,
             "message": "Smoke stopped at validate.",
+        }
+
+    shadowbroker_missing = smoke_shadowbroker_missing_config(root)
+    steps.append(
+        {
+            "step": "shadowbroker_missing_config",
+            "ok": shadowbroker_missing["ok"],
+            "summary": shadowbroker_missing["summary"],
+            "message": shadowbroker_missing["message"],
+        }
+    )
+    if not shadowbroker_missing["ok"]:
+        return {
+            "ok": False,
+            "timestamp_utc": now_iso(),
+            "root": str(root),
+            "steps": steps,
+            "message": "Smoke stopped at shadowbroker_missing_config.",
+        }
+
+    shadowbroker_mocked_success = smoke_shadowbroker_mocked_success(root)
+    steps.append(
+        {
+            "step": "shadowbroker_mocked_success",
+            "ok": shadowbroker_mocked_success["ok"],
+            "summary": shadowbroker_mocked_success["summary"],
+            "message": shadowbroker_mocked_success["message"],
+        }
+    )
+    if not shadowbroker_mocked_success["ok"]:
+        return {
+            "ok": False,
+            "timestamp_utc": now_iso(),
+            "root": str(root),
+            "steps": steps,
+            "message": "Smoke stopped at shadowbroker_mocked_success.",
+        }
+
+    shadowbroker_bad_payload = smoke_shadowbroker_bad_payload(root)
+    steps.append(
+        {
+            "step": "shadowbroker_bad_payload",
+            "ok": shadowbroker_bad_payload["ok"],
+            "summary": shadowbroker_bad_payload["summary"],
+            "message": shadowbroker_bad_payload["message"],
+        }
+    )
+    if not shadowbroker_bad_payload["ok"]:
+        return {
+            "ok": False,
+            "timestamp_utc": now_iso(),
+            "root": str(root),
+            "steps": steps,
+            "message": "Smoke stopped at shadowbroker_bad_payload.",
         }
 
     pack = _run_python_json(root, [sys.executable, str(root / "runtime" / "core" / "run_runtime_regression_pack.py")])

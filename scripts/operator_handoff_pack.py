@@ -576,6 +576,25 @@ def _build_markdown(pack: dict[str, Any]) -> str:
     lines.append(
         f"- degraded_backends={degraded.get('degraded_backend_count')} eval_runs={eval_scaffolding.get('eval_run_count')} reroute_scaffolding_only={((pack.get('reroute_summary') or {}).get('scaffolding_only'))}"
     )
+    shadowbroker = pack.get("shadowbroker_summary", {})
+    lines.extend(["", "## ShadowBroker Sidecar"])
+    lines.append(
+        f"- configured={shadowbroker.get('configured')} healthy={shadowbroker.get('healthy')} status={shadowbroker.get('backend_status')} snapshot_age_s={shadowbroker.get('latest_snapshot_age_seconds')}"
+    )
+    lines.append(
+        f"- recent_events={shadowbroker.get('recent_event_count', 0)} evidence_linked_events={shadowbroker.get('evidence_linked_event_count', 0)} evidence_bundles={shadowbroker.get('evidence_bundle_count', 0)}"
+    )
+    lines.append(
+        f"- latency_ms={((shadowbroker.get('backend_latency_summary') or {}).get('latest_latency_ms'))} timeout_s={((shadowbroker.get('backend_latency_summary') or {}).get('timeout_seconds'))} degraded_reason={shadowbroker.get('degraded_reason') or 'none'}"
+    )
+    if shadowbroker.get("latest_brief"):
+        lines.append(
+            f"- latest_brief={((shadowbroker.get('latest_brief') or {}).get('brief_id'))} summary={((shadowbroker.get('latest_brief') or {}).get('summary'))}"
+        )
+    for key, value in (shadowbroker.get("event_type_counts") or {}).items():
+        lines.append(f"- event_type {key}: {value}")
+    for key, value in (shadowbroker.get("region_counts") or {}).items():
+        lines.append(f"- region {key}: {value}")
 
     lines.extend(["", "## Recent Operator Actions"])
     for row in pack["recent_operator_action_executions"]:
@@ -916,6 +935,8 @@ def build_operator_handoff_pack(root: Path, *, limit: int = 10) -> dict[str, Any
         "subsystem_contract_summary": snapshot.get("subsystem_contract_summary", {}),
         "trajectory_summary": snapshot.get("trajectory_summary", {}),
         "operator_profile_summary": snapshot.get("operator_profile_summary", {}),
+        "world_ops_summary": snapshot.get("world_ops_summary", {}),
+        "shadowbroker_summary": snapshot.get("shadowbroker_summary", {}),
         "effective_emergency_control_summary": (snapshot.get("control_state", {}) or {}).get("effective", {}),
         "recent_task_status": recent_task_status,
         "artifacts": {

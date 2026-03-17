@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from runtime.core.artifact_store import promote_artifact, write_text_artifact
+from runtime.core.artifact_store import write_text_artifact
 from runtime.core.execution_contracts import record_backend_execution_request, record_backend_execution_result
 from runtime.core.degradation_policy import record_degradation_event
 from runtime.core.intake import create_task_from_message, create_task_from_message_result
@@ -161,13 +161,6 @@ def test_discord_live_ops_summary_surfaces_governance_blocked_publish(tmp_path: 
         lane="artifacts",
         root=tmp_path,
     )
-    promote_artifact(
-        artifact_id=artifact["artifact_id"],
-        actor="tester",
-        lane="review",
-        root=tmp_path,
-    )
-
     task.review_required = True
     save_task(task, root=tmp_path)
 

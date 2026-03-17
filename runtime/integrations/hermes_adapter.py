@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
+import shutil
+import subprocess
 import sys
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -31,6 +36,7 @@ from runtime.core.degradation_policy import (
     fallback_allowed as degradation_fallback_allowed,
     ensure_default_degradation_policies,
     load_degradation_policy_for_subsystem,
+    recover_degradation_event,
     record_degradation_event,
 )
 from runtime.core.models import ApprovalStatus, AuthorityClass, ReviewStatus, TaskStatus, new_id, now_iso
@@ -55,6 +61,12 @@ FAILED_STATUS = "failed"
 INVALID_REQUEST_STATUS = "invalid_request"
 _ALLOWED_HERMES_SANDBOX_CLASSES = {"bounded"}
 _ALLOWED_HERMES_TOOLS = {"candidate_artifact_write", "bounded_research_synthesis"}
+HERMES_BRIDGE_COMMAND_ENV = "JARVIS_HERMES_BRIDGE_COMMAND"
+HERMES_BRIDGE_CWD_ENV = "JARVIS_HERMES_BRIDGE_CWD"
+HERMES_BRIDGE_TIMEOUT_ENV = "JARVIS_HERMES_BRIDGE_TIMEOUT_SECONDS"
+HERMES_REQUEST_FILE_ENV = "JARVIS_HERMES_REQUEST_FILE"
+HERMES_RESULT_FILE_ENV = "JARVIS_HERMES_RESULT_FILE"
+HERMES_MODE_ENV = "JARVIS_HERMES_BRIDGE_MODE"
 
 Transport = Callable[["HermesTaskRequest"], dict[str, Any]]
 
@@ -164,6 +176,151 @@ def build_hermes_summary(root: Optional[Path] = None) -> dict[str, Any]:
         "latest_hermes_request": requests[0] if requests else None,
         "latest_hermes_result": results[0] if results else None,
     }
+
+
+def _normalize_command(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [str(part).strip() for part in value if str(part).strip()]
+    if value in (None, ""):
+        return []
+    return [part for part in shlex.split(str(value)) if part]
+
+
+def validate_hermes_runtime(*, metadata_override: Optional[dict[str, Any]] = None, root: Optional[Path] = None) -> dict[str, Any]:
+    override = dict(metadata_override or {})
+    command = _normalize_command(override.get("command") or os.environ.get(HERMES_BRIDGE_COMMAND_ENV, ""))
+    cwd_value = str(override.get("cwd") or os.environ.get(HERMES_BRIDGE_CWD_ENV, "") or Path(root or ROOT).resolve())
+    timeout_value = override.get("timeout_seconds")
+    if timeout_value in (None, ""):
+        timeout_value = os.environ.get(HERMES_BRIDGE_TIMEOUT_ENV, "")
+    timeout_seconds = 30
+    if timeout_value not in (None, ""):
+        try:
+            timeout_seconds = max(1, int(timeout_value))
+        except (TypeError, ValueError):
+            return {
+                "configured": False,
+                "healthy": False,
+                "runtime_status": "blocked_hermes_invalid_config",
+                "details": f"{HERMES_BRIDGE_TIMEOUT_ENV} must be a positive integer.",
+                "command": command,
+                "cwd": cwd_value,
+                "timeout_seconds": timeout_value,
+            }
+    if not command:
+        return {
+            "configured": False,
+            "healthy": False,
+            "runtime_status": "blocked_hermes_not_configured",
+            "details": f"Set {HERMES_BRIDGE_COMMAND_ENV} to probe the Hermes external bridge.",
+            "command": [],
+            "cwd": cwd_value,
+            "timeout_seconds": timeout_seconds,
+        }
+    binary = command[0]
+    if not Path(binary).expanduser().exists() and "/" not in binary and shutil.which(binary) is None:
+        return {
+            "configured": False,
+            "healthy": False,
+            "runtime_status": "blocked_hermes_binary_missing",
+            "details": f"Configured Hermes bridge command `{binary}` is not available.",
+            "command": command,
+            "cwd": cwd_value,
+            "timeout_seconds": timeout_seconds,
+        }
+    return {
+        "configured": True,
+        "healthy": False,
+        "runtime_status": "configured",
+        "details": "Hermes bridge command is configured.",
+        "command": command,
+        "cwd": cwd_value,
+        "timeout_seconds": timeout_seconds,
+    }
+
+
+def probe_hermes_runtime(*, metadata_override: Optional[dict[str, Any]] = None, root: Optional[Path] = None) -> dict[str, Any]:
+    runtime = validate_hermes_runtime(metadata_override=metadata_override, root=root)
+    if not runtime.get("configured"):
+        return runtime
+    root_path = Path(root or ROOT).resolve()
+    with tempfile.TemporaryDirectory(prefix="hermes_probe_", dir=str(root_path / "workspace" / "work")) as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        request_path = tmp_path / "request.json"
+        result_path = tmp_path / "result.json"
+        request_path.write_text(
+            json.dumps(
+                {
+                    "probe": True,
+                    "kind": "hermes_bridge_healthcheck",
+                    "created_at": now_iso(),
+                },
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        env = os.environ.copy()
+        env[HERMES_REQUEST_FILE_ENV] = str(request_path)
+        env[HERMES_RESULT_FILE_ENV] = str(result_path)
+        env[HERMES_MODE_ENV] = "healthcheck"
+        try:
+            completed = subprocess.run(
+                list(runtime["command"]),
+                cwd=str(runtime["cwd"]),
+                capture_output=True,
+                text=True,
+                timeout=int(runtime["timeout_seconds"]),
+                check=False,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return {
+                **runtime,
+                "healthy": False,
+                "runtime_status": "degraded_hermes_bridge_timeout",
+                "details": str(exc),
+            }
+        except Exception as exc:
+            return {
+                **runtime,
+                "healthy": False,
+                "runtime_status": "degraded_hermes_bridge_failed",
+                "details": f"{type(exc).__name__}: {exc}",
+            }
+        payload: Any = None
+        if result_path.exists():
+            try:
+                payload = json.loads(result_path.read_text(encoding="utf-8"))
+            except Exception:
+                payload = None
+        elif (completed.stdout or "").strip():
+            try:
+                payload = json.loads((completed.stdout or "").strip())
+            except Exception:
+                payload = None
+        if completed.returncode != 0:
+            return {
+                **runtime,
+                "healthy": False,
+                "runtime_status": "degraded_hermes_bridge_failed",
+                "details": (completed.stderr or completed.stdout or f"returncode={completed.returncode}").strip(),
+            }
+        if not isinstance(payload, dict):
+            return {
+                **runtime,
+                "healthy": False,
+                "runtime_status": "degraded_hermes_bridge_bad_payload",
+                "details": "Hermes bridge healthcheck did not return a JSON object payload.",
+            }
+        return {
+            **runtime,
+            "healthy": True,
+            "runtime_status": str(payload.get("runtime_status") or "healthy"),
+            "details": str(payload.get("details") or "Hermes bridge responded to healthcheck."),
+            "payload": payload,
+            "request_path": str(request_path.relative_to(root_path)),
+            "result_path": str(result_path.relative_to(root_path)) if result_path.exists() else "",
+        }
 
 
 def build_hermes_task_request(
@@ -579,6 +736,20 @@ def execute_hermes_task(
             )
 
     if result.status == SUCCESS_STATUS:
+        degradation_policy = load_degradation_policy_for_subsystem(HERMES_BACKEND_ID, root=root_path)
+        if degradation_policy is not None and degradation_policy.auto_recover:
+            recover_degradation_event(
+                subsystem=HERMES_BACKEND_ID,
+                actor=actor,
+                lane=lane,
+                reason="Hermes bridge recovered after a successful bounded run.",
+                source_refs={
+                    "hermes_request_id": request.request_id,
+                    "hermes_result_id": result.result_id,
+                    "recovered_by_result_id": result.result_id,
+                },
+                root=root_path,
+            )
         artifact_content = result.content
         if evidence_bundle is not None:
             artifact_content = artifact_content.rstrip() + f"\n\nEvidence bundle: {evidence_bundle['bundle_id']}\n"

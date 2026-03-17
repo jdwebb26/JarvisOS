@@ -43,6 +43,7 @@ from runtime.core.task_lease import get_active_lease
 from runtime.controls.control_store import assert_control_allows, get_effective_control_state
 from runtime.core.provenance_store import save_routing_provenance
 from runtime.core.modality_contracts import build_modality_summary, ensure_default_modality_contracts
+from runtime.core.agent_roster import build_agent_roster_summary
 
 
 ACTIVE_QWEN_MODELS = [
@@ -103,6 +104,24 @@ ACTIVE_QWEN_MODELS = [
         "workload_tags": ["embeddings", "local_support"],
         "local_only": True,
     },
+    # Kitt's preferred provider — NVIDIA-hosted Kimi 2.5.
+    # Execution backend is "nvidia_executor"; Python adapter + gateway both dispatch via NVIDIA API.
+    # Fallback to qwen3.5 is defined in runtime_routing_policy.json agent_policies.kitt.allowed_fallbacks.
+    {
+        "model_registry_entry_id": "model_kimi_k2_5_nvidia",
+        "provider_id": "nvidia",
+        "provider_kind": "remote_openai_compatible",
+        "model_family": "kimi",
+        "model_name": "moonshotai/kimi-k2.5",
+        "display_name": "Kimi 2.5 (NVIDIA)",
+        "priority_rank": 15,
+        "default_execution_backend": "nvidia_executor",
+        "capability_profile_ids": ["cap_general_kimi"],
+        "host_role": NodeRole.PRIMARY.value,
+        "host_name": None,  # Remote API provider — not bound to a local host node
+        "workload_tags": ["general", "research", "quant"],
+        "policy_tags": ["nvidia_approved"],
+    },
 ]
 
 CAPABILITY_PROFILES = [
@@ -158,6 +177,26 @@ CAPABILITY_PROFILES = [
         ],
         "preferred_execution_backend": "memory_spine",
     },
+    # Kitt's capability profile — NVIDIA-hosted Kimi 2.5.
+    # Covers quant/high-stakes so Kitt's preferred model is not filtered out for quant tasks.
+    {
+        "capability_profile_id": "cap_general_kimi",
+        "profile_name": "kimi_general",
+        "provider_id": "nvidia",
+        "model_family": "kimi",
+        "capabilities": [
+            "general_reasoning",
+            "code_generation",
+            "research_synthesis",
+            "reviewable_candidate",
+            "high_stakes_reasoning",
+            "quant_analysis",
+            "deployment_planning",
+        ],
+        "supported_task_types": ["general", "docs", "code", "research", "review", "approval", "flowstate", "output", "deploy", "quant"],
+        "supported_risk_levels": [TaskRiskLevel.NORMAL.value, TaskRiskLevel.RISKY.value, TaskRiskLevel.HIGH_STAKES.value],
+        "preferred_execution_backend": "nvidia_executor",
+    },
 ]
 
 DEFAULT_RUNTIME_ROUTING_POLICY = {
@@ -197,7 +236,77 @@ DEFAULT_RUNTIME_ROUTING_POLICY = {
             "allowed_families": ["qwen3.5"],
             "burst_allowed": False,
         },
+        "hal": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-35B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-122B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "archimedes": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-122B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-35B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "anton": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-122B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-35B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "hermes": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-122B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-35B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
         "scout": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-35B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-122B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "bowser": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-35B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-122B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "muse": {
+            "preferred_provider": "qwen",
+            "preferred_model": "Qwen3.5-35B",
+            "preferred_host_role": NodeRole.PRIMARY.value,
+            "allowed_host_roles": [NodeRole.PRIMARY.value],
+            "forbidden_host_roles": [NodeRole.BURST.value],
+            "allowed_fallbacks": ["Qwen3.5-9B"],
+            "allowed_families": ["qwen3.5"],
+            "burst_allowed": False,
+        },
+        "ralph": {
             "preferred_provider": "qwen",
             "preferred_model": "Qwen3.5-35B",
             "preferred_host_role": NodeRole.PRIMARY.value,
@@ -512,9 +621,11 @@ def _backend_health_status(backend_runtime: str, *, root: Path) -> str:
 
 def _node_runtime_signal(node_name: Optional[str], *, root: Path) -> dict[str, Any]:
     if not node_name:
+        # Remote API providers (host_name=None) are not bound to a local host node.
+        # Treat as healthy by default; degradation is signalled via degradation_policy events.
         return {
             "node_name": None,
-            "node_status": "unknown",
+            "node_status": "healthy",
             "heartbeat_known": False,
             "current_task_count": None,
             "available_backends": [],
@@ -909,7 +1020,7 @@ def ensure_default_routing_contracts(root: Optional[Path] = None) -> dict[str, l
                     model_name=model["model_name"],
                     display_name=model["display_name"],
                     capability_profile_ids=list(model["capability_profile_ids"]),
-                    policy_tags=["qwen_only", "approved"],
+                    policy_tags=list(model.get("policy_tags") or ["qwen_only", "approved"]),
                     priority_rank=model["priority_rank"],
                     default_execution_backend=model["default_execution_backend"],
                     host_role=model.get("host_role", NodeRole.PRIMARY.value),
@@ -1124,6 +1235,8 @@ def _choose_entry(
                     degradation_reasons.append("burst_worker_degraded")
             if task_type == "research" and "research_backend" in degradation_index["by_subsystem"]:
                 degradation_reasons.append("research_backend_degraded")
+            if entry.provider_id == "nvidia" and "nvidia_lane" in degradation_index["by_subsystem"]:
+                degradation_reasons.append("nvidia_lane_degraded")
             if node_signal["available_backends"] and selected_backend not in node_signal["available_backends"]:
                 degradation_reasons.append("backend_not_available_on_node")
             preferred_family_bonus = 1 if entry.model_family == preferred_family else 0
@@ -1161,11 +1274,11 @@ def _choose_entry(
                         lease_signal["lease_bonus"],
                         1 if coverage["covers_task_type"] else 0,
                         1 if coverage["covers_risk"] else 0,
-                        latency_fit,
-                        context_fit,
                         preferred_model_bonus,
                         preferred_provider_bonus,
                         preferred_host_bonus,
+                        latency_fit,
+                        context_fit,
                         coverage["matched_capabilities"],
                         preferred_family_bonus,
                         -current_task_count,
@@ -1252,6 +1365,7 @@ def _latest_runtime_route_resolution(decision: Optional[dict[str, Any]]) -> Opti
     selection_context = dict(constraints.get("selection_context") or {})
     selected_candidate = dict(selection_context.get("selected_candidate") or {})
     return {
+        "updated_at": decision.get("updated_at"),
         "routing_decision_id": decision.get("routing_decision_id"),
         "selected_provider_id": decision.get("selected_provider_id"),
         "selected_model_name": decision.get("selected_model_name"),
@@ -1277,6 +1391,11 @@ def _latest_runtime_route_resolution(decision: Optional[dict[str, Any]]) -> Opti
         "node_health_status": selected_candidate.get("node_health_status"),
         "rerouted_from_preferred_model": bool(selected_candidate.get("rerouted_from_preferred_model", False)),
         "candidate_evaluations": list(selection_context.get("candidate_evaluations") or []),
+        "route_legality_status": constraints.get("route_legality_status", "legal"),
+        "route_resolution_state": constraints.get("route_resolution_state", "selected"),
+        "fallback_attempted": bool(constraints.get("fallback_attempted", False)),
+        "fallback_blocked_for_safety": bool(constraints.get("fallback_blocked_for_safety", False)),
+        "blocked_route_reason": constraints.get("blocked_route_reason"),
         "selection_reason": decision.get("selection_reason", ""),
     }
 
@@ -1288,6 +1407,7 @@ def build_routing_failure_summary(request: Optional[dict[str, Any]]) -> Optional
     return {
         "routing_request_id": request.get("routing_request_id"),
         "task_id": request.get("task_id"),
+        "updated_at": request.get("updated_at"),
         "lane": request.get("lane"),
         "channel": constraints.get("channel"),
         "workload_type": constraints.get("workload_type"),
@@ -1308,8 +1428,71 @@ def build_routing_failure_summary(request: Optional[dict[str, Any]]) -> Optional
         "required_capabilities": list(request.get("required_capabilities") or []),
         "failure_reason": constraints.get("failure_reason", ""),
         "failure_code": constraints.get("failure_code"),
+        "route_legality_status": constraints.get("route_legality_status", "blocked"),
+        "route_resolution_state": constraints.get("route_resolution_state", "blocked"),
+        "fallback_blocked_for_safety": bool(constraints.get("fallback_blocked_for_safety", False)),
+        "blocked_route_reason": constraints.get("blocked_route_reason") or constraints.get("failure_reason", ""),
         "status": request.get("status"),
     }
+
+
+def score_candidate_route(candidate: dict[str, Any]) -> tuple[Any, ...]:
+    return tuple(candidate.get("score") or candidate.get("rank") or ())
+
+
+def select_best_route(candidates: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    if not candidates:
+        return None
+    ranked = sorted(candidates, key=score_candidate_route, reverse=True)
+    return ranked[0]
+
+
+def collect_candidate_routes(
+    *,
+    task_id: str,
+    normalized_request: str,
+    required_capabilities: list[str],
+    task_type: str,
+    risk_level: str,
+    priority: str,
+    workload_type: str,
+    allowed_families: list[str],
+    preferred_family: str,
+    runtime_route_policy: dict[str, Any],
+    root: Path,
+) -> dict[str, Any]:
+    entry, profile, candidate_model_names, selection_context = _choose_entry(
+        task_id=task_id,
+        normalized_request=normalized_request,
+        required_capabilities=required_capabilities,
+        task_type=task_type,
+        risk_level=risk_level,
+        priority=priority,
+        workload_type=workload_type,
+        allowed_families=allowed_families,
+        preferred_family=preferred_family,
+        runtime_route_policy=runtime_route_policy,
+        root=root,
+    )
+    candidates = list(selection_context.get("candidate_evaluations") or [])
+    for row in candidates:
+        row.setdefault("score", row.get("score") or [])
+    return {
+        "selected_entry": entry,
+        "selected_profile": profile,
+        "candidate_model_names": candidate_model_names,
+        "selection_context": selection_context,
+        "candidates": candidates,
+        "best_candidate": select_best_route(candidates),
+    }
+
+
+def explain_routing_decision(decision: dict[str, Any]) -> Optional[dict[str, Any]]:
+    return _latest_runtime_route_resolution(decision)
+
+
+def persist_routing_decision(record: RoutingDecisionRecord, root: Optional[Path] = None) -> RoutingDecisionRecord:
+    return save_routing_decision(record, root=root)
 
 
 def route_task_intent(
@@ -1419,7 +1602,7 @@ def route_task_intent(
     )
     eligible_provider_ids = sorted({row.provider_id for row in _candidate_entry_pool(allowed_families=allowed_families, root=root_path)})
     try:
-        entry, profile, candidate_model_names, selection_context = _choose_entry(
+        route_selection = collect_candidate_routes(
             task_id=task_id,
             normalized_request=normalized_request,
             required_capabilities=required_capabilities,
@@ -1432,8 +1615,19 @@ def route_task_intent(
             runtime_route_policy=runtime_route_policy,
             root=root_path,
         )
+        entry = route_selection["selected_entry"]
+        profile = route_selection["selected_profile"]
+        candidate_model_names = route_selection["candidate_model_names"]
+        selection_context = route_selection["selection_context"]
     except ValueError as exc:
         request.status = "failed"
+        fallback_blocked_for_safety = bool(
+            active_degradation_modes
+            and (
+                authority_class in {AuthorityClass.REVIEW_REQUIRED.value, AuthorityClass.APPROVAL_REQUIRED.value}
+                or bool(runtime_route_policy.get("allowed_fallbacks"))
+            )
+        )
         request.policy_constraints = {
             **dict(request.policy_constraints or {}),
             "eligible_provider_ids": eligible_provider_ids,
@@ -1441,6 +1635,10 @@ def route_task_intent(
             "failure_reason": (
                 "No routing candidate survived policy, host-role, provider, backend, and capability legality filters."
             ),
+            "route_legality_status": "blocked",
+            "route_resolution_state": "blocked",
+            "fallback_blocked_for_safety": fallback_blocked_for_safety,
+            "blocked_route_reason": str(exc),
         }
         save_routing_request(request, root=root_path)
         raise ValueError(
@@ -1451,9 +1649,18 @@ def route_task_intent(
         **dict(request.policy_constraints or {}),
         "eligible_provider_ids": eligible_provider_ids,
         "selection_context": selection_context,
+        "route_legality_status": "legal",
+        "route_resolution_state": (
+            "rerouted"
+            if bool((selection_context.get("selected_candidate") or {}).get("rerouted_from_preferred_model"))
+            else "selected"
+        ),
+        "fallback_attempted": bool((selection_context.get("selected_candidate") or {}).get("rerouted_from_preferred_model")),
+        "fallback_blocked_for_safety": False,
+        "blocked_route_reason": "",
     }
     save_routing_request(request, root=root_path)
-    decision = save_routing_decision(
+    decision = persist_routing_decision(
         RoutingDecisionRecord(
             routing_decision_id=new_id("rdec"),
             routing_request_id=request.routing_request_id,
@@ -1596,6 +1803,10 @@ def route_task_intent(
     }
 
 
+def route_task(**kwargs: Any) -> dict:
+    return route_task_intent(**kwargs)
+
+
 def build_model_registry_summary(root: Optional[Path] = None) -> dict:
     root_path = Path(root or ROOT).resolve()
     ensure_default_routing_contracts(root_path)
@@ -1646,6 +1857,7 @@ def build_model_registry_summary(root: Optional[Path] = None) -> dict:
         "latest_runtime_route_resolution": _latest_runtime_route_resolution(latest),
         "latest_failed_routing_request": build_routing_failure_summary(latest_failed_request.to_dict() if latest_failed_request else None),
         "backend_assignment_summary": backend_assignment_summary,
+        "agent_roster_summary": build_agent_roster_summary(root=root_path),
     }
 
 

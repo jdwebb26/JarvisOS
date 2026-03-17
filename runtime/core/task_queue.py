@@ -31,10 +31,13 @@ def _task_row(task) -> dict:
     return {
         "task_id": task.task_id,
         "summary": task.normalized_request,
+        "normalized_request": task.normalized_request,
         "task_type": task.task_type,
         "priority": task.priority,
         "risk_level": task.risk_level,
         "assigned_model": task.assigned_model,
+        "execution_backend": getattr(task, "execution_backend", ""),
+        "backend_metadata": getattr(task, "backend_metadata", None) or {},
         "status": task.status,
         "updated_at": task.updated_at,
         "created_at": task.created_at,

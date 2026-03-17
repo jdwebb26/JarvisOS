@@ -60,13 +60,13 @@ DEGRADATION_MODE_PROFILES: dict[str, dict[str, Any]] = {
         "operator_notification_required": True,
         "retry_policy": {"strategy": "manual_restore", "max_attempts": 1},
     },
-    "BURST_WORKER_OFFLINE": {
+    DegradationMode.BURST_WORKER_OFFLINE.value: {
         "fallback_allowed": True,
         "fallback_action": "primary_node_only",
         "operator_notification_required": True,
         "retry_policy": {"strategy": "auto_retry", "max_attempts": 3},
     },
-    "RESEARCH_BACKEND_DOWN": {
+    DegradationMode.RESEARCH_BACKEND_DOWN.value: {
         "fallback_allowed": True,
         "fallback_action": "summary_only_if_allowed",
         "operator_notification_required": True,
@@ -84,9 +84,21 @@ DEGRADATION_MODE_PROFILES: dict[str, dict[str, Any]] = {
         "operator_notification_required": True,
         "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
     },
-    "FALLBACK_SUMMARY_ONLY": {
+    DegradationMode.FALLBACK_SUMMARY_ONLY.value: {
         "fallback_allowed": True,
         "fallback_action": "summary_only",
+        "operator_notification_required": True,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    DegradationMode.LOCAL_EMBEDDINGS_ONLY.value: {
+        "fallback_allowed": True,
+        "fallback_action": "local_only_execution",
+        "operator_notification_required": True,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    DegradationMode.PRIMARY_RUNTIME_UNAVAILABLE.value: {
+        "fallback_allowed": False,
+        "fallback_action": "hold_or_manual_reroute",
         "operator_notification_required": True,
         "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
     },
@@ -160,7 +172,7 @@ DEFAULT_POLICIES = [
     },
     {
         "subsystem": "burst_worker",
-        "degradation_mode": "BURST_WORKER_OFFLINE",
+        "degradation_mode": DegradationMode.BURST_WORKER_OFFLINE.value,
         "fallback_action": "primary_node_only",
         "requires_operator_notification": True,
         "auto_recover": True,
@@ -168,7 +180,7 @@ DEFAULT_POLICIES = [
     },
     {
         "subsystem": "research_backend",
-        "degradation_mode": "RESEARCH_BACKEND_DOWN",
+        "degradation_mode": DegradationMode.RESEARCH_BACKEND_DOWN.value,
         "fallback_action": "summary_only_if_allowed",
         "requires_operator_notification": True,
         "auto_recover": False,
@@ -192,8 +204,24 @@ DEFAULT_POLICIES = [
     },
     {
         "subsystem": "summary_fallback",
-        "degradation_mode": "FALLBACK_SUMMARY_ONLY",
+        "degradation_mode": DegradationMode.FALLBACK_SUMMARY_ONLY.value,
         "fallback_action": "summary_only",
+        "requires_operator_notification": True,
+        "auto_recover": False,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    {
+        "subsystem": "local_embeddings_lane",
+        "degradation_mode": DegradationMode.LOCAL_EMBEDDINGS_ONLY.value,
+        "fallback_action": "local_only_execution",
+        "requires_operator_notification": True,
+        "auto_recover": True,
+        "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
+    },
+    {
+        "subsystem": "primary_runtime",
+        "degradation_mode": DegradationMode.PRIMARY_RUNTIME_UNAVAILABLE.value,
+        "fallback_action": "hold_or_manual_reroute",
         "requires_operator_notification": True,
         "auto_recover": False,
         "retry_policy": {"strategy": "manual_retry", "max_attempts": 1},
@@ -259,6 +287,24 @@ def list_degradation_policies(root: Optional[Path] = None) -> list[DegradationPo
 
 def list_degradation_events(root: Optional[Path] = None) -> list[DegradationEventRecord]:
     return _load_rows(degradation_events_dir(root), DegradationEventRecord)
+
+
+def latest_degradation_event_for_subsystem(
+    subsystem: str,
+    *,
+    include_resolved: bool = True,
+    root: Optional[Path] = None,
+) -> Optional[DegradationEventRecord]:
+    normalized = str(subsystem or "").strip()
+    if not normalized:
+        return None
+    for row in list_degradation_events(root=root):
+        if row.subsystem != normalized:
+            continue
+        if not include_resolved and row.status in {DegradationEventStatus.RECOVERED.value, DegradationEventStatus.CLEARED.value}:
+            continue
+        return row
+    return None
 
 
 def load_degradation_policy_for_subsystem(subsystem: str, *, root: Optional[Path] = None) -> Optional[DegradationPolicyRecord]:
@@ -327,11 +373,11 @@ def list_active_degradation_modes(root: Optional[Path] = None) -> list[dict[str,
     ensure_default_degradation_policies(root=root)
     latest_by_subsystem: dict[str, DegradationEventRecord] = {}
     for event in list_degradation_events(root=root):
-        if event.status not in {DegradationEventStatus.RECORDED.value, DegradationEventStatus.APPLIED.value}:
-            continue
         latest_by_subsystem.setdefault(event.subsystem, event)
     active = []
     for subsystem, event in sorted(latest_by_subsystem.items()):
+        if event.status not in {DegradationEventStatus.RECORDED.value, DegradationEventStatus.APPLIED.value, DegradationEventStatus.BLOCKED.value}:
+            continue
         active.append(
             {
                 "subsystem": subsystem,
@@ -341,9 +387,15 @@ def list_active_degradation_modes(root: Optional[Path] = None) -> list[dict[str,
                 "requires_operator_notification": event.requires_operator_notification,
                 "degradation_event_id": event.degradation_event_id,
                 "reason": event.reason,
+                "resolved_at": event.resolved_at,
+                "resolution_reason": event.resolution_reason,
             }
         )
     return active
+
+
+def get_active_degradation_modes(root: Optional[Path] = None) -> list[dict[str, Any]]:
+    return list_active_degradation_modes(root=root)
 
 
 def retry_policy_for_subsystem(subsystem: str, *, root: Optional[Path] = None) -> dict[str, Any]:
@@ -367,6 +419,19 @@ def operator_notification_required_for_subsystem(
     if degradation_mode:
         return bool(_mode_profile(degradation_mode)["operator_notification_required"])
     return True
+
+
+def should_notify_operator(
+    subsystem: str,
+    *,
+    degradation_mode: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> bool:
+    return operator_notification_required_for_subsystem(
+        subsystem,
+        degradation_mode=degradation_mode,
+        root=root,
+    )
 
 
 def fallback_allowed(
@@ -416,6 +481,23 @@ def fallback_allowed(
     }
 
 
+def can_fallback(
+    *,
+    subsystem: str,
+    authority_class: Optional[str] = None,
+    degradation_mode: Optional[str] = None,
+    fallback_action: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    return fallback_allowed(
+        subsystem=subsystem,
+        authority_class=authority_class,
+        degradation_mode=degradation_mode,
+        fallback_action=fallback_action,
+        root=root,
+    )
+
+
 def assert_no_forbidden_authority_downgrade(
     *,
     subsystem: str,
@@ -438,6 +520,24 @@ def assert_no_forbidden_authority_downgrade(
             f"Forbidden degraded fallback for {subsystem}: "
             f"{legality['degradation_mode']} -> {legality['fallback_action']} under {legality['authority_class']}"
         )
+
+
+def is_authority_downgrade_forbidden(
+    *,
+    subsystem: str,
+    authority_class: Optional[str] = None,
+    degradation_mode: Optional[str] = None,
+    fallback_action: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> bool:
+    legality = fallback_allowed(
+        subsystem=subsystem,
+        authority_class=authority_class,
+        degradation_mode=degradation_mode,
+        fallback_action=fallback_action,
+        root=root,
+    )
+    return any("sensitive_authority" in reason or "approval_required" in reason for reason in legality["reasons"])
 
 
 def degradation_retry_policy(
@@ -488,10 +588,39 @@ def record_degradation_event(
             retry_policy=dict(policy.retry_policy) if policy and policy.retry_policy else mode_profile["retry_policy"],
             status=status,
             reason=reason,
+            resolved_at=None,
+            resolution_reason="",
             source_refs=dict(source_refs or {}),
         ),
         root=root,
     )
+
+
+def recover_degradation_event(
+    *,
+    subsystem: str,
+    actor: str,
+    lane: str,
+    reason: str,
+    source_refs: Optional[dict[str, Any]] = None,
+    root: Optional[Path] = None,
+) -> Optional[DegradationEventRecord]:
+    latest = latest_degradation_event_for_subsystem(subsystem, include_resolved=True, root=root)
+    if latest is None:
+        return None
+    if latest.status in {DegradationEventStatus.RECOVERED.value, DegradationEventStatus.CLEARED.value}:
+        return latest
+    latest.status = DegradationEventStatus.RECOVERED.value
+    latest.actor = actor
+    latest.lane = lane
+    latest.updated_at = now_iso()
+    latest.resolved_at = latest.updated_at
+    latest.resolution_reason = reason
+    latest.source_refs = {
+        **dict(latest.source_refs or {}),
+        **dict(source_refs or {}),
+    }
+    return save_degradation_event(latest, root=root)
 
 
 def build_degradation_summary(root: Optional[Path] = None) -> dict:
@@ -502,12 +631,15 @@ def build_degradation_summary(root: Optional[Path] = None) -> dict:
     status_counts: dict[str, int] = {}
     mode_counts: dict[str, int] = {}
     operator_notification_count = 0
+    resolved_event_count = 0
     for row in events:
         subsystem_counts[row.subsystem] = subsystem_counts.get(row.subsystem, 0) + 1
         status_counts[row.status] = status_counts.get(row.status, 0) + 1
         mode_counts[row.degradation_mode] = mode_counts.get(row.degradation_mode, 0) + 1
         if row.requires_operator_notification:
             operator_notification_count += 1
+        if row.status in {DegradationEventStatus.RECOVERED.value, DegradationEventStatus.CLEARED.value}:
+            resolved_event_count += 1
     active_modes = list_active_degradation_modes(root=root)
     return {
         "degradation_policy_count": len(policies),
@@ -517,9 +649,11 @@ def build_degradation_summary(root: Optional[Path] = None) -> dict:
         "degradation_event_mode_counts": mode_counts,
         "active_degradation_modes": active_modes,
         "active_degradation_mode_count": len(active_modes),
+        "resolved_degradation_event_count": resolved_event_count,
         "operator_notification_required_event_count": operator_notification_count,
         "latest_degradation_policy": policies[0].to_dict() if policies else None,
         "latest_degradation_event": events[0].to_dict() if events else None,
+        "recent_degradation_events": [row.to_dict() for row in events[:10]],
     }
 
 

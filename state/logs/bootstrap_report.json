@@ -1,23 +1,13 @@
 {
   "ok": true,
-  "timestamp_utc": "2026-03-12T00:42:50.825373+00:00",
+  "timestamp_utc": "2026-03-12T17:46:06.898838+00:00",
   "root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "requested_root": "/home/rollan/.openclaw/workspace/jarvis-v5",
   "created_dirs": [
-    "runtime/auditor",
-    "runtime/reporter",
-    "services",
-    "services/discord",
-    "services/models",
-    "services/tools",
-    "services/memory",
-    "services/approvals",
-    "state/eval_runs",
-    "state/backend_health",
-    "state/accelerators",
-    "systemd"
+    "state/lane_activation",
+    "state/lane_activation_runs"
   ],
-  "existing_dirs_count": 127,
+  "existing_dirs_count": 171,
   "copy_examples_enabled": true,
   "copy_examples_requested": false,
   "copied_configs": {
@@ -27,9 +17,125 @@
     "config/policies.yaml": "kept_existing"
   },
   "runtime_5_2_prep": {
-    "seeded_files": [
-      "state/backend_health/backend_health_bootstrap_seed.json",
-      "state/accelerators/accelerator_summary_bootstrap_seed.json"
-    ]
+    "seeded_files": []
+  },
+  "default_nodes": [
+    {
+      "node_profile_id": "node_22e678328e33",
+      "created_at": "2026-03-12T01:19:09.547445+00:00",
+      "updated_at": "2026-03-12T17:45:48.937106+00:00",
+      "actor": "system",
+      "lane": "bootstrap",
+      "node_name": "NIMO",
+      "node_role": "primary",
+      "status": "healthy",
+      "authority_class": "suggest_only",
+      "available_backends": [
+        "qwen_planner",
+        "qwen_executor",
+        "operator"
+      ],
+      "accelerator_refs": [
+        "local_scaffolding_accelerator"
+      ],
+      "labels": [
+        "live_primary",
+        "scaffolding_seed"
+      ],
+      "metadata": {
+        "scaffolding_only": true,
+        "backend_summary": [
+          "qwen_planner",
+          "qwen_executor",
+          "operator"
+        ],
+        "model_family_summary": [
+          "qwen"
+        ],
+        "notes": [
+          "Primary durable node scaffold for 5.2 prep visibility."
+        ],
+        "last_seen_at": "2026-03-12T17:45:48.936936+00:00",
+        "last_heartbeat_status": "healthy",
+        "last_current_task_count": 0
+      },
+      "schema_version": "v5.1",
+      "version": "v1"
+    },
+    {
+      "node_profile_id": "node_69612aa8c4df",
+      "created_at": "2026-03-12T01:19:09.547836+00:00",
+      "updated_at": "2026-03-12T01:19:09.547853+00:00",
+      "actor": "system",
+      "lane": "bootstrap",
+      "node_name": "Koolkidclub",
+      "node_role": "burst",
+      "status": "stopped",
+      "authority_class": "suggest_only",
+      "available_backends": [],
+      "accelerator_refs": [],
+      "labels": [
+        "optional_burst",
+        "scaffolding_seed"
+      ],
+      "metadata": {
+        "scaffolding_only": true,
+        "optional": true,
+        "backend_summary": [],
+        "model_family_summary": [],
+        "notes": [
+          "Optional burst worker scaffold. Not part of the critical path."
+        ]
+      },
+      "schema_version": "v5.1",
+      "version": "v1"
+    },
+    {
+      "node_profile_id": "node_c410d6f430eb",
+      "created_at": "2026-03-12T03:34:44.528123+00:00",
+      "updated_at": "2026-03-12T03:34:44.528164+00:00",
+      "actor": "system",
+      "lane": "bootstrap",
+      "node_name": "LOCAL",
+      "node_role": "local",
+      "status": "healthy",
+      "authority_class": "suggest_only",
+      "available_backends": [
+        "memory_spine",
+        "evaluation_spine",
+        "operator"
+      ],
+      "accelerator_refs": [],
+      "labels": [
+        "live_local_support",
+        "routing_local_only"
+      ],
+      "metadata": {
+        "scaffolding_only": false,
+        "backend_summary": [
+          "memory_spine",
+          "evaluation_spine",
+          "operator"
+        ],
+        "model_family_summary": [
+          "local"
+        ],
+        "notes": [
+          "Local support node for local-only workloads such as embeddings."
+        ]
+      },
+      "schema_version": "v5.1",
+      "version": "v1"
+    }
+  ],
+  "vault_scaffold": {
+    "workspace_vault_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/vault",
+    "index_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/vault/index.json",
+    "created_dirs": [
+      "workspace/vault",
+      "workspace/vault/artifacts",
+      "workspace/vault/briefs"
+    ],
+    "export_count": 0
   }
 }

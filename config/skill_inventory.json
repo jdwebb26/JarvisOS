@@ -1,0 +1,310 @@
+{
+  "skills": [
+    {
+      "name": "1password",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "apple-notes",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "apple-reminders",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "bear-notes",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "blogwatcher",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "blucli",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "bluebubbles",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "camsnap",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "clawhub",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "coding-agent",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "discord",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "eightctl",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "gemini",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "gh-issues",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "gifgrep",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "github",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "gog",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "goplaces",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "healthcheck",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "himalaya",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "imsg",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "mcporter",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "model-usage",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "nano-banana-pro",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "nano-pdf",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "notion",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "obsidian",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "openai-image-gen",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "openai-whisper",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "openai-whisper-api",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "openhue",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "oracle",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "ordercli",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "peekaboo",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "sag",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "session-logs",
+      "eligible": true,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "sherpa-onnx-tts",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "skill-creator",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "slack",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "songsee",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "sonoscli",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "spotify-player",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "summarize",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "things-mac",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "tmux",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "trello",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "video-frames",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "voice-call",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "wacli",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "weather",
+      "eligible": false,
+      "disabled": true,
+      "source": "openclaw-bundled"
+    },
+    {
+      "name": "xurl",
+      "eligible": false,
+      "disabled": false,
+      "source": "openclaw-bundled"
+    }
+  ]
+}

@@ -12,13 +12,18 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from runtime.core.degradation_policy import (
+    can_fallback,
     assert_no_forbidden_authority_downgrade,
     ensure_default_degradation_policies,
     fallback_allowed,
+    recover_degradation_event,
+    get_active_degradation_modes,
+    is_authority_downgrade_forbidden,
     list_degradation_events,
     list_active_degradation_modes,
     load_degradation_policy_for_subsystem,
     save_degradation_policy,
+    should_notify_operator,
 )
 from runtime.core.models import AuthorityClass
 from runtime.core.models import TaskRecord, TaskStatus, now_iso
@@ -27,6 +32,8 @@ from runtime.core.task_store import create_task, load_task, save_task
 from runtime.dashboard.operator_snapshot import build_operator_snapshot
 from runtime.dashboard.state_export import build_state_export
 from runtime.integrations.hermes_adapter import HERMES_BACKEND_ID, execute_hermes_task
+from runtime.core.output_store import publish_artifact_result
+from runtime.core.artifact_store import write_text_artifact
 from scripts.operator_handoff_pack import build_operator_handoff_pack
 
 
@@ -186,6 +193,105 @@ def test_degraded_fallback_legality_stays_sensitive_to_authority(tmp_path: Path)
 
     active_before = list_active_degradation_modes(root=tmp_path)
     assert active_before == []
+    assert get_active_degradation_modes(root=tmp_path) == []
+    assert can_fallback(
+        subsystem="research_backend",
+        authority_class=AuthorityClass.APPROVAL_REQUIRED.value,
+        root=tmp_path,
+    )["allowed"] is False
+    assert should_notify_operator("research_backend", root=tmp_path) is True
+    assert is_authority_downgrade_forbidden(
+        subsystem="research_backend",
+        authority_class=AuthorityClass.APPROVAL_REQUIRED.value,
+        root=tmp_path,
+    ) is True
+
+
+def test_recovered_event_clears_active_degradation_mode(tmp_path: Path):
+    event = execute_hermes_task(
+        task_id=_make_task(tmp_path, task_id="task_degradation_recover").task_id,
+        actor="tester",
+        lane="hermes",
+        root=tmp_path,
+        transport=lambda _request: (_ for _ in ()).throw(TimeoutError("Hermes request exceeded timeout budget.")),
+    )
+    assert event["result"]["status"] == "timeout"
+    assert list_active_degradation_modes(root=tmp_path)
+
+    recovered = recover_degradation_event(
+        subsystem=HERMES_BACKEND_ID,
+        actor="tester",
+        lane="hermes",
+        reason="Operator confirmed Hermes bridge recovered.",
+        root=tmp_path,
+    )
+
+    summary = build_status(tmp_path)["degradation_summary"]
+    assert recovered is not None
+    assert recovered.status == "recovered"
+    assert recovered.resolution_reason == "Operator confirmed Hermes bridge recovered."
+    assert list_active_degradation_modes(root=tmp_path) == []
+    assert summary["resolved_degradation_event_count"] == 1
+
+
+def test_review_and_auditor_governance_blocks_record_degradation_events(tmp_path: Path):
+    review_task = _make_task(tmp_path, task_id="task_review_unavailable")
+    review_task.review_required = True
+    save_task(review_task, root=tmp_path)
+    review_artifact = write_text_artifact(
+        task_id=review_task.task_id,
+        artifact_type="report",
+        title="Review gated artifact",
+        summary="summary",
+        content="content",
+        actor="tester",
+        lane="artifacts",
+        root=tmp_path,
+    )
+    review_result = publish_artifact_result(
+        task_id=review_task.task_id,
+        artifact_id=review_artifact["artifact_id"],
+        actor="tester",
+        lane="outputs",
+        root=tmp_path,
+    )
+
+    approval_task = _make_task(tmp_path, task_id="task_auditor_unavailable")
+    approval_task.approval_required = True
+    save_task(approval_task, root=tmp_path)
+    approval_artifact = write_text_artifact(
+        task_id=approval_task.task_id,
+        artifact_type="report",
+        title="Approval gated artifact",
+        summary="summary",
+        content="content",
+        actor="tester",
+        lane="artifacts",
+        root=tmp_path,
+    )
+    approval_result = publish_artifact_result(
+        task_id=approval_task.task_id,
+        artifact_id=approval_artifact["artifact_id"],
+        actor="tester",
+        lane="outputs",
+        root=tmp_path,
+    )
+
+    events = list_degradation_events(root=tmp_path)
+    reviewer_events = [row for row in events if row.subsystem == "reviewer_lane"]
+    auditor_events = [row for row in events if row.subsystem == "auditor_lane"]
+    summary = build_status(tmp_path)["degradation_summary"]
+
+    assert review_result["ok"] is False
+    assert approval_result["ok"] is False
+    assert reviewer_events
+    assert auditor_events
+    assert reviewer_events[0].fallback_action == "no_auto_promotion"
+    assert auditor_events[0].fallback_action == "no_auto_promotion"
+    assert reviewer_events[0].source_refs["security_posture_reduced"] is False
+    assert auditor_events[0].source_refs["security_posture_reduced"] is False
+    assert summary["degradation_event_subsystem_counts"]["reviewer_lane"] >= 1
+    assert summary["degradation_event_subsystem_counts"]["auditor_lane"] >= 1
 
 
 def _run_as_script() -> int:
@@ -197,6 +303,10 @@ def _run_as_script() -> int:
         test_degradation_summary_surfaces_in_core_reporting(Path(tmp_three))
     with TemporaryDirectory() as tmp_four:
         test_degraded_fallback_legality_stays_sensitive_to_authority(Path(tmp_four))
+    with TemporaryDirectory() as tmp_five:
+        test_recovered_event_clears_active_degradation_mode(Path(tmp_five))
+    with TemporaryDirectory() as tmp_six:
+        test_review_and_auditor_governance_blocks_record_degradation_events(Path(tmp_six))
     return 0
 
 

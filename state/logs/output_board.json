@@ -9,6 +9,26 @@
       "published_at": "2026-03-10T01:40:01.612660+00:00",
       "published_by": "operator",
       "lane": "outputs",
+      "status": null,
+      "producer_kind": null,
+      "execution_backend": null,
+      "provenance_ref": null,
+      "producer_metadata": {
+        "producer_kind": null,
+        "execution_backend": null,
+        "published_by": "operator"
+      },
+      "evidence_metadata": {
+        "impacted_by_artifact_count": 0,
+        "superseded": false
+      },
+      "provenance_metadata": {
+        "artifact_id": "art_c5eebd93028d",
+        "provenance_ref": null
+      },
+      "superseded_by_artifact_id": null,
+      "impacted_by_artifact_ids": [],
+      "revocation_reason": "",
       "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_88b300de8685.md"
     },
     {
@@ -20,6 +40,26 @@
       "published_at": "2026-03-09T18:08:04.314136+00:00",
       "published_by": "operator",
       "lane": "outputs",
+      "status": null,
+      "producer_kind": null,
+      "execution_backend": null,
+      "provenance_ref": null,
+      "producer_metadata": {
+        "producer_kind": null,
+        "execution_backend": null,
+        "published_by": "operator"
+      },
+      "evidence_metadata": {
+        "impacted_by_artifact_count": 0,
+        "superseded": false
+      },
+      "provenance_metadata": {
+        "artifact_id": "art_publish_smoke_20260309_125152",
+        "provenance_ref": null
+      },
+      "superseded_by_artifact_id": null,
+      "impacted_by_artifact_ids": [],
+      "revocation_reason": "",
       "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_9bc70bf935b4.md"
     },
     {
@@ -31,6 +71,26 @@
       "published_at": "2026-03-09T00:37:09.532353+00:00",
       "published_by": "executor",
       "lane": "executor",
+      "status": null,
+      "producer_kind": null,
+      "execution_backend": null,
+      "provenance_ref": null,
+      "producer_metadata": {
+        "producer_kind": null,
+        "execution_backend": null,
+        "published_by": "executor"
+      },
+      "evidence_metadata": {
+        "impacted_by_artifact_count": 0,
+        "superseded": false
+      },
+      "provenance_metadata": {
+        "artifact_id": "art_f70dc358fee1",
+        "provenance_ref": null
+      },
+      "superseded_by_artifact_id": null,
+      "impacted_by_artifact_ids": [],
+      "revocation_reason": "",
       "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_4e2754b72050.md"
     },
     {
@@ -42,6 +102,26 @@
       "published_at": "2026-03-09T00:35:45.468931+00:00",
       "published_by": "executor",
       "lane": "outputs",
+      "status": null,
+      "producer_kind": null,
+      "execution_backend": null,
+      "provenance_ref": null,
+      "producer_metadata": {
+        "producer_kind": null,
+        "execution_backend": null,
+        "published_by": "executor"
+      },
+      "evidence_metadata": {
+        "impacted_by_artifact_count": 0,
+        "superseded": false
+      },
+      "provenance_metadata": {
+        "artifact_id": "art_782b4c03700f",
+        "provenance_ref": null
+      },
+      "superseded_by_artifact_id": null,
+      "impacted_by_artifact_ids": [],
+      "revocation_reason": "",
       "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_3c2559d8ea60.md"
     },
     {
@@ -53,6 +133,26 @@
       "published_at": "2026-03-09T00:32:17.312358+00:00",
       "published_by": "executor",
       "lane": "executor",
+      "status": null,
+      "producer_kind": null,
+      "execution_backend": null,
+      "provenance_ref": null,
+      "producer_metadata": {
+        "producer_kind": null,
+        "execution_backend": null,
+        "published_by": "executor"
+      },
+      "evidence_metadata": {
+        "impacted_by_artifact_count": 0,
+        "superseded": false
+      },
+      "provenance_metadata": {
+        "artifact_id": "art_0cfd8ee26a79",
+        "provenance_ref": null
+      },
+      "superseded_by_artifact_id": null,
+      "impacted_by_artifact_ids": [],
+      "revocation_reason": "",
       "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_61d9ee737635.md"
     },
     {
@@ -64,6 +164,26 @@
       "published_at": "2026-03-08T03:30:01.398011+00:00",
       "published_by": "rollan",
       "lane": "outputs",
+      "status": null,
+      "producer_kind": null,
+      "execution_backend": null,
+      "provenance_ref": null,
+      "producer_metadata": {
+        "producer_kind": null,
+        "execution_backend": null,
+        "published_by": "rollan"
+      },
+      "evidence_metadata": {
+        "impacted_by_artifact_count": 0,
+        "superseded": false
+      },
+      "provenance_metadata": {
+        "artifact_id": "art_8d94613f6d36",
+        "provenance_ref": null
+      },
+      "superseded_by_artifact_id": null,
+      "impacted_by_artifact_ids": [],
+      "revocation_reason": "",
       "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_90f04098c5a0.md"
     },
     {
@@ -75,6 +195,26 @@
       "published_at": "2026-03-08T03:27:02.208921+00:00",
       "published_by": "rollan",
       "lane": "outputs",
+      "status": null,
+      "producer_kind": null,
+      "execution_backend": null,
+      "provenance_ref": null,
+      "producer_metadata": {
+        "producer_kind": null,
+        "execution_backend": null,
+        "published_by": "rollan"
+      },
+      "evidence_metadata": {
+        "impacted_by_artifact_count": 0,
+        "superseded": false
+      },
+      "provenance_metadata": {
+        "artifact_id": "art_8d94613f6d36",
+        "provenance_ref": null
+      },
+      "superseded_by_artifact_id": null,
+      "impacted_by_artifact_ids": [],
+      "revocation_reason": "",
       "markdown_path": "/home/rollan/.openclaw/workspace/jarvis-v5/workspace/out/out_9a16a9cfeab0.md"
     }
   ],

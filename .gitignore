@@ -17,6 +17,10 @@ htmlcov/
 *.post_*
 *.fixed_*
 
+specs/tla/states/
+tools/tla/tla2tools.jar
+
+
 .env
 events.db
 /enrich_worker

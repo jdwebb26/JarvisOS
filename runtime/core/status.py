@@ -31,14 +31,80 @@ from runtime.core.rollback_store import build_rollback_summary
 from runtime.core.routing import build_model_registry_summary, build_routing_failure_summary
 from runtime.core.security_validation import build_security_validation_summary
 from runtime.core.modality_contracts import build_modality_summary
+from runtime.core.agent_roster import build_agent_roster_summary
 from runtime.core.subsystem_contracts import build_subsystem_contract_summary
 from runtime.core.trajectory_profiles import build_operator_profile_summary, build_trajectory_summary
 from runtime.core.voice_sessions import build_voice_session_summary
 from runtime.core.a2a_policy import build_a2a_policy_summary
+from runtime.core.workspace_registry import summarize_workspace_registry
+from runtime.adaptation_lab.summary import summarize_adaptation_lab
+from runtime.integrations.research_backends import build_research_backend_summary
+from runtime.integrations.lane_activation import summarize_lane_activation
+from runtime.integrations.lane_activation import latest_lane_activation_result
+from runtime.optimizer.eval_gate import summarize_optimizer_lane
+from runtime.integrations.shadowbroker_adapter import summarize_shadowbroker_backend
+from runtime.integrations.openclaw_sessions import build_openclaw_discord_session_integrity_summary
+from runtime.world_ops.summary import build_world_ops_summary
 from runtime.browser.reporting import build_browser_action_summary
 from runtime.controls.control_store import build_control_summary, get_effective_control_state, list_blocked_actions, list_control_events, list_control_records
 from runtime.integrations.notification_adapter import build_notification_summary
 from runtime.voice.router import build_voice_route_capability_summary, build_voice_route_safety_summary
+
+
+def build_routing_control_plane_summary(
+    *,
+    routing_summary: dict[str, Any],
+    degradation_summary: dict[str, Any],
+    heartbeat_summary: dict[str, Any],
+) -> dict[str, Any]:
+    latest_resolution = dict(routing_summary.get("latest_runtime_route_resolution") or {})
+    latest_failure = dict(routing_summary.get("latest_failed_routing_request") or {})
+    latest_degradation = dict(degradation_summary.get("latest_degradation_event") or {})
+    node_health = dict((heartbeat_summary or {}).get("node_health_summary") or {})
+    topology_posture = str(node_health.get("topology_posture") or "unknown")
+
+    route_state = str(latest_resolution.get("route_resolution_state") or "")
+    route_legality = str(latest_resolution.get("route_legality_status") or "")
+    if latest_failure and (
+        not latest_resolution
+        or str(latest_failure.get("updated_at") or "") >= str(latest_resolution.get("updated_at") or "")
+    ):
+        route_state = str(latest_failure.get("route_resolution_state") or "blocked")
+        route_legality = str(latest_failure.get("route_legality_status") or "blocked")
+
+    fallback_blocked_for_safety = bool(
+        latest_failure.get("fallback_blocked_for_safety")
+        or dict(latest_degradation.get("source_refs") or {}).get("fallback_allowed") is False
+    )
+    latest_selected_route = (
+        {
+            "provider_id": latest_resolution.get("selected_provider_id"),
+            "model_name": latest_resolution.get("selected_model_name"),
+            "execution_backend": latest_resolution.get("selected_execution_backend"),
+            "node_role": latest_resolution.get("selected_node_role"),
+            "host_name": latest_resolution.get("selected_host_name"),
+            "selection_reason": latest_resolution.get("selection_reason"),
+        }
+        if latest_resolution
+        else None
+    )
+    return {
+        "latest_route_state": route_state or "unknown",
+        "latest_route_legality": route_legality or "unknown",
+        "latest_selected_route": latest_selected_route,
+        "latest_failed_route": latest_failure or None,
+        "latest_degradation_event": latest_degradation or None,
+        "fallback_blocked_for_safety": fallback_blocked_for_safety,
+        "latest_route_downgraded": bool(latest_resolution.get("rerouted_from_preferred_model", False)),
+        "burst_capacity_posture": (
+            "optional_capacity_loss"
+            if topology_posture in {"healthy_optional_burst_offline", "healthy_optional_capacity_reduced"}
+            else "normal"
+        ),
+        "primary_runtime_posture": "primary_outage" if topology_posture == "primary_outage" else "healthy",
+        "topology_posture": topology_posture,
+        "topology_notes": list(node_health.get("topology_notes") or []),
+    }
 
 
 def _load_jsons(folder: Path) -> list[dict[str, Any]]:
@@ -293,9 +359,10 @@ def build_discord_live_ops_summary(
         route_selected = bool(routing_meta.get("routing_decision_id"))
         backend_execution_attempted = latest_backend is not None
         timeout_stage = ""
-        if last_failure_category == "model_timeout":
+        timeout_failure_category = backend_failure_category or last_failure_category
+        if timeout_failure_category == "model_timeout":
             timeout_stage = "model"
-        elif last_failure_category in {"backend_timeout", "external_runtime_unreachable"}:
+        elif timeout_failure_category in {"backend_timeout", "external_runtime_unreachable"}:
             timeout_stage = "backend"
         row = {
             "task_id": task.task_id,
@@ -327,7 +394,7 @@ def build_discord_live_ops_summary(
             "degraded_fallback_action": fallback_action,
             "degraded_fallback_attempted": bool(fallback_action and fallback_action != "no_local_fallback" and fallback_allowed is not False),
             "degraded_fallback_blocked": fallback_allowed is False,
-            "degraded_fallback_legal": fallback_allowed is not False if fallback_action else None,
+            "degraded_fallback_legal": False if fallback_allowed is False else (True if fallback_action else None),
             "degraded_fallback_legality_reasons": list(degradation_refs.get("fallback_legality_reasons") or []),
             "governance_blocked_action_id": (latest_blocked or {}).get("blocked_action_id"),
             "governance_block_reason": (latest_blocked or {}).get("reason"),
@@ -391,19 +458,20 @@ def _bridge_row_timestamp(row: dict[str, Any]) -> str:
 
 
 def _find_nested_field(payload: Any, keys: tuple[str, ...]) -> Any:
+    _empty = (None, "", [], {})
     if isinstance(payload, dict):
         for key in keys:
             value = payload.get(key)
-            if value not in {None, "", [], {}}:
+            if value not in _empty:
                 return value
         for value in payload.values():
             found = _find_nested_field(value, keys)
-            if found not in {None, "", [], {}}:
+            if found not in _empty:
                 return found
     if isinstance(payload, list):
         for value in payload:
             found = _find_nested_field(value, keys)
-            if found not in {None, "", [], {}}:
+            if found not in _empty:
                 return found
     return None
 
@@ -570,6 +638,177 @@ def build_openclaw_discord_bridge_summary(
     }
 
 
+def build_openclaw_discord_session_summary(*, root: Path) -> dict[str, Any]:
+    return build_openclaw_discord_session_integrity_summary(repo_root=root)
+
+
+def build_extension_lane_status_summary(
+    *,
+    shadowbroker_summary: dict[str, Any],
+    world_ops_summary: dict[str, Any],
+    autoresearch_summary: dict[str, Any],
+    adaptation_lab_summary: dict[str, Any],
+    optimizer_summary: dict[str, Any],
+    hermes_summary: dict[str, Any],
+    research_backend_summary: dict[str, Any],
+    browser_action_summary: dict[str, Any],
+    a2a_policy_summary: dict[str, Any],
+    local_model_lane_proof_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    def _row(lane: str, classification: str, reason: str) -> dict[str, Any]:
+        return {"lane": lane, "classification": classification, "reason": reason}
+
+    shadowbroker_row = _row(
+        "shadowbroker",
+        "live_and_usable" if shadowbroker_summary.get("configured") and shadowbroker_summary.get("healthy") else "implemented_but_blocked_by_external_runtime",
+        (
+            "ShadowBroker is configured and healthy."
+            if shadowbroker_summary.get("configured") and shadowbroker_summary.get("healthy")
+            else str(shadowbroker_summary.get("degraded_reason") or shadowbroker_summary.get("backend_status") or "ShadowBroker depends on external config/runtime.")
+        ),
+    )
+    world_ops_row = _row(
+        "world_ops",
+        "deprecated_alias",
+        "world_ops remains the compatibility aggregation layer; prefer ShadowBroker for the external OSINT sidecar path.",
+    )
+    latest_upstream_runtime = dict(autoresearch_summary.get("latest_upstream_runtime") or {})
+    autoresearch_row = _row(
+        "autoresearch_upstream_bridge",
+        "live_and_usable" if str(latest_upstream_runtime.get("runtime_status") or "") == "completed" else "implemented_but_blocked_by_external_runtime",
+        (
+            "Autoresearch upstream runtime completed."
+            if str(latest_upstream_runtime.get("runtime_status") or "") == "completed"
+            else str(latest_upstream_runtime.get("details") or latest_upstream_runtime.get("runtime_status") or "Autoresearch depends on an external upstream runtime.")
+        ),
+    )
+    proof_rows = {
+        str(row.get("lane") or ""): row for row in list((local_model_lane_proof_summary or {}).get("rows") or [])
+    }
+    latest_adaptation = dict(adaptation_lab_summary.get("latest_result") or {})
+    adaptation_proof = dict(proof_rows.get("adaptation_lab_unsloth") or {})
+    adaptation_row = _row(
+        "adaptation_lab_unsloth",
+        "live_and_usable" if adaptation_proof.get("currently_live_on_this_machine") else "implemented_but_blocked_by_external_runtime",
+        (
+            "Unsloth-backed proof completed on this machine."
+            if adaptation_proof.get("currently_live_on_this_machine")
+            else str(
+                adaptation_proof.get("latest_runtime_status")
+                or latest_adaptation.get("runtime_status")
+                or adaptation_lab_summary.get("runtime_status_counts")
+                or "Adaptation lab depends on local Unsloth runtime availability."
+            )
+        ),
+    )
+    latest_optimizer_run = dict(optimizer_summary.get("latest_optimizer_run") or {})
+    optimizer_proof = dict(proof_rows.get("optimizer_dspy") or {})
+    optimizer_row = _row(
+        "optimizer_dspy",
+        "live_and_usable" if optimizer_proof.get("currently_live_on_this_machine") else "implemented_but_blocked_by_external_runtime",
+        (
+            "DSPy-backed proof completed on this machine."
+            if optimizer_proof.get("currently_live_on_this_machine")
+            else str(
+                optimizer_proof.get("latest_runtime_status")
+                or latest_optimizer_run.get("runtime_status")
+                or optimizer_summary.get("optimizer_runtime_status_counts")
+                or "Optimizer depends on DSPy runtime availability."
+            )
+        ),
+    )
+    latest_hermes = dict(hermes_summary.get("latest_hermes_result") or {})
+    hermes_row = _row(
+        "hermes_bridge",
+        "live_and_usable" if str(latest_hermes.get("status") or "") == "completed" else "implemented_but_blocked_by_external_runtime",
+        (
+            "Hermes completed through the external bridge."
+            if str(latest_hermes.get("status") or "") == "completed"
+            else str(latest_hermes.get("error") or latest_hermes.get("failure_category") or "Hermes depends on an external runtime bridge.")
+        ),
+    )
+    latest_backend_healthchecks = list(research_backend_summary.get("latest_backend_healthchecks") or [])
+    latest_research_backend = latest_backend_healthchecks[0] if latest_backend_healthchecks else {}
+    searxng_row = _row(
+        "searxng",
+        "live_and_usable" if int(research_backend_summary.get("healthy_research_backend_count") or 0) > 0 else "implemented_but_blocked_by_external_runtime",
+        (
+            "SearXNG backend healthcheck is green."
+            if int(research_backend_summary.get("healthy_research_backend_count") or 0) > 0
+            else str(latest_research_backend.get("details") or latest_research_backend.get("status") or "SearXNG runtime is not currently healthy.")
+        ),
+    )
+    browser_row = _row(
+        "browser_bridge",
+        "scaffold_only",
+        str((browser_action_summary.get("latest_result") or {}).get("outcome_summary") or "Browser bridge remains bounded/stubbed and is not a live external runtime lane."),
+    )
+    mission_control_row = _row(
+        "mission_control_adapter",
+        "scaffold_only",
+        "No standalone mission control adapter/runtime is present in the repo.",
+    )
+    a2a_row = _row(
+        "a2a",
+        "scaffold_only",
+        "A2A is currently a policy/validation surface only." if a2a_policy_summary.get("a2a_policy_present") else "A2A runtime surface is not present.",
+    )
+    rows = [
+        shadowbroker_row,
+        world_ops_row,
+        autoresearch_row,
+        adaptation_row,
+        optimizer_row,
+        hermes_row,
+        searxng_row,
+        browser_row,
+        mission_control_row,
+        a2a_row,
+    ]
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["classification"]] = counts.get(row["classification"], 0) + 1
+    return {
+        "summary_kind": "extension_lane_status",
+        "rows": rows,
+        "classification_counts": counts,
+    }
+
+
+def build_local_model_lane_proof_summary(*, root: Path) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    status_counts: dict[str, int] = {}
+    live_count = 0
+    for lane in ("adaptation_lab_unsloth", "optimizer_dspy"):
+        latest = dict(latest_lane_activation_result(lane, root=root) or {})
+        current_status = str(latest.get("status") or "not_run")
+        current_runtime_status = str(latest.get("runtime_status") or "not_run")
+        currently_live = bool(latest.get("configured")) and bool(latest.get("healthy")) and current_status == "completed"
+        status_counts[current_status] = status_counts.get(current_status, 0) + 1
+        if currently_live:
+            live_count += 1
+        rows.append(
+            {
+                "lane": lane,
+                "latest_activation_status": current_status,
+                "latest_runtime_status": current_runtime_status,
+                "latest_activation_timestamp": str(latest.get("completed_at") or latest.get("started_at") or ""),
+                "currently_live_on_this_machine": currently_live,
+                "operator_action_required": str(latest.get("operator_action_required") or ""),
+                "command_or_endpoint": str(latest.get("command_or_endpoint") or ""),
+                "evidence_refs": dict(latest.get("evidence_refs") or {}),
+                "error": str(latest.get("error") or ""),
+                "details": str(latest.get("details") or ""),
+            }
+        )
+    return {
+        "summary_kind": "local_model_lane_proof",
+        "rows": rows,
+        "status_counts": status_counts,
+        "live_proof_count": live_count,
+    }
+
+
 def _task_summary(task: TaskRecord, events_by_task: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     control_state = get_effective_control_state(
         root=ROOT,
@@ -618,6 +857,10 @@ def _artifact_summary(artifact: dict[str, Any]) -> dict[str, Any]:
         "producer_kind": artifact.get("producer_kind"),
         "execution_backend": artifact.get("execution_backend"),
         "superseded_by_artifact_id": artifact.get("superseded_by_artifact_id"),
+        "home_runtime_workspace": artifact.get("home_runtime_workspace"),
+        "target_workspace_id": artifact.get("target_workspace_id"),
+        "allowed_workspace_ids": artifact.get("allowed_workspace_ids", []),
+        "touched_workspace_ids": artifact.get("touched_workspace_ids", []),
         "downstream_impacted_output_ids": artifact.get("downstream_impacted_output_ids", []),
         "revoked_at": artifact.get("revoked_at"),
         "revocation_reason": artifact.get("revocation_reason", ""),
@@ -633,6 +876,10 @@ def _output_summary(output: dict[str, Any]) -> dict[str, Any]:
         "title": output.get("title"),
         "status": output.get("status", OutputStatus.PUBLISHED.value),
         "superseded_by_artifact_id": output.get("superseded_by_artifact_id"),
+        "home_runtime_workspace": output.get("home_runtime_workspace"),
+        "target_workspace_id": output.get("target_workspace_id"),
+        "allowed_workspace_ids": output.get("allowed_workspace_ids", []),
+        "touched_workspace_ids": output.get("touched_workspace_ids", []),
         "impacted_by_artifact_ids": output.get("impacted_by_artifact_ids", []),
         "revocation_reason": output.get("revocation_reason", ""),
         "published_at": output.get("published_at"),
@@ -672,6 +919,10 @@ def build_status(root: Path) -> dict[str, Any]:
             "dependency_block_reason": task.dependency_block_reason,
             "publish_readiness_status": task.publish_readiness_status,
             "publish_readiness_reason": task.publish_readiness_reason,
+            "home_runtime_workspace": task.home_runtime_workspace,
+            "target_workspace_id": task.target_workspace_id,
+            "allowed_workspace_ids": list(task.allowed_workspace_ids),
+            "touched_workspace_ids": list(task.touched_workspace_ids),
             "reason": _latest_reason(task, events_by_task),
             "control_status": control_state["effective_status"],
             "control_run_state": control_state["effective_run_state"],
@@ -770,6 +1021,7 @@ def build_status(root: Path) -> dict[str, Any]:
     control_events = [record.to_dict() for record in list_control_events(root=root)]
     blocked_control_actions = [record.to_dict() for record in list_blocked_actions(root=root)]
     routing_summary = build_model_registry_summary(root)
+    agent_roster_summary = build_agent_roster_summary(root=root)
     backend_assignment_summary = build_backend_assignment_summary(root=root)
     candidate_promotion_summary = build_candidate_summary(root)
     from runtime.memory.governance import build_memory_governance_summary
@@ -822,6 +1074,12 @@ def build_status(root: Path) -> dict[str, Any]:
         voice_route_safety_summary=voice_route_safety_summary,
     )
     control_summary = build_control_summary(root=root)
+    workspace_registry_summary = summarize_workspace_registry(root=root, tasks=task_rows, artifacts=artifacts, outputs=outputs)
+    world_ops_summary = build_world_ops_summary(root=root)
+    shadowbroker_summary = summarize_shadowbroker_backend(root=root)
+    adaptation_lab_summary = summarize_adaptation_lab(root=root)
+    optimizer_summary = summarize_optimizer_lane(root=root)
+    local_model_lane_proof_summary = build_local_model_lane_proof_summary(root=root)
     discord_live_ops_summary = build_discord_live_ops_summary(
         root=root,
         tasks=tasks,
@@ -837,6 +1095,28 @@ def build_status(root: Path) -> dict[str, Any]:
         reply_ingress=operator_reply_ingress,
         reply_applies=operator_reply_applies,
         bridge_cycles=operator_bridge_cycles,
+    )
+    openclaw_discord_session_summary = build_openclaw_discord_session_summary(root=root)
+    routing_control_plane_summary = build_routing_control_plane_summary(
+        routing_summary=routing_summary,
+        degradation_summary=degradation_summary,
+        heartbeat_summary=heartbeat_summary,
+    )
+    extension_lane_status_summary = build_extension_lane_status_summary(
+        shadowbroker_summary=shadowbroker_summary,
+        world_ops_summary=world_ops_summary,
+        autoresearch_summary=autoresearch_summary,
+        adaptation_lab_summary=adaptation_lab_summary,
+        optimizer_summary=optimizer_summary,
+        hermes_summary=hermes_summary,
+        research_backend_summary=build_research_backend_summary(root=root),
+        browser_action_summary=browser_action_summary,
+        a2a_policy_summary=a2a_policy_summary,
+        local_model_lane_proof_summary=local_model_lane_proof_summary,
+    )
+    lane_activation_summary = summarize_lane_activation(
+        root=root,
+        extension_lane_status_summary=extension_lane_status_summary,
     )
     current_action_pack_path = root / "state" / "logs" / "operator_checkpoint_action_pack.json"
     current_action_pack = {"path": str(current_action_pack_path), "status": "malformed", "fresh": False}
@@ -1161,8 +1441,19 @@ def build_status(root: Path) -> dict[str, Any]:
         "finished_recently": finished_recently,
         "candidate_artifacts": candidate_artifacts,
         "routing_summary": routing_summary,
+        "agent_roster_summary": agent_roster_summary,
+        "routing_control_plane_summary": routing_control_plane_summary,
+        "extension_lane_status_summary": extension_lane_status_summary,
+        "lane_activation_summary": lane_activation_summary,
+        "local_model_lane_proof_summary": local_model_lane_proof_summary,
+        "workspace_registry_summary": workspace_registry_summary,
+        "world_ops_summary": world_ops_summary,
+        "shadowbroker_summary": shadowbroker_summary,
+        "adaptation_lab_summary": adaptation_lab_summary,
+        "optimizer_summary": optimizer_summary,
         "discord_live_ops_summary": discord_live_ops_summary,
         "openclaw_discord_bridge_summary": openclaw_discord_bridge_summary,
+        "openclaw_discord_session_summary": openclaw_discord_session_summary,
         "backend_assignment_summary": backend_assignment_summary,
         "execution_contract_summary": execution_contract_summary,
         "token_budget_summary": token_budget_summary,
@@ -1301,9 +1592,10 @@ def build_status(root: Path) -> dict[str, Any]:
                 "latest_incident_code": (operator_incident_reports[-1] if operator_incident_reports else {}).get("incident_code"),
                 "latest_incident_severity": (operator_incident_reports[-1] if operator_incident_reports else {}).get("severity"),
                 "operator_incident_report_count": len(operator_incident_reports),
-                "operator_incident_snapshot_count": len(operator_incident_snapshots),
+            "operator_incident_snapshot_count": len(operator_incident_snapshots),
             },
             "model_registry_summary": routing_summary,
+            "agent_roster_summary": agent_roster_summary,
             "backend_assignment_summary": backend_assignment_summary,
             "candidate_promotion_summary": candidate_promotion_summary,
             "memory_discipline_summary": memory_discipline_summary,

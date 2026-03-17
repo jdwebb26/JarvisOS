@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 from runtime.adaptation_lab.dataset_store import load_adaptation_dataset
+from runtime.adaptation_lab.dataset_store import register_adaptation_dataset
 from runtime.adaptation_lab.job_store import load_adaptation_job, record_adaptation_result, update_adaptation_job
+from runtime.adaptation_lab.job_store import create_adaptation_job
 from runtime.adaptation_lab.evaluator import compare_to_baseline
 from runtime.adaptation_lab.promotion_policy import evaluate_adaptation_promotion
 
@@ -522,4 +524,80 @@ def run_unsloth_job(job_id: str, *, root: Optional[Path] = None, executor: Any =
     )
     promotion = evaluate_adaptation_promotion(job, result)
     update_adaptation_job(job_id, {"promotion_decision": promotion}, root=root)
+    return result
+
+
+def run_unsloth_proof(*, root: Optional[Path] = None) -> dict[str, Any]:
+    runtime_state = validate_unsloth_runtime()
+    if not runtime_state["available"]:
+        return {
+            "status": "blocked",
+            "runtime_status": str(runtime_state["runtime_status"]),
+            "summary": "Unsloth proof is blocked because the Unsloth runtime is unavailable.",
+            "error": str(runtime_state["details"]),
+            "metadata": {
+                "runner_backend": "unsloth",
+                "real_execution": False,
+                "runtime_probe": runtime_state,
+            },
+        }
+
+    tiny_model = str(os.environ.get(UNSLOTH_TINY_MODEL_ENV, "")).strip()
+    if not tiny_model:
+        return {
+            "status": "blocked",
+            "runtime_status": "blocked_missing_unsloth_tiny_model",
+            "summary": "Unsloth proof is blocked because no tiny proof model is configured.",
+            "error": f"Set {UNSLOTH_TINY_MODEL_ENV} to run a real bounded Unsloth proof.",
+            "metadata": {
+                "runner_backend": "unsloth",
+                "real_execution": False,
+                "runtime_probe": runtime_state,
+            },
+        }
+
+    root_path = Path(root or ROOT).resolve()
+    dataset_path = root_path / "workspace" / "work" / "adaptation_lab_tiny_proof.jsonl"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    if not dataset_path.exists():
+        dataset_path.write_text('{"text": "hello world"}\n', encoding="utf-8")
+
+    dataset = register_adaptation_dataset(
+        label="Adaptation tiny proof dataset",
+        absolute_path=str(dataset_path.resolve()),
+        dataset_kind="instruction_jsonl",
+        actor="operator_activation",
+        lane="adaptation_lab",
+        purpose="tiny_unsloth_proof",
+        metadata={"proof_lane": "adaptation_lab_unsloth"},
+        root=root_path,
+    )
+    output_dir = root_path / "workspace" / "work" / "adaptation_lab_tiny_proof_output"
+    job = create_adaptation_job(
+        actor="operator_activation",
+        lane="adaptation_lab",
+        dataset_id=dataset["dataset_id"],
+        base_model="placeholder/base-model",
+        objective="tiny real unsloth proof",
+        train_dataset_path=str(dataset_path.resolve()),
+        max_steps=1,
+        batch_size=1,
+        learning_rate=1e-4,
+        sequence_length=128,
+        output_dir=str(output_dir.resolve()),
+        metadata={
+            "runtime_base_model_override": tiny_model,
+            "proof_lane": "adaptation_lab_unsloth",
+            "baseline_metrics": {},
+            "candidate_metrics": {},
+        },
+        root=root_path,
+    )
+    result = run_unsloth_job(job["job_id"], root=root_path)
+    result["metadata"] = {
+        **dict(result.get("metadata") or {}),
+        "proof_lane": "adaptation_lab_unsloth",
+        "proof_dataset_id": dataset["dataset_id"],
+        "proof_job_id": job["job_id"],
+    }
     return result

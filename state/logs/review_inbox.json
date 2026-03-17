@@ -43,8 +43,14 @@
       "task_id": "task_b9f27c71f948",
       "requested_reviewer": "anton",
       "summary": "Approval required after review approval: deploy live production service restart smoke 20260309_112853"
+    },
+    {
+      "approval_id": "apr_78d568ba336c",
+      "task_id": "task_84d4ec9cfd46",
+      "requested_reviewer": "anton",
+      "summary": "Approval required after review approval: deploy live production service restart regression smoke 20260309_115921"
     }
   ],
   "flowstate_waiting_promotion": [],
-  "reply": "Pending reviews: rev_311836e4a3e6 for task_84d4ec9cfd46 (anton); rev_657fba34ce3a for task_9c69c65badd7 (archimedes); rev_69dfc967a002 for task_715939b805ec (anton); rev_74ea3848cac1 for task_e134c1f6347c (anton); rev_9111dfd351ae for task_e3d72b5aa2b8 (archimedes); rev_fa264f7f6b49 for task_e4bdfd0fc6e4 (archimedes) | Pending approvals: apr_3f7c8486d081 for task_b9f27c71f948 (anton)"
+  "reply": "Pending reviews: rev_311836e4a3e6 for task_84d4ec9cfd46 (anton); rev_657fba34ce3a for task_9c69c65badd7 (archimedes); rev_69dfc967a002 for task_715939b805ec (anton); rev_74ea3848cac1 for task_e134c1f6347c (anton); rev_9111dfd351ae for task_e3d72b5aa2b8 (archimedes); rev_fa264f7f6b49 for task_e4bdfd0fc6e4 (archimedes) | Pending approvals: apr_3f7c8486d081 for task_b9f27c71f948 (anton); apr_78d568ba336c for task_84d4ec9cfd46 (anton)"
 }
