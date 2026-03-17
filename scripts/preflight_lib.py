@@ -614,6 +614,205 @@ def validate_runtime_routing_policy_config(root: Path) -> list[Finding]:
     return findings
 
 
+def check_routing_policy_openclaw_drift(root: Path) -> list[Finding]:
+    """Advisory check: detect drift between runtime_routing_policy.json and openclaw.json.
+
+    Reuses the sync logic from sync_routing_policy_to_openclaw.py in dry-run mode.
+    Emits warn-level findings when the two configs disagree on agent model assignments.
+    """
+    findings: list[Finding] = []
+    policy_path = root / "config" / "runtime_routing_policy.json"
+    openclaw_path = Path.home() / ".openclaw" / "openclaw.json"
+
+    if not policy_path.exists() or not openclaw_path.exists():
+        _add(
+            findings,
+            "pass",
+            "drift",
+            "Routing-policy ↔ openclaw.json drift check skipped (one or both files absent).",
+            details=f"policy_exists={policy_path.exists()} openclaw_exists={openclaw_path.exists()}",
+        )
+        return findings
+
+    try:
+        from scripts.sync_routing_policy_to_openclaw import compute_sync_plan
+
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        openclaw = json.loads(openclaw_path.read_text(encoding="utf-8"))
+        changes = compute_sync_plan(policy, openclaw)
+    except Exception as exc:
+        _add(
+            findings,
+            "warn",
+            "drift",
+            "Routing-policy ↔ openclaw.json drift check failed to run.",
+            "Ensure scripts/sync_routing_policy_to_openclaw.py is importable and both JSON files are valid.",
+            str(exc),
+        )
+        return findings
+
+    if not changes:
+        _add(
+            findings,
+            "pass",
+            "drift",
+            "Routing policy and openclaw.json agent model configs are in sync.",
+        )
+    else:
+        for change in changes:
+            _add(
+                findings,
+                "warn",
+                "drift",
+                f"Routing-policy ↔ openclaw.json drift: agent `{change['agent_id']}` field `{change['field']}` "
+                f"is `{change['current']}` in openclaw.json but policy wants `{change['desired']}`.",
+                "Run `python3 scripts/sync_routing_policy_to_openclaw.py` to re-sync, or update the routing policy.",
+                change.get("reason", ""),
+            )
+    return findings
+
+
+# Maps routing-policy preferred_provider values to the BackendRuntime identifier
+# used by backend_dispatch when the task is dispatched on the Python execution track.
+_PROVIDER_TO_PYTHON_BACKEND: dict[str, str] = {
+    "nvidia": "nvidia_executor",
+}
+# Providers handled entirely by the embedded gateway (not Python dispatch).
+_GATEWAY_HANDLED_PROVIDERS: set[str] = {"qwen", "lmstudio", "local"}
+
+
+def check_backend_adapter_coverage(root: Path) -> list[Finding]:
+    """Advisory check: verify that every routed execution backend has a wired adapter.
+
+    Walks agent_policies in the routing policy.  For each agent whose
+    preferred_provider maps to a Python-track backend, checks that
+    backend_dispatch has a wired adapter for it.  Gateway-handled providers
+    (qwen/lmstudio) are skipped because they never reach Python dispatch.
+    """
+    findings: list[Finding] = []
+    policy_path = root / "config" / "runtime_routing_policy.json"
+
+    if not policy_path.exists():
+        _add(
+            findings,
+            "pass",
+            "backend_coverage",
+            "Backend adapter coverage check skipped (routing policy absent).",
+        )
+        return findings
+
+    try:
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _add(
+            findings,
+            "warn",
+            "backend_coverage",
+            "Backend adapter coverage check failed to parse routing policy.",
+            details=str(exc),
+        )
+        return findings
+
+    from runtime.executor.backend_dispatch import list_registered_backends
+    registry = list_registered_backends()
+    wired = set(registry.get("wired") or [])
+    gateway_handled = set(registry.get("gateway_handled") or [])
+
+    agent_policies = policy.get("agent_policies") or {}
+    gaps: list[str] = []
+
+    for agent_id, ap in sorted(agent_policies.items()):
+        provider = str(ap.get("preferred_provider") or "").lower()
+        if not provider or provider in _GATEWAY_HANDLED_PROVIDERS:
+            continue
+        expected_backend = _PROVIDER_TO_PYTHON_BACKEND.get(provider)
+        if expected_backend is None:
+            _add(
+                findings,
+                "warn",
+                "backend_coverage",
+                f"Agent `{agent_id}` uses provider `{provider}` which has no known Python-track backend mapping.",
+                "Add a mapping in _PROVIDER_TO_PYTHON_BACKEND or confirm this provider is gateway-handled.",
+                f"agent_id={agent_id} preferred_provider={provider}",
+            )
+            continue
+        if expected_backend in wired or expected_backend in gateway_handled:
+            continue
+        gaps.append(f"{agent_id}→{expected_backend}(provider={provider})")
+
+    if gaps:
+        for gap in gaps:
+            _add(
+                findings,
+                "warn",
+                "backend_coverage",
+                f"Backend adapter gap: {gap} — routed backend has no wired adapter in backend_dispatch.",
+                "Wire the adapter in runtime/executor/backend_dispatch.py or adjust the routing policy.",
+                f"wired={sorted(wired)} gateway_handled={sorted(gateway_handled)}",
+            )
+    else:
+        _add(
+            findings,
+            "pass",
+            "backend_coverage",
+            "All routed execution backends have wired adapters or are gateway-handled.",
+            details=f"wired={sorted(wired)} gateway_handled={sorted(gateway_handled)}",
+        )
+
+    return findings
+
+
+# Maps Python-track backends to the third-party packages they require at runtime.
+_BACKEND_REQUIRED_PACKAGES: dict[str, list[str]] = {
+    "nvidia_executor": ["requests"],
+    "qwen_agent_bridge": ["qwen_agent", "numpy"],
+}
+
+
+def check_backend_dependency_health(root: Path) -> list[Finding]:
+    """Advisory check: verify that Python packages required by wired backends are importable.
+
+    Reports the active Python interpreter and, for each wired backend that has
+    declared dependencies in _BACKEND_REQUIRED_PACKAGES, checks whether the
+    required package can be imported.  Failures are warn-level (advisory) since
+    the backend may not be actively routed.
+    """
+    findings: list[Finding] = []
+    python_exe = sys.executable
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
+    _add(
+        findings,
+        "pass",
+        "dependency_health",
+        f"Validating backend dependencies under Python {python_version}.",
+        details=f"executable={python_exe}",
+    )
+
+    for backend, packages in sorted(_BACKEND_REQUIRED_PACKAGES.items()):
+        for package in packages:
+            try:
+                importlib.import_module(package)
+                _add(
+                    findings,
+                    "pass",
+                    "dependency_health",
+                    f"Backend `{backend}` dependency `{package}` is importable.",
+                    details=f"python={python_exe}",
+                )
+            except ImportError:
+                _add(
+                    findings,
+                    "warn",
+                    "dependency_health",
+                    f"Backend `{backend}` dependency `{package}` is NOT importable under Python {python_version}.",
+                    f"Install `{package}` into {python_exe} (`{python_exe} -m pip install {package}`) or switch to an interpreter that has it.",
+                    f"python={python_exe} backend={backend} package={package}",
+                )
+
+    return findings
+
+
 def _non_localhost_urls(text: str) -> list[str]:
     hosts: list[str] = []
     for match in _URL_RE.findall(text or ""):
@@ -793,6 +992,9 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
                 _add(findings, "pass", "config", "config/channels.yaml includes the expected operator channel names.")
 
     findings.extend(validate_runtime_routing_policy_config(root))
+    findings.extend(check_routing_policy_openclaw_drift(root))
+    findings.extend(check_backend_adapter_coverage(root))
+    findings.extend(check_backend_dependency_health(root))
 
     for rel in ["state/logs", "workspace/out", "workspace/vault"]:
         error = _write_probe(root / rel)
