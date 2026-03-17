@@ -474,6 +474,77 @@ def test_emergency_tool_distill_fires_when_compacted_window_still_oversized(tmp_
         )
 
 
+def test_hard_turn_ceiling_blocks_session_at_limit(tmp_path: Path) -> None:
+    # When total user turns reach max_session_turns AND the session is at the
+    # generation limit, the packet must be blocked with
+    # blockReason="session_generation_limit_exceeded".
+    from runtime.gateway.source_owned_context_engine import MAX_SESSION_GENERATIONS
+
+    messages: list[dict] = []
+    for index in range(1, 11):
+        messages.extend(_discord_turn(index, tool_blob_chars=0))
+    # Use a session key already at the generation limit so reset is not attempted.
+    at_limit_key = f"agent:jarvis:discord:channel:ceiling:gen:{MAX_SESSION_GENERATIONS}"
+    packet = build_context_packet(
+        root=tmp_path,
+        session_key=at_limit_key,
+        system_prompt="System prompt.",
+        current_prompt="next step?",
+        messages=messages,
+        tools=[],
+        channel="discord",
+        context_window_tokens=200_000,
+        max_session_turns=10,
+    )
+    assert packet["blocked"] is True
+    assert packet["blockReason"] == "session_generation_limit_exceeded"
+    assert packet["promptBudget"]["workingMemory"]["turnCeilingHit"] is True
+    assert packet["promptBudget"]["workingMemory"]["maxSessionTurns"] == 10
+    assert packet["promptBudget"]["workingMemory"]["userTurnsInSession"] == 10
+
+
+def test_turn_ceiling_not_hit_below_limit(tmp_path: Path) -> None:
+    # 9 user turns with ceiling of 10 — must not block on turn ceiling.
+    messages: list[dict] = []
+    for index in range(1, 10):
+        messages.extend(_discord_turn(index, tool_blob_chars=0))
+    packet = build_context_packet(
+        root=tmp_path,
+        session_key="agent:jarvis:discord:channel:under",
+        system_prompt="System prompt.",
+        current_prompt="next step?",
+        messages=messages,
+        tools=[],
+        channel="discord",
+        context_window_tokens=200_000,
+        max_session_turns=10,
+    )
+    assert packet["promptBudget"]["workingMemory"]["turnCeilingHit"] is False
+    assert packet["promptBudget"]["workingMemory"]["userTurnsInSession"] == 9
+    # Must not be blocked by ceiling (may still be blocked by hard threshold, but not here)
+    assert packet["blockReason"] != "hard_turn_ceiling_exceeded"
+
+
+def test_turn_ceiling_zero_disables_guard(tmp_path: Path) -> None:
+    # max_session_turns=0 disables the ceiling entirely — never blocks on turn count alone.
+    messages: list[dict] = []
+    for index in range(1, 51):
+        messages.extend(_discord_turn(index, tool_blob_chars=0))
+    packet = build_context_packet(
+        root=tmp_path,
+        session_key="agent:jarvis:discord:channel:noceil",
+        system_prompt="System prompt.",
+        current_prompt="next step?",
+        messages=messages,
+        tools=[],
+        channel="discord",
+        context_window_tokens=200_000,
+        max_session_turns=0,
+    )
+    assert packet["promptBudget"]["workingMemory"]["turnCeilingHit"] is False
+    assert packet["blockReason"] != "hard_turn_ceiling_exceeded"
+
+
 def test_extract_text_adjacent_duplicate_collapse() -> None:
     # Regression: adjacent identical text items must be collapsed; non-adjacent repeats preserved.
     reply = "pong\nWant to try spawning them as subagents instead?"
@@ -490,6 +561,125 @@ def test_extract_text_adjacent_duplicate_collapse() -> None:
     assert _extract_text([{"type": "text", "text": "first"}, {"type": "text", "text": "second"}]) == "first\nsecond"
     # Plain string passthrough
     assert _extract_text(reply) == reply
+
+
+def test_turn_ceiling_triggers_automatic_session_reset(tmp_path: Path) -> None:
+    # When ceiling is hit and generation < MAX_SESSION_GENERATIONS, the engine
+    # must auto-rotate the session key and return an unblocked packet.
+    messages: list[dict] = []
+    for index in range(1, 11):
+        messages.extend(_discord_turn(index, tool_blob_chars=0))
+    # 10 user turns with ceiling 10 — would previously hard-block.
+    packet = build_context_packet(
+        root=tmp_path,
+        session_key="agent:jarvis:discord:channel:autoreset",
+        system_prompt="System prompt.",
+        current_prompt="next step?",
+        messages=messages,
+        tools=[],
+        channel="discord",
+        context_window_tokens=200_000,
+        max_session_turns=10,
+    )
+    # Must NOT be blocked — reset should have fired.
+    assert packet["blocked"] is False, f"expected unblocked after reset, got blockReason={packet['blockReason']!r}"
+    assert packet["sessionReset"] is not None
+    reset = packet["sessionReset"]
+    assert reset["performed"] is True
+    assert reset["previousSessionKey"] == "agent:jarvis:discord:channel:autoreset"
+    assert reset["newSessionKey"] == "agent:jarvis:discord:channel:autoreset:gen:1"
+    assert reset["generation"] == 1
+    assert reset["reason"] == "hard_turn_ceiling_exceeded"
+    # New session key must be in the packet header.
+    assert packet["sessionKey"] == "agent:jarvis:discord:channel:autoreset:gen:1"
+    # Turns should be 0 in the rotated packet (empty messages).
+    assert packet["promptBudget"]["workingMemory"]["userTurnsInSession"] == 0
+
+
+def test_session_reset_preserves_rolling_summary_continuity(tmp_path: Path) -> None:
+    # First build a session with enough turns to produce a meaningful rolling summary.
+    messages: list[dict] = []
+    for index in range(1, 9):
+        messages.extend(_discord_turn(index, tool_blob_chars=0))
+    packet_before = build_context_packet(
+        root=tmp_path,
+        session_key="agent:jarvis:discord:channel:cont",
+        system_prompt="System prompt.",
+        current_prompt="preserve fail-closed behavior on item 8?",
+        messages=messages,
+        tools=[],
+        channel="discord",
+        context_window_tokens=200_000,
+        max_session_turns=200,
+    )
+    summary_before = packet_before["rollingSummary"]
+    assert summary_before.get("objective"), "expected non-empty objective from 8-turn session"
+
+    # Now add 2 more turns to hit the ceiling at 10 and trigger reset.
+    for index in range(9, 11):
+        messages.extend(_discord_turn(index, tool_blob_chars=0))
+    packet_after = build_context_packet(
+        root=tmp_path,
+        session_key="agent:jarvis:discord:channel:cont",
+        system_prompt="System prompt.",
+        current_prompt="continue from where we left off?",
+        messages=messages,
+        tools=[],
+        channel="discord",
+        context_window_tokens=200_000,
+        max_session_turns=10,
+    )
+    assert packet_after["sessionReset"]["performed"] is True
+    assert packet_after["sessionReset"]["continuityPreserved"] is True
+    # The rolling summary in the rotated session should carry forward content.
+    summary_after = packet_after["rollingSummary"]
+    assert summary_after.get("objective"), "objective must carry forward through reset"
+
+
+def test_session_generation_limit_blocks_infinite_reset(tmp_path: Path) -> None:
+    # At MAX_SESSION_GENERATIONS, reset must NOT recurse — fail-closed hard block.
+    from runtime.gateway.source_owned_context_engine import MAX_SESSION_GENERATIONS
+
+    messages: list[dict] = []
+    for index in range(1, 11):
+        messages.extend(_discord_turn(index, tool_blob_chars=0))
+    # Simulate a key already at the generation limit.
+    at_limit_key = f"agent:jarvis:discord:channel:deep:gen:{MAX_SESSION_GENERATIONS}"
+    packet = build_context_packet(
+        root=tmp_path,
+        session_key=at_limit_key,
+        system_prompt="System prompt.",
+        current_prompt="next step?",
+        messages=messages,
+        tools=[],
+        channel="discord",
+        context_window_tokens=200_000,
+        max_session_turns=10,
+    )
+    assert packet["blocked"] is True
+    assert packet["blockReason"] == "session_generation_limit_exceeded"
+    # sessionReset must be None — no reset attempted.
+    assert packet["sessionReset"] is None
+
+
+def test_session_reset_no_reset_below_ceiling(tmp_path: Path) -> None:
+    # Below the ceiling, sessionReset must be None (no spurious resets).
+    messages: list[dict] = []
+    for index in range(1, 6):
+        messages.extend(_discord_turn(index, tool_blob_chars=0))
+    packet = build_context_packet(
+        root=tmp_path,
+        session_key="agent:jarvis:discord:channel:noreset",
+        system_prompt="System prompt.",
+        current_prompt="next step?",
+        messages=messages,
+        tools=[],
+        channel="discord",
+        context_window_tokens=200_000,
+        max_session_turns=10,
+    )
+    assert packet["blocked"] is False
+    assert packet["sessionReset"] is None
 
 
 if __name__ == "__main__":
@@ -511,4 +701,18 @@ if __name__ == "__main__":
     test_prompt_budget_large_tool_output_not_underestimated()
     with tempfile.TemporaryDirectory() as tmp_eight:
         test_emergency_tool_distill_fires_when_compacted_window_still_oversized(Path(tmp_eight))
+    with tempfile.TemporaryDirectory() as tmp_nine:
+        test_hard_turn_ceiling_blocks_session_at_limit(Path(tmp_nine))
+    with tempfile.TemporaryDirectory() as tmp_ten:
+        test_turn_ceiling_not_hit_below_limit(Path(tmp_ten))
+    with tempfile.TemporaryDirectory() as tmp_eleven:
+        test_turn_ceiling_zero_disables_guard(Path(tmp_eleven))
+    with tempfile.TemporaryDirectory() as tmp_twelve:
+        test_turn_ceiling_triggers_automatic_session_reset(Path(tmp_twelve))
+    with tempfile.TemporaryDirectory() as tmp_thirteen:
+        test_session_reset_preserves_rolling_summary_continuity(Path(tmp_thirteen))
+    with tempfile.TemporaryDirectory() as tmp_fourteen:
+        test_session_generation_limit_blocks_infinite_reset(Path(tmp_fourteen))
+    with tempfile.TemporaryDirectory() as tmp_fifteen:
+        test_session_reset_no_reset_below_ceiling(Path(tmp_fifteen))
     print("test_source_owned_context_engine: PASS")

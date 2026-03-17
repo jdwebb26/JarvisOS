@@ -1105,3 +1105,54 @@ def retrieve_memory_for_context(
         "used_tokens": used_tokens,
         "remaining_budget_tokens": budget_remaining,
     }
+
+
+def write_session_memory_entry(
+    *,
+    actor: str,
+    lane: str,
+    memory_type: str,
+    memory_class: str,
+    structural_type: str,
+    title: str,
+    summary: str,
+    content: str = "",
+    confidence_score: float = 0.6,
+    source_session_key: str = "",
+    root: Optional[Path] = None,
+) -> Optional[MemoryEntryRecord]:
+    """Write a promoted memory entry derived from a live session, bypassing the full governance cycle.
+
+    Used for session-derived facts (operator preferences, constraints) where there is no
+    associated task. These entries are auto-promoted and eligible for context retrieval immediately.
+    Deduplication: skips write if an existing promoted entry with the same title and memory_class exists.
+    """
+    title = title.strip()
+    if not title:
+        return None
+    norm_title = title.lower()
+    existing = list_memory_entries(root=root, memory_class=memory_class)
+    for entry in existing:
+        if entry.title.strip().lower() == norm_title:
+            return None
+    record = MemoryEntryRecord(
+        memory_id=new_id("ment"),
+        memory_candidate_id="",
+        task_id="",
+        created_at=now_iso(),
+        updated_at=now_iso(),
+        actor=actor,
+        lane=lane,
+        memory_class=memory_class,
+        structural_type=structural_type,
+        approval_requirement="none",
+        confidence_score=confidence_score,
+        review_state="not_required",
+        memory_type=memory_type,
+        title=title,
+        summary=summary,
+        content=content,
+        lifecycle_state=RecordLifecycleState.PROMOTED.value,
+        source_refs={"session_key": source_session_key, "source": "session_context"},
+    )
+    return save_memory_entry(record, root=root)

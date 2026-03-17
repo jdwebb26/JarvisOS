@@ -15,7 +15,7 @@ from runtime.core.agent_roster import (
 )
 from runtime.core.models import now_iso
 from runtime.memory.brief_builder import build_session_context_brief_payload
-from runtime.memory.governance import retrieve_memory_for_context
+from runtime.memory.governance import retrieve_memory_for_context, write_session_memory_entry
 from runtime.memory.vault_index import load_session_context_summary, save_session_context_summary
 
 
@@ -25,6 +25,12 @@ HARD_BUDGET_RATIO = 0.82
 DEFAULT_RETRIEVAL_BUDGET_TOKENS = 1200
 DEFAULT_EPISODIC_LIMIT = 4
 DEFAULT_SEMANTIC_LIMIT = 4
+# Hard ceiling on total user turns per session before the packet is blocked.
+# Callers must reset the session (new session_key) once this fires.
+# Setting max_session_turns=0 disables the ceiling (not recommended in production).
+DEFAULT_MAX_SESSION_TURNS = 200
+# Maximum number of automatic session rotations before fail-closed hard block.
+MAX_SESSION_GENERATIONS = 3
 SIMPLE_CHAT_TOOL_RE = re.compile(
     r"(```|`[^`]+`|(?:^|\s)(?:read|open|inspect|edit|write|patch|diff|run|exec|bash|shell|terminal|command|script|file|directory|repo|workspace|json|yaml|yml|toml|python|node|npm|pnpm|pytest|test|rg|grep|ls|cat|sed|git)\b|(?:^|\s)(?:\.{1,2}/|~/|/)[^\s]+|[A-Za-z0-9._-]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|json|yaml|yml|toml|md|sh|bash)\b)",
     re.IGNORECASE,
@@ -33,6 +39,7 @@ METADATA_BLOCK_RE = re.compile(
     r"^(?:Conversation info \(untrusted metadata\):|Sender \(untrusted metadata\):|Thread starter \(untrusted, for context\):|Replied message \(untrusted, for context\):|Forwarded message context \(untrusted metadata\):|Chat history since last reply \(untrusted, for context\):)\n```json\n[\s\S]*?\n```\s*",
     re.MULTILINE,
 )
+_SESSION_GEN_RE = re.compile(r"^(.+):gen:(\d+)$")
 QUESTION_RE = re.compile(r"([^\n?]+\?)")
 CONSTRAINT_RE = re.compile(r"\b(?:must|must not|do not|don't|never|keep|preserve|require|required|constraint|bounded|fail-closed)\b", re.IGNORECASE)
 DECISION_RE = re.compile(r"\b(?:i will|we will|let's|decided|decision|plan|next step)\b", re.IGNORECASE)
@@ -99,6 +106,20 @@ def _split_metadata(text: str) -> tuple[str, int]:
 
 def _count_user_turns(messages: list[dict[str, Any]]) -> int:
     return sum(1 for msg in messages if str(msg.get("role") or "") == "user")
+
+
+def _parse_session_generation(session_key: str) -> tuple[str, int]:
+    """Return (base_key, generation). Generation 0 means no :gen: suffix."""
+    match = _SESSION_GEN_RE.match(session_key or "")
+    if match:
+        return match.group(1), int(match.group(2))
+    return session_key or "", 0
+
+
+def _rotate_session_key(session_key: str) -> str:
+    """Increment the :gen:N suffix on a session key."""
+    base, gen = _parse_session_generation(session_key)
+    return f"{base}:gen:{gen + 1}"
 
 
 def _select_tool_exposure(prompt: str, tools: list[dict[str, Any]], *, channel: str, agent_id: str) -> dict[str, Any]:
@@ -326,6 +347,61 @@ def _build_prompt_budget(
     }
 
 
+def _flush_session_memory_entries(
+    *,
+    rolling_summary: dict[str, Any],
+    actor: str,
+    lane: str,
+    root: Path,
+) -> None:
+    """Promote session-derived operator preferences and constraints to durable memory entries.
+
+    Called once per context packet build, after save_session_context_summary(). Caps at 3 items
+    per memory_class per flush. Deduplication is handled inside write_session_memory_entry().
+    """
+    session_key = str(rolling_summary.get("session_key") or "")
+    preferences = list(rolling_summary.get("operator_preferences") or [])
+    constraints = list(rolling_summary.get("active_constraints") or [])
+
+    for pref in preferences[:3]:
+        if not pref or len(pref) < 8:
+            continue
+        try:
+            write_session_memory_entry(
+                actor=actor,
+                lane=lane,
+                memory_type="operator_preference",
+                memory_class="operator_preference_memory",
+                structural_type="semantic",
+                title=pref[:160],
+                summary=pref[:400],
+                confidence_score=0.7,
+                source_session_key=session_key,
+                root=root,
+            )
+        except Exception:
+            pass
+
+    for constraint in constraints[:3]:
+        if not constraint or len(constraint) < 8:
+            continue
+        try:
+            write_session_memory_entry(
+                actor=actor,
+                lane=lane,
+                memory_type="operator_constraint",
+                memory_class="risk_memory",
+                structural_type="semantic",
+                title=constraint[:160],
+                summary=constraint[:400],
+                confidence_score=0.65,
+                source_session_key=session_key,
+                root=root,
+            )
+        except Exception:
+            pass
+
+
 def build_context_packet(
     *,
     root: Path,
@@ -344,6 +420,7 @@ def build_context_packet(
     retrieval_budget_tokens: int = DEFAULT_RETRIEVAL_BUDGET_TOKENS,
     episodic_limit: int = DEFAULT_EPISODIC_LIMIT,
     semantic_limit: int = DEFAULT_SEMANTIC_LIMIT,
+    max_session_turns: int = DEFAULT_MAX_SESSION_TURNS,
 ) -> dict[str, Any]:
     root = Path(root).resolve()
     resolved_agent_id = infer_agent_id(agent_id=agent_id, session_key=session_key, lane=channel)
@@ -376,6 +453,7 @@ def build_context_packet(
         "memory_retrieval_id": dict(retrieval.get("retrieval") or {}).get("memory_retrieval_id"),
     }
     save_session_context_summary(rolling_summary, root=root)
+    _flush_session_memory_entries(rolling_summary=rolling_summary, actor=resolved_agent_id, lane=channel or "main", root=root)
     tool_exposure = _select_tool_exposure(current_prompt, tools, channel=channel, agent_id=resolved_agent_id)
     visible_tools = list(tool_exposure.get("tools") or [])
     loaded_tools = summarize_visible_tools(visible_tools, agent_id=resolved_agent_id)
@@ -451,13 +529,75 @@ def build_context_packet(
                 budget = emergency_budget
                 compaction["reason"] = "emergency_tool_distill"
     budget["preflightCompaction"] = compaction
-    blocked = bool(budget["overHardThreshold"])
+    turn_ceiling_hit = max_session_turns > 0 and total_user_turns >= max_session_turns
+    budget["workingMemory"]["maxSessionTurns"] = max_session_turns
+    budget["workingMemory"]["turnCeilingHit"] = turn_ceiling_hit
+
+    # ── Automatic session reset on turn ceiling ──
+    # When the ceiling fires, attempt to rotate the session key and recurse with
+    # an empty message list.  The rolling summary is already persisted under the
+    # old key and will be loaded as prior_summary for the new key, preserving
+    # continuity.  Capped at MAX_SESSION_GENERATIONS to prevent infinite loops.
+    session_reset: Optional[dict[str, Any]] = None
+    if turn_ceiling_hit:
+        _base, current_gen = _parse_session_generation(session_key)
+        if current_gen < MAX_SESSION_GENERATIONS:
+            new_key = _rotate_session_key(session_key)
+            # Seed the new session's vault entry with the old rolling summary so
+            # the recursive call picks it up via load_session_context_summary().
+            old_summary = load_session_context_summary(session_key, root=root)
+            if old_summary:
+                seeded = dict(old_summary)
+                seeded["session_key"] = new_key
+                save_session_context_summary(seeded, root=root)
+            rotated_packet = build_context_packet(
+                root=root,
+                session_key=new_key,
+                system_prompt=system_prompt,
+                current_prompt=current_prompt,
+                messages=[],
+                tools=tools,
+                skills_prompt=skills_prompt,
+                agent_id=agent_id,
+                channel=channel,
+                provider_id=provider_id,
+                model_id=model_id,
+                context_window_tokens=context_window_tokens,
+                raw_user_turn_window=raw_user_turn_window,
+                retrieval_budget_tokens=retrieval_budget_tokens,
+                episodic_limit=episodic_limit,
+                semantic_limit=semantic_limit,
+                max_session_turns=max_session_turns,
+            )
+            rotated_packet["sessionReset"] = {
+                "performed": True,
+                "previousSessionKey": session_key,
+                "newSessionKey": new_key,
+                "generation": current_gen + 1,
+                "maxGenerations": MAX_SESSION_GENERATIONS,
+                "continuityPreserved": bool(old_summary),
+                "reason": "hard_turn_ceiling_exceeded",
+            }
+            return rotated_packet
+        # At generation limit — fail-closed hard block.
+        turn_ceiling_hit = True
+
+    blocked = bool(budget["overHardThreshold"]) or turn_ceiling_hit
+    block_reason = ""
+    if turn_ceiling_hit:
+        _base, gen = _parse_session_generation(session_key)
+        if gen >= MAX_SESSION_GENERATIONS:
+            block_reason = "session_generation_limit_exceeded"
+        else:
+            block_reason = "hard_turn_ceiling_exceeded"
+    elif budget["overHardThreshold"]:
+        block_reason = "hard_threshold_exceeded"
     summary_stats = {
         "summary_id": str(rolling_summary.get("export_id") or ""),
         "chars": len(str(rolling_summary.get("markdown") or "")),
         "refreshedAt": str(rolling_summary.get("updated_at") or ""),
     }
-    return {
+    result: dict[str, Any] = {
         "sessionKey": session_key,
         "generatedAt": now_iso(),
         "workingMemoryMessages": recent_messages,
@@ -491,7 +631,8 @@ def build_context_packet(
         "promptBudget": budget,
         "summaryStats": summary_stats,
         "blocked": blocked,
-        "blockReason": "hard_threshold_exceeded" if blocked else "",
+        "blockReason": block_reason,
+        "sessionReset": session_reset,
         "systemPromptReport": {
             "promptBudget": budget,
             "toolExposure": {
@@ -520,3 +661,4 @@ def build_context_packet(
             "agentRuntimeLoadout": agent_runtime_loadout,
         },
     }
+    return result

@@ -40,6 +40,7 @@ def main() -> int:
         retrieval_budget_tokens=int(_pick(payload, "retrieval_budget_tokens", "retrievalBudgetTokens", default=1200) or 1200),
         episodic_limit=int(_pick(payload, "episodic_limit", "episodicLimit", default=4) or 4),
         semantic_limit=int(_pick(payload, "semantic_limit", "semanticLimit", default=4) or 4),
+        max_session_turns=int(_pick(payload, "max_session_turns", "maxSessionTurns", default=200) or 200),
     )
     print(json.dumps(result, indent=2))
     return 0
