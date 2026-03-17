@@ -23,12 +23,27 @@ def save_sent(sent_log: Path, sent: set[str]) -> None:
     sent_log.write_text(json.dumps(sorted(sent), indent=2) + "\n", encoding="utf-8")
 
 
-def post_webhook(url: str, content: str) -> dict[str, Any]:
+def post_webhook(url: str, content: "str | dict[str, Any]") -> dict[str, Any]:
     if not url.startswith("https://discord.com/api/webhooks/"):
         return {"ok": False, "reason": "missing_or_invalid_webhook_url"}
-    payload = json.dumps({"content": content[:1900]}).encode("utf-8")
+    # Accept either a plain string or a pre-shaped dict payload
+    if isinstance(content, dict):
+        body = content
+    else:
+        body = {"content": str(content)[:1900]}
+    payload = json.dumps(body).encode("utf-8")
+    # Append ?wait=true so Discord returns the created message (and gives 200 not 204)
+    post_url = url if "?" in url else url + "?wait=true"
     req = urllib.request.Request(
-        url, data=payload, headers={"Content-Type": "application/json"}, method="POST"
+        post_url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Non-default User-Agent — Python-urllib/3.x is blocked by Cloudflare (error 1010)
+            "User-Agent": "OpenClaw/1.0 (webhook-sender; +https://github.com/openclaw)",
+        },
+        method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:

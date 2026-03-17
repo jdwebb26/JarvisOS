@@ -16,7 +16,7 @@ Channel → env var mapping (set these in ~/.openclaw/secrets.env):
     1483131531546464336  scout     → JARVIS_DISCORD_WEBHOOK_SCOUT
     1483131437292191945  hermes    → JARVIS_DISCORD_WEBHOOK_HERMES
     1483320979185733722  kitt      → JARVIS_DISCORD_WEBHOOK_KITT
-    1483515985628627116  claude    → JARVIS_DISCORD_WEBHOOK_CLAUDE
+    1483515985628627116  muse      → JARVIS_DISCORD_WEBHOOK_MUSE
     1483131473543303208  qwen      → JARVIS_DISCORD_WEBHOOK_QWEN
 """
 from __future__ import annotations
@@ -54,7 +54,7 @@ CHANNEL_WEBHOOK_ENV: dict[str, str] = {
     "1483131531546464336": "JARVIS_DISCORD_WEBHOOK_SCOUT",   # scout
     "1483131437292191945": "JARVIS_DISCORD_WEBHOOK_HERMES",  # hermes
     "1483320979185733722": "JARVIS_DISCORD_WEBHOOK_KITT",    # kitt
-    "1483515985628627116": "JARVIS_DISCORD_WEBHOOK_CLAUDE",  # claude
+    "1483515985628627116": "JARVIS_DISCORD_WEBHOOK_MUSE",    # muse
     "1483131473543303208": "JARVIS_DISCORD_WEBHOOK_QWEN",    # qwen
 }
 
@@ -184,7 +184,7 @@ def send_pending(
                 print(f"  SKIP  {entry_id} channel={channel_id} (no env var mapping)")
             continue
 
-        webhook_url = load_webhook_url(env_var, resolved)
+        webhook_url = load_webhook_url(env_var, resolved.parent)
         if not webhook_url or webhook_url == "REPLACE_ME":
             _mark_outbox_entry(path, "skipped_no_webhook", delivery_id,
                                error=f"{env_var} not set")
