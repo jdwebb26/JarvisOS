@@ -63,6 +63,19 @@ def pick_next_queued_task(*, root: Path) -> Optional[dict]:
     return queued[0] if queued else None
 
 
+def pick_queued_task_by_id(task_id: str, *, root: Path) -> Optional[dict]:
+    """Return the task row only if it is currently queued; None otherwise.
+
+    Allows targeted execution of a specific task regardless of queue position,
+    which prevents stale or unrelated queued items from blocking a direct call.
+    """
+    queued = list_queued_tasks(root=root)
+    for row in queued:
+        if row["task_id"] == task_id:
+            return row
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Inspect queued and running task lists.")
     parser.add_argument("--root", default=str(ROOT), help="Project root path")

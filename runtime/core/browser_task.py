@@ -172,6 +172,64 @@ def create_browser_task(
     return create_task(record, root=root)
 
 
+def run_browser_task(
+    *,
+    action_type: str,
+    target_url: str,
+    target_selector: str = "",
+    action_params: Optional[dict[str, Any]] = None,
+    actor: str = "jarvis",
+    lane: str = "browser",
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Create a browser task and immediately execute it, returning the full result.
+
+    This is the preferred call surface for Jarvis and orchestration code that
+    want a browser result *now* without worrying about queue ordering.
+
+    The task is created with a unique task_id so it can be targeted by the
+    executor's `task_id` param, bypassing any other queued work.
+
+    Returns a dict with:
+      task_id, status, final_outcome, artifact_id (if written),
+      browser_result (full gateway result), dispatch_result
+    """
+    from runtime.executor.execute_once import execute_once
+
+    resolved_root = Path(root or ROOT).resolve()
+
+    record = create_browser_task(
+        action_type=action_type,
+        target_url=target_url,
+        target_selector=target_selector,
+        action_params=action_params,
+        actor=actor,
+        lane=lane,
+        root=resolved_root,
+    )
+
+    exec_result = execute_once(
+        root=resolved_root,
+        actor=actor,
+        lane=lane,
+        allow_parallel=True,
+        task_id=record.task_id,
+    )
+
+    dispatch = exec_result.get("dispatch_result") or {}
+    finish = exec_result.get("finish_result") or {}
+    return {
+        "task_id": record.task_id,
+        "status": finish.get("status", "unknown"),
+        "final_outcome": finish.get("final_outcome", ""),
+        "artifact_id": finish.get("artifact_id"),
+        "artifact_result": exec_result.get("artifact_result"),
+        "browser_result": dispatch.get("browser_action_result", {}),
+        "dispatch_result": dispatch,
+        "execute_result": exec_result,
+    }
+
+
 def create_browser_task_from_text(
     *,
     text: str,
