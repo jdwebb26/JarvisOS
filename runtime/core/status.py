@@ -458,19 +458,20 @@ def _bridge_row_timestamp(row: dict[str, Any]) -> str:
 
 
 def _find_nested_field(payload: Any, keys: tuple[str, ...]) -> Any:
+    _empty = (None, "", [], {})
     if isinstance(payload, dict):
         for key in keys:
             value = payload.get(key)
-            if value not in {None, "", [], {}}:
+            if value not in _empty:
                 return value
         for value in payload.values():
             found = _find_nested_field(value, keys)
-            if found not in {None, "", [], {}}:
+            if found not in _empty:
                 return found
     if isinstance(payload, list):
         for value in payload:
             found = _find_nested_field(value, keys)
-            if found not in {None, "", [], {}}:
+            if found not in _empty:
                 return found
     return None
 
