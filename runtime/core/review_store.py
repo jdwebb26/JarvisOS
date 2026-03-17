@@ -146,6 +146,18 @@ def request_review(
         root=root,
     )
     rebuild_all_outputs(Path(root or ROOT))
+
+    # Discord side effect
+    try:
+        from runtime.core.discord_event_router import emit_event as _emit
+        _emit(
+            "review_requested", requested_by,
+            task_id=task_id, detail=summary,
+            reviewer_id=reviewer_role, root=root,
+        )
+    except Exception:
+        pass
+
     return record
 
 
@@ -295,6 +307,19 @@ def record_review_verdict(
         root=root,
     )
     rebuild_all_outputs(Path(root or ROOT))
+
+    # Discord side effect
+    try:
+        from runtime.core.discord_event_router import emit_event as _emit
+        _emit(
+            "review_completed", actor,
+            task_id=record.task_id,
+            detail=f"verdict: {verdict}. {reason}".strip(". "),
+            reviewer_id=actor, root=root,
+        )
+    except Exception:
+        pass
+
     return record
 
 

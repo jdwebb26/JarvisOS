@@ -159,6 +159,16 @@ def set_task_status(
     )
     append_event(root, event)
 
+    # Discord event routing side effect — never raises
+    _emit_task_status_event(
+        new_status=new_status,
+        actor=actor,
+        task_id=task.task_id,
+        reason=reason,
+        final_outcome=final_outcome or (task.final_outcome or ""),
+        root=root,
+    )
+
     return {
         "task_id": task.task_id,
         "previous_status": previous_status,
@@ -167,6 +177,50 @@ def set_task_status(
         "final_outcome": task.final_outcome,
         "event_id": event.event_id,
     }
+
+
+def _emit_task_status_event(
+    *,
+    new_status: str,
+    actor: str,
+    task_id: str,
+    reason: str,
+    final_outcome: str,
+    root: Path,
+) -> None:
+    """Fire-and-forget Discord event emission for task status transitions."""
+    _STATUS_TO_KIND: dict[str, str] = {
+        TaskStatus.RUNNING.value:           "task_started",
+        TaskStatus.COMPLETED.value:         "task_completed",
+        TaskStatus.FAILED.value:            "task_failed",
+        TaskStatus.BLOCKED.value:           "task_blocked",
+        TaskStatus.WAITING_REVIEW.value:    "review_requested",
+        TaskStatus.WAITING_APPROVAL.value:  "approval_requested",
+    }
+    kind = _STATUS_TO_KIND.get(new_status)
+    if kind is None:
+        return
+    try:
+        from runtime.core.discord_event_router import emit_event
+        from runtime.core.agent_status_store import update_agent_status
+        agent_state = {
+            "task_started": "running", "task_completed": "idle",
+            "task_failed": "error",    "task_blocked": "blocked",
+        }.get(kind, "idle")
+        update_agent_status(
+            actor, f"{actor.capitalize()} {kind.replace('_', ' ')}: {task_id}.",
+            state=agent_state, current_task_id=task_id,
+            last_result=final_outcome or reason,
+            root=root,
+        )
+        emit_event(
+            kind, actor,
+            task_id=task_id,
+            detail=final_outcome or reason,
+            root=root,
+        )
+    except Exception:
+        pass
 
 
 def record_checkpoint(

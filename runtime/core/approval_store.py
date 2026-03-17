@@ -340,6 +340,18 @@ def request_approval(
         root=root,
     )
     rebuild_all_outputs(Path(root or ROOT))
+
+    # Discord side effect
+    try:
+        from runtime.core.discord_event_router import emit_event as _emit
+        _emit(
+            "approval_requested", requested_by,
+            task_id=task_id, detail=summary,
+            reviewer_id=requested_reviewer, root=root,
+        )
+    except Exception:
+        pass
+
     return record
 
 
@@ -712,6 +724,19 @@ def record_approval_decision(
         root=root,
     )
     rebuild_all_outputs(Path(root or ROOT))
+
+    # Discord side effect
+    try:
+        from runtime.core.discord_event_router import emit_event as _emit
+        _emit(
+            "approval_completed", actor,
+            task_id=record.task_id,
+            detail=f"decision: {decision}. {reason}".strip(". "),
+            root=root,
+        )
+    except Exception:
+        pass
+
     return record
 
 
