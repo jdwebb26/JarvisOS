@@ -91,7 +91,7 @@ def test_accepted_low_risk_action_with_execute_false_returns_request_only() -> N
         assert result["request"]["status"] == "accepted"
 
 
-def test_accepted_low_risk_action_with_execute_true_returns_stubbed_result_and_trace() -> None:
+def test_accepted_low_risk_action_with_execute_true_returns_live_result_and_trace() -> None:
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
         _seed_allowlist(root)
@@ -106,7 +106,7 @@ def test_accepted_low_risk_action_with_execute_true_returns_stubbed_result_and_t
         )
         assert result["kind"] == "executed"
         assert result["executed"] is True
-        assert result["result"]["status"] == "stubbed"
+        assert result["result"]["status"] in {"ok", "error"}
         assert result["trace"]["trace_id"]
         assert result["result"]["trace_refs"]["trace_id"] == result["trace"]["trace_id"]
         assert result["result"]["trace_refs"]["run_trace_id"] == result["run_trace"]["trace_id"]
@@ -209,6 +209,6 @@ if __name__ == "__main__":
     test_blocked_target_url_returns_blocked_without_execution()
     test_high_risk_action_returns_pending_review_without_execution()
     test_accepted_low_risk_action_with_execute_false_returns_request_only()
-    test_accepted_low_risk_action_with_execute_true_returns_stubbed_result_and_trace()
+    test_accepted_low_risk_action_with_execute_true_returns_live_result_and_trace()
     test_browser_reporting_surfaces_confirmation_and_evidence_summary_consistently()
     test_browser_cancelled_request_stays_non_executable_and_is_reported()

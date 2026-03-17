@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.browser.backends.pinchtab import PinchTabBackend
 from runtime.browser.protocol import cancel_browser_action as cancel_browser_action_record
-from runtime.browser.protocol import complete_browser_action, request_browser_action
+from runtime.browser.protocol import complete_browser_action, load_browser_action_request, request_browser_action
 from runtime.browser.reporting import build_browser_action_summary
 from runtime.browser.tracing import save_browser_snapshot, save_browser_trace
 from runtime.evals.trace_store import record_run_trace
@@ -103,29 +103,21 @@ def handle_browser_action(
         raise ValueError(f"Unsupported browser backend: {backend}")
 
     backend_impl = PinchTabBackend()
-    backend_result = backend_impl.execute_action(
-        type(
-            "BrowserActionRequestShim",
-            (),
-            {
-                "request_id": request["request_id"],
-                "task_id": request["task_id"],
-                "actor": request["actor"],
-                "lane": request["lane"],
-            },
-        )()
-    )
+    full_request = load_browser_action_request(request["request_id"], root=resolved_root)
+    backend_result = backend_impl.execute_action(full_request)
 
     snapshot = save_browser_snapshot(
         task_id=task_id,
         actor=actor,
         lane=lane,
-        snapshot_kind="browser_action_stub_snapshot",
+        snapshot_kind="browser_action_snapshot",
         payload={
             "target_url": target_url,
             "action_type": action_type,
             "backend": backend,
             "status": backend_result.status,
+            "outcome_summary": backend_result.outcome_summary,
+            "snapshot_refs": backend_result.snapshot_refs,
         },
         request_id=request["request_id"],
         root=resolved_root,
@@ -134,13 +126,12 @@ def handle_browser_action(
         task_id=task_id,
         actor=actor,
         lane=lane,
-        snapshot_kind="browser_evidence_placeholder",
+        snapshot_kind="browser_evidence_snapshot",
         payload={
             "target_url": target_url,
             "action_type": action_type,
             "backend": backend,
             "status": backend_result.status,
-            "placeholder_kind": "screenshot_ref",
         },
         request_id=request["request_id"],
         root=resolved_root,
@@ -149,7 +140,7 @@ def handle_browser_action(
         task_id=task_id,
         actor=actor,
         lane=lane,
-        trace_kind="browser_action_stub_trace",
+        trace_kind="browser_action_trace",
         steps=[
             {
                 "step": "request_accepted",
@@ -158,9 +149,10 @@ def handle_browser_action(
                 "risk_tier": request["risk_tier"],
             },
             {
-                "step": "stub_backend_execute",
+                "step": "backend_execute",
                 "backend": backend,
                 "status": backend_result.status,
+                "outcome_summary": backend_result.outcome_summary,
                 "error": backend_result.error,
             },
         ],
@@ -170,7 +162,7 @@ def handle_browser_action(
     )
     run_trace = record_run_trace(
         task_id=task_id,
-        trace_kind="browser_action_stub_trace",
+        trace_kind="browser_action_trace",
         actor=actor,
         lane=lane,
         execution_backend=backend,
@@ -178,7 +170,7 @@ def handle_browser_action(
         request_summary=f"Browser action request: {action_type} -> {target_url}",
         response_summary=backend_result.outcome_summary,
         decision_summary=(
-            "Browser action executed via stub backend with placeholder evidence."
+            "Browser action executed via live PinchTab backend."
             if not request["confirmation_required"]
             else "Browser action held behind confirmation policy and executed only after explicit allow."
         ),
