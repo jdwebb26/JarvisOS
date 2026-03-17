@@ -104,6 +104,24 @@ ACTIVE_QWEN_MODELS = [
         "workload_tags": ["embeddings", "local_support"],
         "local_only": True,
     },
+    # Kitt's preferred provider — NVIDIA-hosted Kimi 2.5.
+    # Execution backend is "nvidia_executor"; Python adapter + gateway both dispatch via NVIDIA API.
+    # Fallback to qwen3.5 is defined in runtime_routing_policy.json agent_policies.kitt.allowed_fallbacks.
+    {
+        "model_registry_entry_id": "model_kimi_k2_5_nvidia",
+        "provider_id": "nvidia",
+        "provider_kind": "remote_openai_compatible",
+        "model_family": "kimi",
+        "model_name": "moonshotai/kimi-k2.5",
+        "display_name": "Kimi 2.5 (NVIDIA)",
+        "priority_rank": 15,
+        "default_execution_backend": "nvidia_executor",
+        "capability_profile_ids": ["cap_general_kimi"],
+        "host_role": NodeRole.PRIMARY.value,
+        "host_name": None,  # Remote API provider — not bound to a local host node
+        "workload_tags": ["general", "research", "quant"],
+        "policy_tags": ["nvidia_approved"],
+    },
 ]
 
 CAPABILITY_PROFILES = [
@@ -158,6 +176,26 @@ CAPABILITY_PROFILES = [
             TaskRiskLevel.HIGH_STAKES.value,
         ],
         "preferred_execution_backend": "memory_spine",
+    },
+    # Kitt's capability profile — NVIDIA-hosted Kimi 2.5.
+    # Covers quant/high-stakes so Kitt's preferred model is not filtered out for quant tasks.
+    {
+        "capability_profile_id": "cap_general_kimi",
+        "profile_name": "kimi_general",
+        "provider_id": "nvidia",
+        "model_family": "kimi",
+        "capabilities": [
+            "general_reasoning",
+            "code_generation",
+            "research_synthesis",
+            "reviewable_candidate",
+            "high_stakes_reasoning",
+            "quant_analysis",
+            "deployment_planning",
+        ],
+        "supported_task_types": ["general", "docs", "code", "research", "review", "approval", "flowstate", "output", "deploy", "quant"],
+        "supported_risk_levels": [TaskRiskLevel.NORMAL.value, TaskRiskLevel.RISKY.value, TaskRiskLevel.HIGH_STAKES.value],
+        "preferred_execution_backend": "nvidia_executor",
     },
 ]
 
@@ -583,9 +621,11 @@ def _backend_health_status(backend_runtime: str, *, root: Path) -> str:
 
 def _node_runtime_signal(node_name: Optional[str], *, root: Path) -> dict[str, Any]:
     if not node_name:
+        # Remote API providers (host_name=None) are not bound to a local host node.
+        # Treat as healthy by default; degradation is signalled via degradation_policy events.
         return {
             "node_name": None,
-            "node_status": "unknown",
+            "node_status": "healthy",
             "heartbeat_known": False,
             "current_task_count": None,
             "available_backends": [],
@@ -980,7 +1020,7 @@ def ensure_default_routing_contracts(root: Optional[Path] = None) -> dict[str, l
                     model_name=model["model_name"],
                     display_name=model["display_name"],
                     capability_profile_ids=list(model["capability_profile_ids"]),
-                    policy_tags=["qwen_only", "approved"],
+                    policy_tags=list(model.get("policy_tags") or ["qwen_only", "approved"]),
                     priority_rank=model["priority_rank"],
                     default_execution_backend=model["default_execution_backend"],
                     host_role=model.get("host_role", NodeRole.PRIMARY.value),
@@ -1195,6 +1235,8 @@ def _choose_entry(
                     degradation_reasons.append("burst_worker_degraded")
             if task_type == "research" and "research_backend" in degradation_index["by_subsystem"]:
                 degradation_reasons.append("research_backend_degraded")
+            if entry.provider_id == "nvidia" and "nvidia_lane" in degradation_index["by_subsystem"]:
+                degradation_reasons.append("nvidia_lane_degraded")
             if node_signal["available_backends"] and selected_backend not in node_signal["available_backends"]:
                 degradation_reasons.append("backend_not_available_on_node")
             preferred_family_bonus = 1 if entry.model_family == preferred_family else 0
@@ -1232,11 +1274,11 @@ def _choose_entry(
                         lease_signal["lease_bonus"],
                         1 if coverage["covers_task_type"] else 0,
                         1 if coverage["covers_risk"] else 0,
-                        latency_fit,
-                        context_fit,
                         preferred_model_bonus,
                         preferred_provider_bonus,
                         preferred_host_bonus,
+                        latency_fit,
+                        context_fit,
                         coverage["matched_capabilities"],
                         preferred_family_bonus,
                         -current_task_count,

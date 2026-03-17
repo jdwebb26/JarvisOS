@@ -16,7 +16,7 @@ PROVIDER_API = "openai-completions"
 PROVIDER_API_KEY_ENV = "NVIDIA_API_KEY"
 MODEL_SLUG = "kimi-k2.5"
 MODEL_DISPLAY_NAME = "Kimi 2.5"
-MODEL_BACKEND_ID = "moonshotai/kimi-k2-5"
+MODEL_BACKEND_ID = "moonshotai/kimi-k2.5"
 MODEL_REF = f"{PROVIDER_ID}/{MODEL_BACKEND_ID}"
 
 

@@ -234,6 +234,7 @@ class BackendRuntime(StrEnum):
     BROWSER_BACKEND = "browser_backend"
     VOICE_GATEWAY = "voice_gateway"
     EVALUATION_SPINE = "evaluation_spine"
+    NVIDIA_EXECUTOR = "nvidia_executor"
     OPERATOR = "operator"
 
 
