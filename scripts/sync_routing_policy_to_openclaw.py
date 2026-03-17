@@ -30,6 +30,8 @@ MODEL_NAME_TO_REF: dict[str, str] = {
     "Qwen3.5-9B": "lmstudio/qwen/qwen3.5-9b",
     "Qwen3.5-35B": "lmstudio/qwen3.5-35b-a3b",
     "Qwen3.5-122B": "lmstudio/qwen3.5-122b-a10b",
+    "Qwen3-Coder-Next": "lmstudio/qwen/qwen3-coder-next",
+    "Qwen3-Coder-30B": "lmstudio/qwen/qwen3-coder-30b",
     # Direct model IDs (already in provider/model format)
     "moonshotai/kimi-k2.5": "nvidia/moonshotai/kimi-k2.5",
 }

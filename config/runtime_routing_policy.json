@@ -65,7 +65,7 @@
     },
     "hal": {
       "preferred_provider": "qwen",
-      "preferred_model": "Qwen3.5-35B",
+      "preferred_model": "Qwen3-Coder-30B",
       "preferred_host_role": "primary",
       "allowed_host_roles": [
         "primary"
@@ -74,6 +74,7 @@
         "burst"
       ],
       "allowed_families": [
+        "qwen3-coder",
         "qwen3.5"
       ],
       "allowed_fallbacks": [
@@ -83,7 +84,7 @@
     },
     "archimedes": {
       "preferred_provider": "qwen",
-      "preferred_model": "Qwen3.5-122B",
+      "preferred_model": "Qwen3-Coder-Next",
       "preferred_host_role": "primary",
       "allowed_host_roles": [
         "primary"
@@ -92,10 +93,11 @@
         "burst"
       ],
       "allowed_families": [
+        "qwen3-coder",
         "qwen3.5"
       ],
       "allowed_fallbacks": [
-        "Qwen3.5-35B"
+        "Qwen3.5-122B"
       ],
       "burst_allowed": false
     },
