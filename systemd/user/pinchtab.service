@@ -1,0 +1,13 @@
+[Unit]
+Description=Pinchtab Browser Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart="/home/rollan/.pinchtab/bin/0.8.3/pinchtab-linux-amd64" server
+Environment="PINCHTAB_CONFIG=/home/rollan/.pinchtab/config.json"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

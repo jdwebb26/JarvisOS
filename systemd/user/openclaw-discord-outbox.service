@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenClaw Discord Outbox Sender
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+ExecStart=/usr/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/core/discord_outbox_sender.py --root /home/rollan/.openclaw/workspace/jarvis-v5
+EnvironmentFile=/home/rollan/.openclaw/secrets.env
+StandardOutput=journal
+StandardError=journal

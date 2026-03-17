@@ -1,0 +1,28 @@
+[Unit]
+Description=OpenClaw Gateway (v2026.3.12)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node /home/rollan/.npm-global/lib/node_modules/openclaw/dist/index.js gateway --port 18789
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+TimeoutStartSec=30
+SuccessExitStatus=0 143
+KillMode=control-group
+Environment=HOME=/home/rollan
+Environment=TMPDIR=/tmp
+Environment=NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+Environment=PATH=/home/rollan/.local/bin:/home/rollan/.npm-global/bin:/home/rollan/bin:/home/rollan/.volta/bin:/home/rollan/.asdf/shims:/home/rollan/.bun/bin:/home/rollan/.nvm/current/bin:/home/rollan/.fnm/current/bin:/home/rollan/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin
+Environment=OPENCLAW_GATEWAY_PORT=18789
+Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-gateway.service
+Environment="OPENCLAW_WINDOWS_TASK_NAME=OpenClaw Gateway"
+Environment=OPENCLAW_SERVICE_MARKER=openclaw
+Environment=OPENCLAW_SERVICE_KIND=gateway
+Environment=OPENCLAW_SERVICE_VERSION=2026.3.12
+Environment="JARVIS_QWEN_BRIDGE_COMMAND=/home/rollan/.openclaw/.venvs/qwen-agent/bin/python /home/rollan/.openclaw/workspace/jarvis-v5/scripts/qwen_agent_bridge.py"
+Environment=JARVIS_QWEN_BRIDGE_CWD=/home/rollan/.openclaw/workspace/jarvis-v5
+
+[Install]
+WantedBy=default.target
