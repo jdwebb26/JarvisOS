@@ -90,23 +90,37 @@
 
 ---
 
+### H. Discord outbox sender (2026-03-17)
+- **File**: `runtime/core/discord_outbox_sender.py`
+- **State dir**: `state/discord_delivery/dlv_*.json`
+- **Mechanism**: reads `discord_outbox/*.json` status=pending, resolves channel_id → JARVIS_DISCORD_WEBHOOK_* env var, POSTs via `dispatch_utils.post_webhook()`, marks delivered/failed/skipped
+- **Timer**: `openclaw-discord-outbox.service` + `.timer` (60s interval, systemd user unit, enabled)
+- **Status**: ✅ LIVE (mechanism proven; all existing webhook URLs in secrets.env are HTTP 403 expired)
+
+### I. Task/review/approval lifecycle emitters (2026-03-17)
+- `task_runtime.set_task_status()` → `emit_event()` + `update_agent_status()` on every transition
+- `review_store.request_review()` + `record_review_verdict()` → `emit_event(review_requested/review_completed)`
+- `approval_store.request_approval()` + `record_approval_decision()` → `emit_event(approval_requested/approval_completed)`
+- All wrapped in try/except; never break existing task lifecycle
+- **Status**: ✅ LIVE (wired; proven via `_emit_task_status_event` direct test)
+
+---
+
 ## What Is Still Blocked / Partial
 
-| Item | Why Blocked |
-|------|-------------|
-| Discord outbox actual delivery | `discord_outbox/` entries are written; no live sender yet. Needs webhook URLs for bowser/cadence/worklog channels, or a gateway API call integration. |
-| Claude agent live calls | `ANTHROPIC_API_KEY=REPLACE_ME` in secrets.env — user must set real key |
-| Hermes external daemon | External service not running |
-| Ralph autonomy loop | Needs ACP or external runtime |
-| Muse Discord channel | No channel ID configured; no binding |
-| HAL ACP production-path proof | Direct ACP works; Discord-initiated ACP path not conclusively confirmed in gateway logs |
+| Item | Why Blocked | Fix |
+|------|-------------|-----|
+| **Discord webhooks expired** | All 4 existing webhook URLs (JARVIS, CREW, REVIEW, COUNCIL) return HTTP 403. New webhooks for bowser/cadence/worklog/hal/scout etc. never created. | User: Discord Server Settings → Integrations → Webhooks → create one per channel → set `JARVIS_DISCORD_WEBHOOK_*` in `~/.openclaw/secrets.env` |
+| Claude agent live calls | `ANTHROPIC_API_KEY=REPLACE_ME` | User sets real key |
+| Hermes external daemon | External service not running | Activate external Hermes service |
+| Ralph autonomy loop | Needs ACP or external runtime | — |
+| Muse Discord channel | No channel ID configured | — |
 
 ---
 
 ## Exact Next Highest-Leverage Tasks
 
-1. **Discord outbox sender** — write `runtime/core/discord_outbox_sender.py` that reads pending outbox entries and POSTs via Discord webhook. Needs webhook URLs for bowser/cadence/worklog (user must create webhooks in Discord server settings).
-2. **Wire task lifecycle events** — call `emit_event("task_started"/"task_completed"/"task_failed", ...)` from `runtime/core/task_runtime.py` at task state transitions. This extends the store+router coverage beyond Bowser.
-3. **Wire review/approval events** — call `emit_event` from `approval_store.py` and `review_store.py` at checkpoint writes.
-4. **Set ANTHROPIC_API_KEY** — user action; unblocks Claude agent.
-5. **Hermes daemon activation** — external service prerequisite.
+1. **Recreate Discord webhooks** — single user action; unblocks all live Discord delivery. Create one webhook per channel in Discord Server Settings, set env vars in `~/.openclaw/secrets.env`.
+2. **Set ANTHROPIC_API_KEY** — user action; unblocks Claude agent.
+3. **Verify first real live delivery** — after webhooks set, trigger a test browser action and confirm #bowser and #worklog receive the message.
+4. **Hermes daemon activation** — external service prerequisite.

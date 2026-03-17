@@ -588,6 +588,35 @@ Capture one unambiguous HAL ACP production-path proof with either:
 - `voice_session_started` from `cadence` → routes to cadence channel 1483537502152425625 ✅
 - Gateway resolves 12 channels (+6 after hermes, was +3) ✅
 
-### Remaining gap
+### Remaining gap (from first pass)
 - Discord outbox delivery: entries are written but not yet sent. Needs a webhook sender and Discord webhook URLs for bowser/cadence/worklog channels.
 - Task/review/approval lifecycle events not yet wired to emit_event (Bowser is wired; others are the next step).
+
+## Discord outbox delivery + task lifecycle emitters — 2026-03-17 (second pass)
+
+### What changed
+
+**Files created:**
+- `runtime/core/discord_outbox_sender.py` — outbox consumer: reads pending entries, resolves channel→webhook env var, POSTs via `dispatch_utils.post_webhook()`, marks delivered/failed/skipped, writes `state/discord_delivery/` records.
+- `~/.config/systemd/user/openclaw-discord-outbox.service` + `.timer` — fires every 60s automatically.
+
+**Files modified:**
+- `runtime/core/task_runtime.py` — `set_task_status()` calls `_emit_task_status_event()` after every transition: RUNNING→task_started, COMPLETED→task_completed, FAILED→task_failed, BLOCKED→task_blocked. Also calls `update_agent_status()`.
+- `runtime/core/review_store.py` — `request_review()` emits `review_requested`; `record_review_verdict()` emits `review_completed`.
+- `runtime/core/approval_store.py` — `request_approval()` emits `approval_requested`; `record_approval_decision()` emits `approval_completed`.
+- `~/.openclaw/secrets.env` — added 9 new `JARVIS_DISCORD_WEBHOOK_*=REPLACE_ME` placeholder vars.
+
+**State dirs used:**
+- `state/discord_delivery/` — delivery records
+
+### Live proof
+- cadence voice-only: 6 voice kinds pass, non-voice blocked ✓
+- task_completed/failed from hal → outbox entries for hal + worklog ✓
+- review_requested → outbox entries for owner + worklog ✓
+- Timer fires within 30s, processes outbox, attempts delivery ✓
+- HTTP 403 from Discord (all secrets.env webhooks expired) — mechanism proven, credential issue not code ✓
+- 391 validate.py checks pass, 0 failures ✓
+
+### Remaining gap
+- All Discord webhook URLs in secrets.env are HTTP 403 expired. User must recreate webhooks in Discord server and set `JARVIS_DISCORD_WEBHOOK_*` env vars.
+- Until webhooks are set: entries accumulate in discord_outbox/ as skipped_no_webhook.
