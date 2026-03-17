@@ -13,6 +13,7 @@ Usage:
   python3 runtime/voice/mic_capture.py                 # 5-second capture + transcribe
   python3 runtime/voice/mic_capture.py --duration 8    # 8-second capture
   python3 runtime/voice/mic_capture.py --list-sources  # show PulseAudio sources
+  python3 runtime/voice/mic_capture.py --probe-model   # show best available Whisper model
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import json
 import os
 import shutil
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
@@ -42,8 +44,63 @@ if str(ROOT) not in sys.path:
 _SILENCE_PHRASES = frozenset({
     ".", " ", "", "you", "bye.", "bye", "thank you.", "thank you",
     "thanks.", "thanks", "okay.", "okay", "ok.", "ok", "yeah.", "yeah",
-    "uh.", "um.", "hmm.", "hm.", "[music]", "[applause]",
+    "uh.", "um.", "hmm.", "hm.", "[music]", "[applause]", "[laughter]",
+    "[noise]", "[silence]", "(inaudible)", "[blank_audio]",
+    "you.", "i.", "so.", "a.", "the.",
 })
+
+# Whisper artifact tags to strip from output text
+_ARTIFACT_RE = None  # compiled lazily
+
+
+def _artifact_pattern():
+    global _ARTIFACT_RE
+    if _ARTIFACT_RE is None:
+        import re
+        _ARTIFACT_RE = re.compile(
+            r'\[(?:Music|Applause|Laughter|Noise|Silence|BLANK_AUDIO|inaudible|crosstalk|'
+            r'music|applause|laughter|noise|silence|blank_audio)\]',
+            re.IGNORECASE,
+        )
+    return _ARTIFACT_RE
+
+
+def _normalize_transcript(raw: str) -> str:
+    """Join multi-line Whisper output into one line and strip artifact tags."""
+    import re
+    # Join lines
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    text = " ".join(lines)
+    # Strip artifact tags
+    text = _artifact_pattern().sub("", text)
+    # Collapse whitespace
+    text = " ".join(text.split())
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Whisper model probe
+# ---------------------------------------------------------------------------
+
+def probe_best_whisper_model() -> str:
+    """Return the best locally cached Whisper model name.
+
+    Checks ~/.cache/whisper/ for .pt files.
+    Priority: small.en > small > base.en > base
+    Ignores models that aren't cached (avoids auto-download during live use).
+    Falls back to "base" if nothing is found.
+    """
+    cache = Path.home() / ".cache" / "whisper"
+    candidates = [
+        ("small.en", "small.en.pt"),
+        ("small",    "small.pt"),
+        ("base.en",  "base.en.pt"),
+        ("base",     "base.pt"),
+    ]
+    for model_name, filename in candidates:
+        if (cache / filename).exists():
+            return model_name
+    return "base"
 
 
 # ---------------------------------------------------------------------------
@@ -85,20 +142,18 @@ def default_capture_device() -> str:
 
     Priority order:
     1. RDPSource (WSLg Windows mic passthrough — exact name match)
-    2. Any non-monitor source
-    3. "default"
+    2. Any non-monitor source with "source" in name
+    3. Any non-monitor source
+    4. "default"
     """
     sources = list_pulse_sources()
-    # 1. Exact RDPSource name (WSLg mic)
     for s in sources:
         if s["name"].lower() == "rdpsource":
             return s["name"]
-    # 2. Any source with "source" in the name but not "monitor"
     for s in sources:
         name = s["name"].lower()
         if "source" in name and "monitor" not in name:
             return s["name"]
-    # 3. Any non-monitor source
     for s in sources:
         if "monitor" not in s["name"].lower():
             return s["name"]
@@ -136,10 +191,11 @@ def record_chunk(
 
     cmd = [
         "parecord",
-        "--channels", str(channels),
+        "-d", resolved_device,
         "--rate", str(rate),
+        "--channels", str(channels),
         "--format=s16le",
-        f"--device={resolved_device}",
+        "--file-format=wav",
         str(output_path),
     ]
 
@@ -169,22 +225,25 @@ def wav_duration_sec(wav_path: Path) -> float:
         return 0.0
 
 
-def wav_is_silent(wav_path: Path, silence_threshold_rms: float = 50.0) -> bool:
-    """Return True if the WAV file is below the silence threshold (RMS)."""
+def wav_rms(wav_path: Path) -> float:
+    """Return RMS amplitude of a WAV file (0 = silent, higher = louder)."""
     try:
-        import struct
         with wave.open(str(wav_path), "rb") as wf:
             data = wf.readframes(wf.getnframes())
         if not data:
-            return True
-        fmt = f"<{len(data)//2}h"
-        samples = struct.unpack(fmt, data[:len(data) - (len(data) % 2)])
+            return 0.0
+        n = len(data) // 2
+        samples = struct.unpack(f"<{n}h", data[: n * 2])
         if not samples:
-            return True
-        rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
-        return rms < silence_threshold_rms
+            return 0.0
+        return (sum(s * s for s in samples) / len(samples)) ** 0.5
     except Exception:
-        return True
+        return 0.0
+
+
+def wav_is_silent(wav_path: Path, silence_threshold_rms: float = 50.0) -> bool:
+    """Return True if the WAV file is below the silence threshold (RMS)."""
+    return wav_rms(wav_path) < silence_threshold_rms
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +275,6 @@ def transcribe(
     out_dir = wav_path.parent
     txt_path = wav_path.with_suffix(".txt")
 
-    # Clean up any stale transcript file
     if txt_path.exists():
         txt_path.unlink()
 
@@ -227,6 +285,7 @@ def transcribe(
                 str(wav_path),
                 "--model", model,
                 "--language", language,
+                "--fp16", "False",
                 "--output_format", "txt",
                 "--output_dir", str(out_dir),
             ],
@@ -266,9 +325,11 @@ def transcribe(
     if txt_path.exists():
         raw = txt_path.read_text(encoding="utf-8").strip()
     else:
-        # Sometimes whisper writes the stem-named file
         stem_txt = out_dir / (wav_path.stem + ".txt")
         raw = stem_txt.read_text(encoding="utf-8").strip() if stem_txt.exists() else ""
+
+    # Normalize multi-line output and strip artifact tags
+    raw = _normalize_transcript(raw)
 
     # Filter silence hallucinations
     if raw.lower() in _SILENCE_PHRASES:
@@ -300,7 +361,7 @@ def record_and_transcribe(
 ) -> dict:
     """Record a chunk and transcribe it in one call.
 
-    Returns merged dict from record + transcribe plus timing info.
+    Returns merged dict from record + transcribe plus timing and audio diagnostics.
     """
     t0 = time.time()
     with tempfile.TemporaryDirectory() as _tmpdir:
@@ -311,8 +372,25 @@ def record_and_transcribe(
             rate=rate,
             output_path=base / f"cadence_{int(t0)}.wav",
         )
-        is_silent = wav_is_silent(wav_path)
-        transc = transcribe(wav_path, model=model, language=language)
+        wav_bytes = wav_path.stat().st_size if wav_path.exists() else 0
+        wav_dur = wav_duration_sec(wav_path)
+        rms = wav_rms(wav_path)
+        is_silent = rms < 50.0  # advisory only — logged, not used as gate
+
+        # Gate only on structurally empty capture (header-only = 44 bytes, <1s).
+        capture_ok = wav_bytes > 44 and wav_dur >= 1.0
+        if capture_ok:
+            transc = transcribe(wav_path, model=model, language=language)
+        else:
+            transc = {
+                "text": "",
+                "model": model,
+                "language": language,
+                "wav_path": str(wav_path),
+                "ok": False,
+                "error": f"capture too small: {wav_bytes} bytes, {wav_dur:.2f}s",
+            }
+
         elapsed = time.time() - t0
 
         if not keep_wav and wav_path.exists():
@@ -327,6 +405,10 @@ def record_and_transcribe(
         return {
             **transc,
             "is_silent": is_silent,
+            "rms": round(rms, 2),
+            "wav_bytes": wav_bytes,
+            "wav_dur": round(wav_dur, 2),
+            "capture_ok": capture_ok,
             "duration_sec": duration_sec,
             "elapsed_sec": round(elapsed, 2),
             "device": device or default_capture_device(),
@@ -341,15 +423,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Capture audio from mic and transcribe with Whisper.")
     parser.add_argument("--duration", type=float, default=5.0, help="Recording duration in seconds")
     parser.add_argument("--device", default="", help="PulseAudio source name (default: auto-detect RDPSource)")
-    parser.add_argument("--model", default="base", help="Whisper model (base, small, medium, large)")
+    parser.add_argument("--model", default="", help="Whisper model (default: probe best available)")
     parser.add_argument("--language", default="en", help="Language code")
     parser.add_argument("--keep-wav", action="store_true", help="Keep WAV file after transcription")
     parser.add_argument("--list-sources", action="store_true", help="List PulseAudio sources and exit")
+    parser.add_argument("--probe-model", action="store_true", help="Print best available Whisper model and exit")
     args = parser.parse_args()
 
     if args.list_sources:
         sources = list_pulse_sources()
         print(json.dumps(sources, indent=2))
+        return 0
+
+    if args.probe_model:
+        print(probe_best_whisper_model())
         return 0
 
     if not parecord_available():
@@ -359,11 +446,12 @@ def main() -> int:
         print("ERROR: whisper not found. Install with: brew install openai-whisper", file=sys.stderr)
         return 1
 
-    print(f"Recording {args.duration}s from {args.device or default_capture_device()} ...", file=sys.stderr)
+    model = args.model or probe_best_whisper_model()
+    print(f"Recording {args.duration}s from {args.device or default_capture_device()} (model={model}) ...", file=sys.stderr)
     result = record_and_transcribe(
         duration_sec=args.duration,
         device=args.device or None,
-        model=args.model,
+        model=model,
         language=args.language,
         keep_wav=args.keep_wav,
     )

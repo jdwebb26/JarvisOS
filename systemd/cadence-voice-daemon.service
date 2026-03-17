@@ -5,15 +5,19 @@ Wants=openclaw-gateway.service
 
 [Service]
 Type=simple
-ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/voice/cadence_daemon.py --execute
+ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/voice/cadence_daemon.py --execute --device RDPSource --duration 4
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=15
-KillMode=process
+# control-group kills all child processes (parecord) on stop/restart
+KillMode=control-group
 
 Environment=HOME=/home/rollan
 Environment=TMPDIR=/tmp
 Environment=PULSE_SERVER=unix:/mnt/wslg/PulseServer
+Environment=CADENCE_WHISPER_MODEL=small.en
+Environment=CADENCE_PASSIVE_CHUNK_SEC=4.0
+Environment=CADENCE_COMMAND_WINDOW_SECONDS=8.0
 
 WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
 
