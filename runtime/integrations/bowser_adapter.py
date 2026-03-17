@@ -37,6 +37,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.gateway.browser_action import handle_browser_action
+from runtime.core.agent_status_store import update_agent_status
+from runtime.core.backend_result_store import save_backend_result
+from runtime.core.discord_event_router import emit_event as _route_event
 
 
 BOWSER_BACKEND_ID = "browser_backend"
@@ -159,6 +162,51 @@ def execute_bowser_action(
 
     request_record = gateway_result.get("request") or {}
     result_record = gateway_result.get("result") or {}
+    result_id = result_record.get("result_id", "")
+
+    # --- Local truth stores + Discord event routing ---
+    try:
+        headline = (
+            f"Bowser completed browser action on {target_url}."
+            if status == SUCCESS_STATUS
+            else f"Bowser FAILED browser action on {target_url}."
+        )
+        update_agent_status(
+            "bowser",
+            headline,
+            state="idle" if status == SUCCESS_STATUS else "error",
+            current_task_id=task_id,
+            last_result=content or error,
+            root=root,
+        )
+        bk_status = "ok" if status == SUCCESS_STATUS else "error"
+        summary = (
+            f"Browser {action_type} on {target_url}: "
+            + (content or error or kind)
+        )
+        save_backend_result(
+            task_id=task_id,
+            agent_id="bowser",
+            backend="browser_backend",
+            status=bk_status,
+            summary=summary,
+            artifact_refs={
+                "result_id": result_id,
+                "request_id": request_record.get("request_id", ""),
+            },
+            error=error,
+            root=root,
+        )
+        _route_event(
+            "browser_result",
+            "bowser",
+            task_id=task_id,
+            target=target_url,
+            detail=(content or error or kind),
+            root=root,
+        )
+    except Exception:  # never break the browser action itself
+        pass
 
     return {
         "status": status,
@@ -169,7 +217,7 @@ def execute_bowser_action(
         "dispatched": True,
         "kind": kind,
         "request_id": request_record.get("request_id"),
-        "result_id": result_record.get("result_id"),
+        "result_id": result_id,
         "browser_action_result": gateway_result,
     }
 

@@ -1,0 +1,25 @@
+[Unit]
+Description=Cadence Voice Daemon — mic capture + Whisper + intent routing
+After=openclaw-gateway.service pulseaudio.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/voice/cadence_daemon.py --execute
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+KillMode=process
+
+Environment=HOME=/home/rollan
+Environment=TMPDIR=/tmp
+Environment=PULSE_SERVER=unix:/mnt/wslg/PulseServer
+
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cadence-voice
+
+[Install]
+WantedBy=default.target

@@ -561,3 +561,33 @@ Capture one unambiguous HAL ACP production-path proof with either:
 - `python3 tests/test_browser_gateway.py` passed.
 - `python3 scripts/validate.py` passed with only the pre-existing `qwen_agent` dependency warning.
 - Current limitation: browser allowlist is still conservative; broader external browsing needs explicit allowlist entries.
+## Runtime-memory + agent-channel routing system — 2026-03-17
+
+### What changed (this task)
+
+**Files created:**
+- `config/agent_channel_map.json` — all 13 agents mapped with channel IDs, voice_only flags, routing rule sets (worklog_mirror_event_kinds, jarvis_forward_event_kinds, voice_only_event_kinds)
+- `runtime/core/agent_status_store.py` — per-agent cheap status store (`state/agent_status/<id>.json`). Read/write without LLM.
+- `runtime/core/backend_result_store.py` — compact backend result summaries (`state/backend_results/bkres_*.json`). Jarvis inspects before touching full artifacts.
+- `runtime/core/discord_event_router.py` — deterministic event router. Decides owner channel, worklog mirror, jarvis forward. Blocks non-voice events from cadence. Writes dispatch_events + discord_outbox JSON files.
+- `runtime/core/worklog_mirror.py` — thin wrapper to force worklog outbox from any event.
+
+**Files modified:**
+- `runtime/integrations/bowser_adapter.py` — wired to agent_status_store + backend_result_store + discord_event_router after every browser action result.
+- `/home/rollan/.openclaw/openclaw.json` — added bowser binding (1483539080271761408), cadence binding (1483537502152425625), and allowlist entries for bowser + cadence + worklog (1483539374854639761).
+
+**State directories created:**
+- `state/agent_status/`
+- `state/backend_results/`
+- `state/dispatch_events/`
+- `state/discord_outbox/`
+
+### Live proof (confirmed)
+- Bowser live navigate → agent_status updated + backend_result saved + outbox entries for bowser + worklog ✅
+- `task_completed` from `cadence` → blocked (cadence_blocked=True) ✅
+- `voice_session_started` from `cadence` → routes to cadence channel 1483537502152425625 ✅
+- Gateway resolves 12 channels (+6 after hermes, was +3) ✅
+
+### Remaining gap
+- Discord outbox delivery: entries are written but not yet sent. Needs a webhook sender and Discord webhook URLs for bowser/cadence/worklog channels.
+- Task/review/approval lifecycle events not yet wired to emit_event (Bowser is wired; others are the next step).

@@ -60,14 +60,39 @@ def play_voice_cue(event_type: str, *, actor: str = "system", lane: str = "voice
     return record
 
 
+def _try_gateway_tts(text: str) -> str:
+    """Attempt to play TTS via the openclaw gateway tts tool.
+
+    Calls `openclaw agent --agent cadence --message <text>` with a tts request.
+    Returns "ok", "skipped", or "failed:<reason>".
+    Non-fatal — caller always falls through to record either way.
+    """
+    import shutil
+    import subprocess as _sp
+
+    if not shutil.which("openclaw"):
+        return "skipped:no_openclaw_binary"
+    try:
+        # Use cadence_tts_request tag so Cadence responds with a TTS cue
+        msg = f"[voice_cue] {text}"
+        _sp.run(
+            ["openclaw", "agent", "--agent", "cadence", "--message", msg, "--json"],
+            capture_output=True, text=True, timeout=15,
+        )
+        return "ok"
+    except Exception as exc:
+        return f"failed:{exc}"
+
+
 def speak_response(text: str, *, actor: str = "system", lane: str = "voice", root=None) -> dict:
+    tts_status = _try_gateway_tts(text) if text else "skipped:empty"
     record = {
         "response_id": new_id("voicersp"),
         "event_type": "speak_response",
         "text": str(text or ""),
-        "status": "stubbed",
-        "mode": "tts_placeholder",
-        "reason": "tts_not_connected",
+        "status": "attempted" if tts_status.startswith("ok") else "stubbed",
+        "mode": "gateway_tts" if tts_status.startswith("ok") else "tts_placeholder",
+        "reason": tts_status,
         "actor": actor,
         "lane": lane,
         "created_at": now_iso(),

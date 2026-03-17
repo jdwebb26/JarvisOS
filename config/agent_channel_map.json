@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "updated": "2026-03-17",
+  "agents": {
+    "jarvis":     { "channel_id": "1478178050133987400", "purpose": "orchestration",   "voice_only": false },
+    "hal":        { "channel_id": "1483133691969671289", "purpose": "building",         "voice_only": false },
+    "scout":      { "channel_id": "1483131531546464336", "purpose": "recon",            "voice_only": false },
+    "anton":      { "channel_id": "1478178150268670212", "purpose": "supreme_review",   "voice_only": false },
+    "archimedes": { "channel_id": "1483132981177618482", "purpose": "technical_review", "voice_only": false },
+    "hermes":     { "channel_id": "1483131437292191945", "purpose": "research",         "voice_only": false },
+    "kitt":       { "channel_id": "1483320979185733722", "purpose": "quant",            "voice_only": false },
+    "claude":     { "channel_id": "1483515985628627116", "purpose": "general",          "voice_only": false },
+    "qwen":       { "channel_id": "1483131473543303208", "purpose": "qwen_agent",       "voice_only": false },
+    "bowser":     { "channel_id": "1483539080271761408", "purpose": "browser",          "voice_only": false },
+    "cadence":    { "channel_id": "1483537502152425625", "purpose": "voice_tts_calls",  "voice_only": true  },
+    "muse":       { "channel_id": null,                  "purpose": "creative",         "voice_only": false },
+    "ralph":      { "channel_id": null,                  "purpose": "overflow",         "voice_only": false }
+  },
+  "logical_channels": {
+    "worklog": { "channel_id": "1483539374854639761", "purpose": "mirror_log" },
+    "jarvis":  { "channel_id": "1478178050133987400", "purpose": "orchestration_escalation" }
+  },
+  "voice_only_event_kinds": [
+    "voice_session_started",
+    "voice_session_ended",
+    "tts_started",
+    "tts_completed",
+    "call_started",
+    "call_ended"
+  ],
+  "worklog_mirror_event_kinds": [
+    "task_started",
+    "task_completed",
+    "task_failed",
+    "task_blocked",
+    "review_requested",
+    "review_completed",
+    "approval_requested",
+    "approval_completed",
+    "artifact_promoted",
+    "browser_result",
+    "delegation_sent",
+    "delegation_received",
+    "warning",
+    "error"
+  ],
+  "jarvis_forward_event_kinds": [
+    "task_failed",
+    "task_blocked",
+    "approval_requested",
+    "artifact_promoted",
+    "delegation_sent",
+    "warning",
+    "error"
+  ]
+}
