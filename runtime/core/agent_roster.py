@@ -55,6 +55,7 @@ AGENT_SKILL_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "bowser": ("session-logs",),
     "muse": ("summarize", "songsee", "sag", "session-logs"),
     "ralph": ("ordercli", "session-logs"),
+    "kitt": ("session-logs", "model-usage"),
 }
 
 AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
@@ -178,6 +179,16 @@ AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
         "session_status",
         "memory_search",
         "memory_get",
+    ),
+    "kitt": (
+        "read",
+        "process",
+        "memory_search",
+        "memory_get",
+        "message",
+        "session_status",
+        "sessions_list",
+        "sessions_history",
     ),
 }
 
@@ -451,6 +462,38 @@ CANONICAL_AGENT_ROSTER: dict[str, dict[str, Any]] = {
         "preferred_skill_backends": ["qwen_executor", "memory_spine"],
         "preferred_channels": ["tasks"],
     },
+    "kitt": {
+        "agent_id": "kitt",
+        "display_name": "Kitt",
+        "role": "quantitative research / analyst specialist",
+        "status": "wired",
+        "kind": "specialist",
+        "responsibilities": [
+            "quantitative reasoning and statistical interpretation",
+            "hypothesis design and experiment critique",
+            "backtest and result critique",
+            "strategy diagnostics and robustness analysis",
+            "research synthesis for decision support",
+        ],
+        "avoid": [
+            "live execution and approvals",
+            "browser automation",
+            "engineering chores",
+            "pretending confidence that the data does not support",
+        ],
+        "task_classes": ["research", "quant", "docs"],
+        "routing_intent": {
+            "preferred_model": "Kimi-K2.5",
+            "fallbacks": ["Qwen3.5-35B"],
+            "primary_backend": "qwen_planner",
+        },
+        "allowed_tool_categories": ["coordination", "research", "repo_read", "general"],
+        "denied_tool_categories": ["browser", "engineering", "maintenance", "voice"],
+        "denied_tool_name_tokens": ["clawhub", "weather"],
+        "preferred_skill_task_classes": ["research", "quant", "docs"],
+        "preferred_skill_backends": ["qwen_planner", "qwen_executor"],
+        "preferred_channels": ["kitt"],
+    },
 }
 
 
@@ -531,6 +574,7 @@ AGENT_RUNTIME_TYPES: dict[str, str] = {
     "muse":       "embedded",
     "ralph":      "embedded",
     "qwen":       "embedded",
+    "kitt":       "embedded",
 }
 
 

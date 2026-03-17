@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.core.models import MemoryEntryRecord, RecordLifecycleState, now_iso
-from runtime.gateway.source_owned_context_engine import _extract_text, build_context_packet
+from runtime.gateway.source_owned_context_engine import _build_prompt_budget, _extract_text, build_context_packet
 from runtime.integrations.openclaw_sessions import build_openclaw_discord_session_integrity_summary
 from runtime.memory.governance import save_memory_entry
 from runtime.memory.vault_index import load_session_context_summary
@@ -391,6 +391,89 @@ def test_persisted_session_store_exposes_source_owned_report_fields_end_to_end(t
     assert latest["retrieval_stats"]["remaining_budget_tokens"] >= 0
 
 
+def test_prompt_budget_large_tool_output_not_underestimated() -> None:
+    # Regression: _build_prompt_budget previously called estimate_tokens(integer) which
+    # stringified the number before measuring length — e.g. estimate_tokens(215728) = 2 tokens.
+    # Fix: direct integer division (chars + 3) // 4.
+    # A 200K-char tool result must register as ~50K tokens, not ~2 tokens.
+    BIG = 200_000  # chars
+    messages = [
+        {"role": "user", "content": "what is the current state?"},
+        {"role": "toolResult", "toolName": "read", "content": "X" * BIG},
+    ]
+    budget = _build_prompt_budget(
+        system_prompt="System. " * 50,
+        recent_messages=messages,
+        current_prompt="summarize",
+        tools=[],
+        retrieved_episodic=[],
+        retrieved_semantic=[],
+        rolling_summary={},
+        context_window_tokens=200_000,
+        raw_user_turn_window=6,
+        total_user_turns=1,
+        distillation={},
+        tool_exposure={"mode": "none", "reason": "no_tools", "beforeCount": 0, "afterCount": 0, "agentId": "jarvis", "tools": []},
+    )
+    raw_tool_tokens = budget["categories"]["rawToolOutputs"]["tokens"]
+    # Must be in the right order of magnitude: 200000/4 = 50000. Old bug returned ~2.
+    assert raw_tool_tokens > 40_000, f"expected ~50000, got {raw_tool_tokens} — integer underestimation bug is back"
+    # With a 32K token context window, safe threshold = 0.72 * 32000 = 23040 tokens.
+    # 200K-char tool output alone is ~50K tokens, so it must trip the threshold.
+    tight_budget = _build_prompt_budget(
+        system_prompt="System.",
+        recent_messages=messages,
+        current_prompt="summarize",
+        tools=[],
+        retrieved_episodic=[],
+        retrieved_semantic=[],
+        rolling_summary={},
+        context_window_tokens=32_000,
+        raw_user_turn_window=6,
+        total_user_turns=1,
+        distillation={},
+        tool_exposure={"mode": "none", "reason": "no_tools", "beforeCount": 0, "afterCount": 0, "agentId": "jarvis", "tools": []},
+    )
+    assert tight_budget["overSafeThreshold"] is True, "200K-char tool output must trip safe threshold at 32K context window"
+
+
+def test_emergency_tool_distill_fires_when_compacted_window_still_oversized(tmp_path: Path) -> None:
+    # When the compacted 3-turn window is still over safe threshold, the emergency pass must
+    # distill all remaining tool results and set compaction.reason = "emergency_tool_distill".
+    BIG = 120_000  # chars per tool result; 3 turns × 4 results = 480K chars raw
+    messages = []
+    for i in range(1, 11):
+        messages.extend(_discord_turn(i, tool_blob_chars=BIG))
+    packet = build_context_packet(
+        root=tmp_path,
+        session_key="agent:jarvis:discord:channel:emergency",
+        system_prompt="System prompt. " * 200,
+        current_prompt="what is the current state? read ./runtime/core/status.py",
+        messages=messages,
+        tools=[{"name": "read", "description": "Read file", "parameters": {"type": "object"}}],
+        channel="discord",
+        context_window_tokens=200_000,
+        raw_user_turn_window=6,
+    )
+    compaction = packet["promptBudget"]["preflightCompaction"]
+    assert compaction["compacted"] is True
+    assert compaction["reason"] == "emergency_tool_distill", (
+        f"expected emergency_tool_distill, got {compaction['reason']!r} — "
+        f"emergency pass did not fire; budget={packet['promptBudget']['estimatedTotalTokens']}"
+    )
+    assert packet["blocked"] is False, "emergency distill should keep packet below hard threshold"
+    # Verify working memory tool results are distilled stubs, not raw blobs
+    tool_results_in_window = [
+        m for m in packet["workingMemoryMessages"] if str(m.get("role") or "") == "toolResult"
+    ]
+    assert tool_results_in_window, "expected tool results in working memory"
+    for msg in tool_results_in_window:
+        content = str(msg.get("content") or "")
+        assert content.startswith("[tool result distilled"), (
+            f"tool result not distilled in emergency window: {content[:80]!r}"
+        )
+
+
 def test_extract_text_adjacent_duplicate_collapse() -> None:
     # Regression: adjacent identical text items must be collapsed; non-adjacent repeats preserved.
     reply = "pong\nWant to try spawning them as subagents instead?"
@@ -425,4 +508,7 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp_seven:
         test_persisted_session_store_exposes_source_owned_report_fields_end_to_end(Path(tmp_seven))
     test_extract_text_adjacent_duplicate_collapse()
+    test_prompt_budget_large_tool_output_not_underestimated()
+    with tempfile.TemporaryDirectory() as tmp_eight:
+        test_emergency_tool_distill_fires_when_compacted_window_still_oversized(Path(tmp_eight))
     print("test_source_owned_context_engine: PASS")
