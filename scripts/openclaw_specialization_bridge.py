@@ -10,6 +10,16 @@ import sys
 
 DEFAULT_BUNDLE = Path.home() / ".npm-global/lib/node_modules/openclaw/dist/auth-profiles-iXW75sRj.js"
 DEFAULT_BOOTSTRAP_HANDLER = Path.home() / ".npm-global/lib/node_modules/openclaw/dist/bundled/bootstrap-extra-files/handler.js"
+# SearXNG patches must be applied to ALL bundles that contain createWebSearchTool,
+# not just auth-profiles. The gateway loads different bundles for different code paths
+# (reply-*.js for WebSocket agent turns, discord-*.js for Discord turns, etc.).
+SEARXNG_EXTRA_BUNDLES = [
+    "reply-BEN3KNDZ.js",
+    "discord-BGqJ05Bl.js",
+    "config-CmS8VEM4.js",
+    "model-selection-_2UcLVem.js",
+    "model-selection-7OCRoBDT.js",
+]
 DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[1]
 NETWORK_GUARD_LABEL = "runtime_network_interface_guard"
 
@@ -51,6 +61,84 @@ REPLACEMENTS: tuple[tuple[str, str], ...] = (
         "function pickPrimaryLanIPv4() {\n\tconst nets = os.networkInterfaces();\n\tfor (const name of [\"en0\", \"eth0\"]) {\n\t\tconst entry = nets[name]?.find((n) => n.family === \"IPv4\" && !n.internal);\n\t\tif (entry?.address) return entry.address;\n\t}\n\tfor (const list of Object.values(nets)) {\n\t\tconst entry = list?.find((n) => n.family === \"IPv4\" && !n.internal);\n\t\tif (entry?.address) return entry.address;\n\t}\n}\n",
         "function pickPrimaryLanIPv4() {\n\tlet nets;\n\ttry {\n\t\tnets = os.networkInterfaces();\n\t}\n\tcatch {\n\t\treturn;\n\t}\n\tfor (const name of [\"en0\", \"eth0\"]) {\n\t\tconst entry = nets[name]?.find((n) => n.family === \"IPv4\" && !n.internal);\n\t\tif (entry?.address) return entry.address;\n\t}\n\tfor (const list of Object.values(nets)) {\n\t\tconst entry = list?.find((n) => n.family === \"IPv4\" && !n.internal);\n\t\tif (entry?.address) return entry.address;\n\t}\n}\n",
     ),
+    # --- SearXNG web_search provider patches ---
+    # Patch 1: WEB_SEARCH_PROVIDERS list (config-time validation)
+    (
+        'const WEB_SEARCH_PROVIDERS = [\n\t"brave",\n\t"gemini",\n\t"grok",\n\t"kimi",\n\t"perplexity"\n];',
+        'const WEB_SEARCH_PROVIDERS = [\n\t"brave",\n\t"gemini",\n\t"grok",\n\t"kimi",\n\t"perplexity",\n\t"searxng"\n];',
+    ),
+    # Patch 2: normalizeProvider$1 — accepts "searxng" as a valid configured provider
+    (
+        'if (normalized === "brave" || normalized === "gemini" || normalized === "grok" || normalized === "kimi" || normalized === "perplexity") return normalized;',
+        'if (normalized === "brave" || normalized === "gemini" || normalized === "grok" || normalized === "kimi" || normalized === "perplexity" || normalized === "searxng") return normalized;',
+    ),
+    # Patch 3: envVarsForProvider — maps "searxng" to JARVIS_SEARXNG_URL for config diagnostics
+    (
+        '\tif (provider === "brave") return ["BRAVE_API_KEY"];\n\tif (provider === "gemini") return ["GEMINI_API_KEY"];\n\tif (provider === "grok") return ["XAI_API_KEY"];\n\tif (provider === "kimi") return ["KIMI_API_KEY", "MOONSHOT_API_KEY"];\n\treturn ["PERPLEXITY_API_KEY", "OPENROUTER_API_KEY"];',
+        '\tif (provider === "brave") return ["BRAVE_API_KEY"];\n\tif (provider === "gemini") return ["GEMINI_API_KEY"];\n\tif (provider === "grok") return ["XAI_API_KEY"];\n\tif (provider === "kimi") return ["KIMI_API_KEY", "MOONSHOT_API_KEY"];\n\tif (provider === "searxng") return ["JARVIS_SEARXNG_URL"];\n\treturn ["PERPLEXITY_API_KEY", "OPENROUTER_API_KEY"];',
+    ),
+    # Patch 4: resolveSearchProvider — returns "searxng" when configured or auto-detected from JARVIS_SEARXNG_URL env
+    (
+        '\tif (raw === "perplexity") return "perplexity";\n\tif (raw === "") {\n\t\tif (resolveSearchApiKey(search)) {',
+        '\tif (raw === "perplexity") return "perplexity";\n\tif (raw === "searxng") return "searxng";\n\tif (raw === "") {\n\t\tif (process.env.JARVIS_SEARXNG_URL) {\n\t\t\tlogVerbose("web_search: no provider configured, auto-detected \\"searxng\\" from JARVIS_SEARXNG_URL");\n\t\t\treturn "searxng";\n\t\t}\n\t\tif (resolveSearchApiKey(search)) {',
+    ),
+    # Patch 5: missingSearchKeyPayload — error message when JARVIS_SEARXNG_URL not set
+    (
+        '\treturn {\n\t\terror: "missing_perplexity_api_key",\n\t\tmessage: "web_search (perplexity) needs an API key. Set PERPLEXITY_API_KEY or OPENROUTER_API_KEY in the Gateway environment, or configure tools.web.search.perplexity.apiKey.",\n\t\tdocs: "https://docs.openclaw.ai/tools/web"\n\t};\n}',
+        '\tif (provider === "searxng") return {\n\t\terror: "missing_searxng_url",\n\t\tmessage: "web_search (searxng) requires JARVIS_SEARXNG_URL to be set in the Gateway environment (e.g. http://localhost:8888).",\n\t\tdocs: "https://docs.openclaw.ai/tools/web"\n\t};\n\treturn {\n\t\terror: "missing_perplexity_api_key",\n\t\tmessage: "web_search (perplexity) needs an API key. Set PERPLEXITY_API_KEY or OPENROUTER_API_KEY in the Gateway environment, or configure tools.web.search.perplexity.apiKey.",\n\t\tdocs: "https://docs.openclaw.ai/tools/web"\n\t};\n}',
+    ),
+    # Patch 6: apiKey resolution in execute — reuses the apiKey slot to carry the SearXNG URL
+    (
+        'const apiKey = provider === "perplexity" ? perplexityRuntime?.apiKey : provider === "grok" ? resolveGrokApiKey(grokConfig) : provider === "kimi" ? resolveKimiApiKey(kimiConfig) : provider === "gemini" ? resolveGeminiApiKey(geminiConfig) : resolveSearchApiKey(search);\n\t\t\tif (!apiKey) return jsonResult(missingSearchKeyPayload(provider));',
+        'const apiKey = provider === "perplexity" ? perplexityRuntime?.apiKey : provider === "grok" ? resolveGrokApiKey(grokConfig) : provider === "kimi" ? resolveKimiApiKey(kimiConfig) : provider === "gemini" ? resolveGeminiApiKey(geminiConfig) : provider === "searxng" ? (process.env.JARVIS_SEARXNG_URL || (search && typeof search === "object" && search.searxng && typeof search.searxng === "object" ? String(search.searxng.url || "") : "") || "") : resolveSearchApiKey(search);\n\t\t\tif (!apiKey) return jsonResult(missingSearchKeyPayload(provider));',
+    ),
+    # Patch 7: tool description — adds SearXNG description before brave/llm-context fallback
+    (
+        ': braveMode === "llm-context" ? "Search the web using Brave Search LLM Context API. Returns pre-extracted page content (text chunks, tables, code blocks) optimized for LLM grounding." : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.",',
+        ': provider === "searxng" ? "Search the web using SearXNG (local self-hosted meta-search). Returns titles, URLs, and snippets from the configured SearXNG instance." : braveMode === "llm-context" ? "Search the web using Brave Search LLM Context API. Returns pre-extracted page content (text chunks, tables, code blocks) optimized for LLM grounding." : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.",',
+    ),
+    # Patch 8: runWebSearch dispatch — SearXNG HTTP handler inserted before the "not brave" throw
+    (
+        '\tif (params.provider !== "brave") throw new Error("Unsupported web search provider.");\n\tif (effective',
+        '\tif (params.provider === "searxng") {\n'
+        '\t\tconst searxngBaseUrl = params.apiKey.replace(/\\/$/, "");\n'
+        '\t\tconst searchUrl = new URL(searxngBaseUrl + "/search");\n'
+        '\t\tsearchUrl.searchParams.set("q", params.query);\n'
+        '\t\tsearchUrl.searchParams.set("format", "json");\n'
+        '\t\tconst count = params.count ?? DEFAULT_SEARCH_COUNT;\n'
+        '\t\tconst mapped = await withTrustedWebSearchEndpoint({\n'
+        '\t\t\turl: searchUrl.toString(),\n'
+        '\t\t\ttimeoutSeconds: params.timeoutSeconds,\n'
+        '\t\t\tinit: { method: "GET", headers: { "Accept": "application/json" } }\n'
+        '\t\t}, async (res) => {\n'
+        '\t\t\tif (!res.ok) {\n'
+        '\t\t\t\tconst detail = (await readResponseText(res, { maxBytes: 64e3 })).text;\n'
+        '\t\t\t\tthrow new Error(`SearXNG search error (${res.status}): ${detail || res.statusText}`);\n'
+        '\t\t\t}\n'
+        '\t\t\tconst data = await res.json();\n'
+        '\t\t\treturn (Array.isArray(data.results) ? data.results : []).slice(0, count).map((entry) => ({\n'
+        '\t\t\t\ttitle: entry.title ? wrapWebContent(entry.title, "web_search") : "",\n'
+        '\t\t\t\turl: entry.url ?? "",\n'
+        '\t\t\t\tdescription: entry.content ? wrapWebContent(entry.content, "web_search") : "",\n'
+        '\t\t\t\tpublished: entry.publishedDate || void 0,\n'
+        '\t\t\t\tsiteName: entry.engine || void 0\n'
+        '\t\t\t}));\n'
+        '\t\t});\n'
+        '\t\tconst payload = {\n'
+        '\t\t\tquery: params.query,\n'
+        '\t\t\tprovider: params.provider,\n'
+        '\t\t\tcount: mapped.length,\n'
+        '\t\t\ttookMs: Date.now() - start,\n'
+        '\t\t\texternalContent: { untrusted: true, source: "web_search", provider: params.provider, wrapped: true },\n'
+        '\t\t\tresults: mapped\n'
+        '\t\t};\n'
+        '\t\twriteCache(SEARCH_CACHE, cacheKey, payload, params.cacheTtlMs);\n'
+        '\t\treturn payload;\n'
+        '\t}\n'
+        '\tif (params.provider !== "brave") throw new Error("Unsupported web search provider.");\n'
+        '\tif (effective',
+    ),
+    # --- end SearXNG patches ---
     (
         'async function applyBootstrapHookOverrides(params) {\n\tconst sessionKey = params.sessionKey ?? params.sessionId ?? "unknown";\n\tconst agentId = params.agentId ?? (params.sessionKey ? resolveAgentIdFromSessionKey(params.sessionKey) : void 0);\n\tconst event = createInternalHookEvent("agent", "bootstrap", sessionKey, {\n\t\tworkspaceDir: params.workspaceDir,\n\t\tbootstrapFiles: params.files,\n\t\tcfg: params.config,\n\t\tsessionKey: params.sessionKey,\n\t\tsessionId: params.sessionId,\n\t\tagentId\n\t});\n\tawait triggerInternalHook(event);\n\tconst updated = event.context.bootstrapFiles;\n\treturn Array.isArray(updated) ? updated : params.files;\n}',
         'async function applyBootstrapHookOverrides(params) {\n\tconst sessionKey = params.sessionKey ?? params.sessionId ?? "unknown";\n\tconst agentId = params.agentId ?? (params.sessionKey ? resolveAgentIdFromSessionKey(params.sessionKey) : void 0);\n\tconst event = createInternalHookEvent("agent", "bootstrap", sessionKey, {\n\t\tworkspaceDir: params.workspaceDir,\n\t\tbootstrapFiles: params.files,\n\t\tcfg: params.config,\n\t\tsessionKey: params.sessionKey,\n\t\tsessionId: params.sessionId,\n\t\tagentId\n\t});\n\tconst originalFiles = event.context.bootstrapFiles;\n\tawait triggerInternalHook(event);\n\tif (event.context.bootstrapFiles === originalFiles) try {\n\t\tconst bootstrapExtraFilesModule = await import("./bundled/bootstrap-extra-files/handler.js");\n\t\tconst bootstrapExtraFilesHook = typeof bootstrapExtraFilesModule?.default === "function" ? bootstrapExtraFilesModule.default : null;\n\t\tif (bootstrapExtraFilesHook) await bootstrapExtraFilesHook(event);\n\t} catch {}\n\tconst updated = event.context.bootstrapFiles;\n\treturn Array.isArray(updated) ? updated : params.files;\n}',
@@ -239,7 +327,11 @@ def _check_bundle_state(text: str) -> dict[str, bool]:
         and "if (event.context.bootstrapFiles === originalFiles) try {" in text,
         "session_report_bindings": "async function syncSessionReportToBindings" in text
         and "sessionId: queued.run.sessionId" in text
-        and "sessionId: followupRun.run.sessionId" in text
+        and "sessionId: followupRun.run.sessionId" in text,
+        "searxng_web_search_provider": '"searxng"\n];' in text
+        and 'if (raw === "searxng") return "searxng";' in text
+        and 'if (params.provider === "searxng") {\n\t\tconst searxngBaseUrl' in text
+        and 'provider === "searxng" ? (process.env.JARVIS_SEARXNG_URL' in text,
     }
 
 
@@ -325,6 +417,148 @@ def _apply_session_report_binding_patch(text: str) -> tuple[str, bool]:
     return text, changed
 
 
+def _searxng_only_replacements() -> list[tuple[str, str]]:
+    """Return only the SearXNG-specific REPLACEMENTS (patches 1-8)."""
+    # These are the replacements from REPLACEMENTS that contain "searxng" in their new text.
+    return [(old, new) for old, new in REPLACEMENTS if "searxng" in new.lower()]
+
+
+def _apply_searxng_to_extra_bundles(dist_dir: Path, *, apply: bool) -> dict[str, dict[str, bool]]:
+    """Apply SearXNG patches to all extra bundles that contain createWebSearchTool.
+
+    Result keys per bundle:
+      bundle_found          – file exists on disk
+      has_web_search_tool   – bundle contains createWebSearchTool (only patched if True)
+      searxng_patched       – SearXNG provider patch is present in the bundle
+    """
+    results: dict[str, dict[str, bool]] = {}
+    searxng_patches = _searxng_only_replacements()
+    for bname in SEARXNG_EXTRA_BUNDLES:
+        bpath = dist_dir / bname
+        if not bpath.exists():
+            results[bname] = {"bundle_found": False, "has_web_search_tool": False, "searxng_patched": False}
+            continue
+        text = bpath.read_text(encoding="utf-8")
+        has_wst = "createWebSearchTool" in text
+        if not has_wst:
+            results[bname] = {"bundle_found": True, "has_web_search_tool": False, "searxng_patched": False}
+            continue
+        is_patched = 'if (raw === "searxng") return "searxng";' in text and "JARVIS_SEARXNG_URL" in text
+        if is_patched or not apply:
+            results[bname] = {"bundle_found": True, "has_web_search_tool": True, "searxng_patched": is_patched}
+            continue
+        changed = False
+        for old, new in searxng_patches:
+            if new in text:
+                continue
+            if old in text:
+                text = text.replace(old, new, 1)
+                changed = True
+        if changed:
+            bpath.write_text(text, encoding="utf-8")
+        results[bname] = {
+            "bundle_found": True,
+            "has_web_search_tool": True,
+            "searxng_patched": 'if (raw === "searxng") return "searxng";' in text and "JARVIS_SEARXNG_URL" in text,
+        }
+    return results
+
+
+def _extra_bundles_fully_patched(results: dict[str, dict[str, bool]]) -> bool:
+    """True iff every found bundle that contains createWebSearchTool has the SearXNG patch."""
+    for checks in results.values():
+        if checks.get("bundle_found") and checks.get("has_web_search_tool") and not checks.get("searxng_patched"):
+            return False
+    return True
+
+
+def _extra_bundle_status(checks: dict[str, bool]) -> str:
+    """Single-word status label for operator output."""
+    if not checks.get("bundle_found"):
+        return "missing-file"
+    if not checks.get("has_web_search_tool"):
+        return "no-web-search-tool"
+    return "ok" if checks.get("searxng_patched") else "unpatched"
+
+
+def _discover_unregistered_web_search_bundles(dist_dir: Path, skip_names: set[str]) -> list[str]:
+    """Scan dist_dir for JS bundles that contain createWebSearchTool but are not in skip_names.
+
+    Used post-upgrade to detect newly hashed bundles that need to be added to
+    SEARXNG_EXTRA_BUNDLES in this script.  Only reads files ≥10 KB to skip stubs.
+    """
+    found: list[str] = []
+    try:
+        for p in sorted(dist_dir.glob("*.js")):
+            if p.name in skip_names:
+                continue
+            try:
+                if p.stat().st_size < 10_000:
+                    continue
+                text = p.read_text(encoding="utf-8", errors="ignore")
+                if "createWebSearchTool" in text:
+                    found.append(p.name)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return found
+
+
+def _smoke_check_searxng(base_url: str | None = None) -> dict[str, object]:
+    """Bounded SearXNG reachability check: GET /healthz then GET /search?q=test&format=json.
+
+    Returns a dict with 'ok' (bool) and diagnostic fields.  Safe to call even if
+    SearXNG is not configured (returns ok=False with an 'error' key).
+    """
+    import json as _json
+    import os as _os
+    import time as _time
+    import urllib.error as _urlerr  # noqa: F401
+    import urllib.parse as _urlparse
+    import urllib.request as _urlreq
+
+    url = (base_url or _os.environ.get("JARVIS_SEARXNG_URL", "")).rstrip("/")
+    if not url:
+        return {"ok": False, "error": "JARVIS_SEARXNG_URL not set and no base_url supplied"}
+
+    result: dict[str, object] = {"base_url": url}
+
+    try:
+        t0 = _time.monotonic()
+        with _urlreq.urlopen(f"{url}/healthz", timeout=3) as resp:
+            result["healthz_status"] = resp.status
+            result["healthz_ms"] = int((_time.monotonic() - t0) * 1000)
+            result["healthz_ok"] = resp.status == 200
+    except Exception as exc:
+        result["healthz_ok"] = False
+        result["healthz_error"] = str(exc)
+        result["ok"] = False
+        return result
+
+    if not result.get("healthz_ok"):
+        result["ok"] = False
+        return result
+
+    try:
+        qs = _urlparse.urlencode({"q": "test", "format": "json"})
+        t0 = _time.monotonic()
+        with _urlreq.urlopen(f"{url}/search?{qs}", timeout=5) as resp:
+            data = _json.loads(resp.read())
+            result["search_status"] = resp.status
+            result["search_ms"] = int((_time.monotonic() - t0) * 1000)
+            result["search_result_count"] = len(data.get("results", []))
+            result["search_ok"] = resp.status == 200
+    except Exception as exc:
+        result["search_ok"] = False
+        result["search_error"] = str(exc)
+        result["ok"] = False
+        return result
+
+    result["ok"] = bool(result.get("healthz_ok") and result.get("search_ok"))
+    return result
+
+
 def _apply_handler_replacement(text: str) -> tuple[str, bool]:
     if "resolveAgentBootstrapOverlayFiles" in text:
         return text, False
@@ -342,11 +576,19 @@ def _backup(target_path: Path) -> Path:
     return backup_dir
 
 
+def _print_smoke_result(smoke: dict[str, object]) -> None:
+    status = "ok" if smoke.get("ok") else "fail"
+    print(f"smoke-check {status}: searxng")
+    for key, value in smoke.items():
+        print(f"  {key}: {value}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify or reapply the live OpenClaw specialization bridge patch.")
     parser.add_argument("--bundle", type=Path, default=DEFAULT_BUNDLE, help="Path to auth-profiles bundle")
     parser.add_argument("--bootstrap-handler", type=Path, default=DEFAULT_BOOTSTRAP_HANDLER, help="Path to bootstrap-extra-files handler")
     parser.add_argument("--apply", action="store_true", help="Apply the patch in place if missing")
+    parser.add_argument("--smoke-check", action="store_true", dest="smoke_check", help="Run a bounded SearXNG reachability check (GET /healthz + /search) after verifying patches")
     args = parser.parse_args()
 
     bundle_path = args.bundle.expanduser().resolve()
@@ -362,22 +604,51 @@ def main() -> int:
     original_handler = handler_path.read_text(encoding="utf-8")
     bundle_checks = _check_bundle_state(original_bundle)
     handler_checks = _check_handler_state(original_handler)
-    if all(bundle_checks.values()) and all(handler_checks.values()):
+    dist_dir = bundle_path.parent
+    extra_results = _apply_searxng_to_extra_bundles(dist_dir, apply=args.apply)
+
+    # Warn about bundles introduced by an npm upgrade that are not yet in SEARXNG_EXTRA_BUNDLES.
+    skip_names: set[str] = {bundle_path.name} | set(SEARXNG_EXTRA_BUNDLES)
+    unregistered = _discover_unregistered_web_search_bundles(dist_dir, skip_names)
+    if unregistered:
+        print(f"warn: {len(unregistered)} unregistered bundle(s) with createWebSearchTool found — add to SEARXNG_EXTRA_BUNDLES:", file=sys.stderr)
+        for bname in unregistered:
+            print(f"  {bname}", file=sys.stderr)
+
+    all_main_ok = all(bundle_checks.values()) and all(handler_checks.values())
+    all_extra_ok = _extra_bundles_fully_patched(extra_results)
+
+    if all_main_ok and all_extra_ok:
         print(f"ok: {bundle_path}")
         for key, value in bundle_checks.items():
             print(f"  {key}: {value}")
         print(f"ok: {handler_path}")
         for key, value in handler_checks.items():
             print(f"  {key}: {value}")
+        for bname, checks in extra_results.items():
+            print(f"searxng-extra {_extra_bundle_status(checks)}: {dist_dir / bname}")
+            for key, value in checks.items():
+                print(f"  {key}: {value}")
+        if args.smoke_check:
+            smoke = _smoke_check_searxng()
+            _print_smoke_result(smoke)
+            return 0 if smoke.get("ok") else 5
         return 0
 
     if not args.apply:
-        print(f"missing patch bits: {bundle_path}", file=sys.stderr)
-        for key, value in bundle_checks.items():
-            print(f"  {key}: {value}", file=sys.stderr)
-        print(f"missing patch bits: {handler_path}", file=sys.stderr)
-        for key, value in handler_checks.items():
-            print(f"  {key}: {value}", file=sys.stderr)
+        if not all_main_ok:
+            print(f"missing patch bits: {bundle_path}", file=sys.stderr)
+            for key, value in bundle_checks.items():
+                print(f"  {key}: {value}", file=sys.stderr)
+            print(f"missing patch bits: {handler_path}", file=sys.stderr)
+            for key, value in handler_checks.items():
+                print(f"  {key}: {value}", file=sys.stderr)
+        if not all_extra_ok:
+            for bname, checks in extra_results.items():
+                if checks.get("bundle_found") and checks.get("has_web_search_tool") and not checks.get("searxng_patched"):
+                    print(f"unpatched searxng-extra: {dist_dir / bname}", file=sys.stderr)
+                    for key, value in checks.items():
+                        print(f"  {key}: {value}", file=sys.stderr)
         return 1
 
     updated_bundle, bundle_changed = _apply_bundle_replacements(original_bundle)
@@ -403,7 +674,16 @@ def main() -> int:
         print(f"  {key}: {value}")
     for key, value in handler_checks.items():
         print(f"  {key}: {value}")
-    return 0 if all(bundle_checks.values()) and all(handler_checks.values()) else 4
+    for bname, checks in extra_results.items():
+        print(f"searxng-extra {_extra_bundle_status(checks)}: {dist_dir / bname}")
+        for key, value in checks.items():
+            print(f"  {key}: {value}")
+    if args.smoke_check:
+        smoke = _smoke_check_searxng()
+        _print_smoke_result(smoke)
+        if not smoke.get("ok"):
+            return 5
+    return 0 if all(bundle_checks.values()) and all(handler_checks.values()) and _extra_bundles_fully_patched(extra_results) else 4
 
 
 if __name__ == "__main__":
