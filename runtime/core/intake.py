@@ -69,6 +69,10 @@ def infer_task_type(normalized_request: str) -> str:
                 return True
         return False
 
+    # Browser check runs before quant/code because the execution modality
+    # (browser_backend) is more specific than a content-domain hint like "nq".
+    if has_any("browse", "browser", "navigate", "webpage", "website", "crawl", "scrape", "screenshot"):
+        return "browser"
     if has_any("python", "code", "bug", "patch", "refactor", "script", "function", "test"):
         return "code"
     if has_any("nq", "quant", "trading", "prop account", "strategy", "backtest"):
@@ -191,6 +195,19 @@ def create_task_from_message(
         actor=user,
         lane=lane,
     )
+
+    # --- Browser tasks bypass LLM model routing: PinchTab needs no model ---
+    if task_type == "browser":
+        from runtime.core.browser_task import create_browser_task_from_text
+        return create_browser_task_from_text(
+            text=parsed.normalized_request,
+            actor=user,
+            lane=lane,
+            source_channel=channel,
+            source_message_id=message_id,
+            parent_task_id=parent_task_id,
+            root=root_path,
+        )
 
     task_id = new_id("task")
     try:
