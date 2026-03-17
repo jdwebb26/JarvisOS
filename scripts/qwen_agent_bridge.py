@@ -39,7 +39,7 @@ def _strip_tool_calls(text: str) -> str:
 def _append_bridge_log(msg: str) -> None:
     log_path = os.environ.get("JARVIS_QWEN_BRIDGE_LOG", "/tmp/qwen_acp_bridge.log")
     try:
-        ts = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{ts}] {msg}\n")
     except Exception:
