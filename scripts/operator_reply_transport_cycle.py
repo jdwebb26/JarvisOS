@@ -16,7 +16,32 @@ from scripts.operator_handoff_pack import build_operator_handoff_pack
 from scripts.operator_outbound_prompt import build_operator_outbound_prompt
 from scripts.operator_reply_ack import build_operator_reply_ack
 from scripts.operator_reply_ingress_runner import run_reply_ingress_batch
-from scripts.operator_triage_support import save_reply_transport_cycle_record
+from scripts.operator_triage_support import (
+    load_current_action_pack_summary,
+    save_reply_transport_cycle_record,
+)
+
+
+def _ensure_fresh_pack_and_inbox(root: Path, *, limit: int) -> dict[str, object]:
+    """Rebuild the action pack and decision inbox if the current pack is expired/invalid.
+
+    Returns metadata about whether a refresh occurred and the resulting pack status.
+    """
+    summary = load_current_action_pack_summary(root)
+    if summary.get("status") == "valid":
+        return {"refreshed": False, "prior_status": "valid", "new_pack_id": summary.get("action_pack_id")}
+
+    prior_status = summary.get("status", "unknown")
+    from scripts.operator_checkpoint_action_pack import resolve_action_pack
+
+    pack, _path, validation, _error = resolve_action_pack(root, limit=limit, allow_rebuild=True)
+    new_pack_id = (pack or {}).get("action_pack_id")
+
+    from scripts.operator_decision_inbox import build_operator_decision_inbox
+
+    build_operator_decision_inbox(root, limit=limit)
+
+    return {"refreshed": True, "prior_status": prior_status, "new_pack_id": new_pack_id, "resolution": validation.get("resolution")}
 
 
 def run_operator_reply_transport_cycle(
@@ -30,6 +55,7 @@ def run_operator_reply_transport_cycle(
     refresh_handoff: bool,
 ) -> tuple[dict[str, object], int]:
     started_at = now_iso()
+    pack_refresh = _ensure_fresh_pack_and_inbox(root, limit=limit)
     outbound = build_operator_outbound_prompt(root, limit=min(limit, 5))
     ingress_payload, ingress_exit = run_reply_ingress_batch(
         root,
@@ -54,6 +80,7 @@ def run_operator_reply_transport_cycle(
         "reply_ack_path": ack["json_path"],
         "handoff_refreshed": refresh_handoff,
         "handoff_path": None if handoff is None else handoff["json_path"],
+        "pack_refresh": pack_refresh,
         "outbound_prompt_pack_id": (outbound.get("pack") or {}).get("pack_id"),
         "reply_ack_result_kind": ((ack.get("pack") or {}).get("latest_reply_received") or {}).get("result_kind"),
         "attempted_count": (ingress_payload.get("run") or {}).get("attempted_count", 0),

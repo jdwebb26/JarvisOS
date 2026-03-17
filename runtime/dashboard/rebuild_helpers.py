@@ -21,6 +21,63 @@ from runtime.flowstate.index_builder import build_flowstate_index
 from runtime.gateway.review_inbox import build_review_inbox
 
 
+def refresh_state_export(root: Path) -> dict:
+    """Lightweight refresh: rebuild only the state_export read-model log.
+
+    Use this after provenance ingestion (or similar narrow writes) where a full
+    rebuild_all_outputs is unnecessary.  Returns the written summary dict.
+    """
+    (root / "state" / "logs").mkdir(parents=True, exist_ok=True)
+
+    state_export = build_state_export(root)
+    tasks = _load_jsons(root / "state" / "tasks")
+    reviews = _load_jsons(root / "state" / "reviews")
+    approvals = _load_jsons(root / "state" / "approvals")
+    artifacts = _load_jsons(root / "state" / "artifacts")
+    outputs = _load_jsons(root / "workspace" / "out")
+    flowstate_sources = _load_flowstate_source_records(root / "state" / "flowstate_sources")
+
+    summary = {
+        "counts": {
+            "tasks": len(tasks),
+            "reviews": len(reviews),
+            "approvals": len(approvals),
+            "artifacts": len(artifacts),
+            "outputs": len(outputs),
+            "flowstate_sources": len(flowstate_sources),
+        },
+        "task_status_counts": {},
+        "task_lifecycle_counts": state_export.get("task_lifecycle_counts", {}),
+        "review_status_counts": {},
+        "approval_status_counts": {},
+        "artifact_lifecycle_counts": state_export.get("artifact_lifecycle_counts", {}),
+        "output_status_counts": state_export.get("output_status_counts", {}),
+        "flowstate_processing_counts": {},
+    }
+
+    for task in tasks:
+        status = normalize_status_name(task.get("status", "unknown"))
+        summary["task_status_counts"][status] = summary["task_status_counts"].get(status, 0) + 1
+
+    for review in reviews:
+        status = review.get("status", "unknown")
+        summary["review_status_counts"][status] = summary["review_status_counts"].get(status, 0) + 1
+
+    for approval in approvals:
+        status = approval.get("status", "unknown")
+        summary["approval_status_counts"][status] = summary["approval_status_counts"].get(status, 0) + 1
+
+    for source in flowstate_sources:
+        status = source.get("processing_status", "unknown")
+        summary["flowstate_processing_counts"][status] = summary["flowstate_processing_counts"].get(status, 0) + 1
+
+    (root / "state" / "logs" / "state_export.json").write_text(
+        json.dumps(summary, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return summary
+
+
 def rebuild_all_outputs(root: Path) -> None:
     (root / "state" / "logs").mkdir(parents=True, exist_ok=True)
     build_flowstate_index(root)

@@ -4341,9 +4341,63 @@ def compare_control_plane_checkpoints(
         if other is not None and other.get("control_plane_checkpoint_id") == current.get("control_plane_checkpoint_id"):
             other = rows[1] if len(rows) > 1 else None
     payload = compare_control_plane_checkpoint_records(current, other)
-    latest_path = triage_logs_dir(root) / "operator_compare_control_plane_checkpoints_latest.json"
+    logs_dir = triage_logs_dir(root)
+    latest_path = logs_dir / "operator_compare_control_plane_checkpoints_latest.json"
     latest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    # Preserve compare history with a timestamped copy alongside latest.
+    ts = now_iso().replace(":", "").replace("+", "p").replace("-", "")
+    history_path = logs_dir / f"operator_compare_control_plane_checkpoints_{ts}.json"
+    history_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return payload
+
+
+def _compare_history_paths(root: Path) -> list[Path]:
+    """Return timestamped compare-history files sorted oldest-first."""
+    logs_dir = root / "state" / "logs"
+    if not logs_dir.exists():
+        return []
+    prefix = "operator_compare_control_plane_checkpoints_"
+    paths = [
+        p for p in sorted(logs_dir.glob(f"{prefix}*.json"))
+        if p.name != "operator_compare_control_plane_checkpoints_latest.json"
+    ]
+    return paths
+
+
+def prune_control_plane_checkpoints(root: Path, *, keep: int = 30) -> dict[str, Any]:
+    """Delete oldest checkpoint records beyond *keep*. Returns summary."""
+    rows = list_control_plane_checkpoints(root)  # newest-first
+    to_delete = rows[keep:]
+    deleted: list[str] = []
+    ckpt_dir = operator_control_plane_checkpoints_dir(root)
+    for row in to_delete:
+        ckpt_id = row.get("control_plane_checkpoint_id", "")
+        path = ckpt_dir / f"{ckpt_id}.json"
+        if path.exists():
+            path.unlink()
+            deleted.append(ckpt_id)
+    return {
+        "total_before": len(rows),
+        "kept": min(len(rows), keep),
+        "deleted_count": len(deleted),
+        "deleted_ids": deleted,
+    }
+
+
+def prune_compare_history(root: Path, *, keep: int = 30) -> dict[str, Any]:
+    """Delete oldest timestamped compare-history log files beyond *keep*."""
+    paths = _compare_history_paths(root)  # oldest-first
+    to_delete = paths[:-keep] if len(paths) > keep else []
+    deleted: list[str] = []
+    for p in to_delete:
+        p.unlink(missing_ok=True)
+        deleted.append(p.name)
+    return {
+        "total_before": len(paths),
+        "kept": min(len(paths), keep),
+        "deleted_count": len(deleted),
+        "deleted_names": deleted,
+    }
 
 
 INCIDENT_SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3}
