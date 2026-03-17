@@ -55,12 +55,35 @@ def _nvidia_adapter(
     )
 
 
+def _bowser_adapter(
+    *,
+    task_id: str,
+    actor: str,
+    lane: str,
+    messages: list[dict[str, str]],
+    routing_decision_id: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Dispatch to the Bowser browser backend adapter."""
+    from runtime.integrations.bowser_adapter import execute_bowser_action
+
+    return execute_bowser_action(
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        messages=messages,
+        routing_decision_id=routing_decision_id,
+        root=root,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Backend registry — add new adapters here.
 # ---------------------------------------------------------------------------
 
 BACKEND_ADAPTERS: dict[str, Callable[..., dict[str, Any]]] = {
     "nvidia_executor": _nvidia_adapter,
+    "browser_backend": _bowser_adapter,
 }
 
 # Backends that are known but not yet wired to an adapter.
@@ -69,7 +92,6 @@ KNOWN_BUT_UNWIRED: set[str] = {
     "hermes_adapter",
     "autoresearch_adapter",
     "memory_spine",
-    "browser_backend",
     "voice_gateway",
     "evaluation_spine",
     "ralph_adapter",

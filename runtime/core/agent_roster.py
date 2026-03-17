@@ -389,7 +389,7 @@ CANONICAL_AGENT_ROSTER: dict[str, dict[str, Any]] = {
         "agent_id": "bowser",
         "display_name": "Bowser",
         "role": "browser automation / tab workflow specialist",
-        "status": "scaffold_only",
+        "status": "beta",
         "kind": "subsystem",
         "responsibilities": [
             "browser actions",
@@ -401,7 +401,7 @@ CANONICAL_AGENT_ROSTER: dict[str, dict[str, Any]] = {
         "routing_intent": {
             "preferred_model": "Qwen3.5-35B",
             "fallbacks": ["Qwen3.5-122B"],
-            "primary_backend": "browser_bridge",
+            "primary_backend": "browser_backend",
         },
         "allowed_tool_categories": ["coordination", "browser", "general"],
         "denied_tool_categories": ["research", "maintenance", "engineering", "review", "creative", "voice"],
@@ -538,7 +538,7 @@ DELEGATION_WIRING = [
     {"from_agent": "archimedes", "to_agent": "anton", "task_classes": ["deploy", "quant", "high_stakes", "approval"], "status": "wired", "source": "runtime/core/decision_router.py", "delegation_method": "decision_router", "note": "decision_router.py escalates high-stakes items to Anton's #review channel."},
     {"from_agent": "jarvis", "to_agent": "scout", "task_classes": ["research", "docs"], "status": "policy_backed", "source": "runtime/core/agent_roster.py", "delegation_method": "message_tool", "note": "Use message tool to Scout's #flowstate channel. Scout has a real live Discord session."},
     {"from_agent": "scout", "to_agent": "hermes", "task_classes": ["research", "quant"], "status": "implemented_but_blocked_by_external_runtime", "source": "runtime/integrations/hermes_adapter.py", "delegation_method": "external_adapter"},
-    {"from_agent": "jarvis", "to_agent": "bowser", "task_classes": ["multimodal", "browser"], "status": "scaffold_only", "source": "config/policies.yaml", "delegation_method": "scaffold_only"},
+    {"from_agent": "jarvis", "to_agent": "bowser", "task_classes": ["multimodal", "browser"], "status": "wired", "source": "runtime/integrations/bowser_adapter.py", "delegation_method": "external_adapter", "note": "Call run_bowser_browser_action() or dispatch to browser_backend via backend_dispatch. Requires allowlisted target_url and execute=True."},
     {"from_agent": "jarvis", "to_agent": "ralph", "task_classes": ["flowstate", "maintenance", "general"], "status": "implemented_but_blocked_by_external_runtime", "source": "runtime/core/agent_roster.py", "delegation_method": "external_adapter"},
 ]
 
