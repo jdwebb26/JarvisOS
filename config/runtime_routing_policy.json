@@ -206,6 +206,25 @@
         "Qwen3.5-122B"
       ],
       "burst_allowed": false
+    },
+    "kitt": {
+      "preferred_provider": "nvidia",
+      "preferred_model": "moonshotai/kimi-k2-5",
+      "preferred_host_role": "primary",
+      "allowed_host_roles": [
+        "primary"
+      ],
+      "forbidden_host_roles": [
+        "burst"
+      ],
+      "allowed_families": [
+        "kimi",
+        "qwen3.5"
+      ],
+      "allowed_fallbacks": [
+        "Qwen3.5-35B"
+      ],
+      "burst_allowed": false
     }
   },
   "channel_overrides": {},
