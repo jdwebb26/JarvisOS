@@ -545,3 +545,19 @@ Merged branch `audit/parallel-runs-2026-03-17` into `main` and pushed to `origin
 Capture one unambiguous HAL ACP production-path proof with either:
 1. Discord-initiated HAL turn that shows ACP/acpx session evidence in logs, or
 2. explicit gateway-side ACP telemetry added to make the dispatch path operator-visible.
+## PinchTab / Bowser live activation — 2026-03-17
+
+- Installed PinchTab locally via npm and enabled `pinchtab.service` as a user service.
+- Verified local health on `127.0.0.1:9867`.
+- Replaced the stub PinchTab backend with a live HTTP client in:
+  - `runtime/browser/backends/pinchtab.py`
+  - `runtime/gateway/browser_action.py`
+- Updated browser gateway tests for live execution behavior.
+- Proved Bowser executed a real browser action through PinchTab:
+  - `action_type=navigate`
+  - `target_url=http://127.0.0.1:9867/health`
+  - result status `ok`
+  - browser trace + evidence snapshots recorded
+- `python3 tests/test_browser_gateway.py` passed.
+- `python3 scripts/validate.py` passed with only the pre-existing `qwen_agent` dependency warning.
+- Current limitation: browser allowlist is still conservative; broader external browsing needs explicit allowlist entries.
