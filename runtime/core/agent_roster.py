@@ -240,7 +240,7 @@ CANONICAL_AGENT_ROSTER: dict[str, dict[str, Any]] = {
         "avoid": ["deep research synthesis", "browser automation", "general operator chat"],
         "task_classes": ["code", "docs", "deploy"],
         "routing_intent": {
-            "preferred_model": "Qwen3.5-35B",
+            "preferred_model": "Qwen3-Coder-30B",
             "fallbacks": ["Qwen3.5-122B"],
             "primary_backend": "qwen_executor",
         },
@@ -291,8 +291,8 @@ CANONICAL_AGENT_ROSTER: dict[str, dict[str, Any]] = {
         "avoid": ["general-purpose user chat", "broad browsing", "creative ideation"],
         "task_classes": ["review", "code", "deploy"],
         "routing_intent": {
-            "preferred_model": "Qwen3.5-122B",
-            "fallbacks": ["Qwen3.5-35B"],
+            "preferred_model": "Qwen3-Coder-Next",
+            "fallbacks": ["Qwen3.5-122B"],
             "primary_backend": "qwen_planner",
         },
         "allowed_tool_categories": ["coordination", "repo_read", "engineering", "general"],

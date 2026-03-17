@@ -25,8 +25,8 @@ def test_agent_roster_summary_exposes_canonical_specialists(tmp_path: Path) -> N
 
     assert summary["agent_count"] == 11
     assert rows["jarvis"]["status"] == "wired"
-    assert rows["hal"]["routing_intent"]["preferred_model"] == "Qwen3.5-35B"
-    assert rows["archimedes"]["routing_intent"]["preferred_model"] == "Qwen3.5-122B"
+    assert rows["hal"]["routing_intent"]["preferred_model"] == "Qwen3-Coder-30B"
+    assert rows["archimedes"]["routing_intent"]["preferred_model"] == "Qwen3-Coder-Next"
     assert rows["anton"]["routing_intent"]["preferred_model"] == "Qwen3.5-122B"
     assert rows["hermes"]["status"] == "implemented_but_blocked_by_external_runtime"
     assert rows["bowser"]["status"] == "scaffold_only"
