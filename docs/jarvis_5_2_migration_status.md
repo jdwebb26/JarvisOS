@@ -43,5 +43,8 @@ These labels describe current repo truth and external-runtime availability. They
 - `deprecated_alias` means the lane exists only as a compatibility/read-model path and should not be treated as the preferred integration surface.
 - These labels should match `extension_lane_status_summary` in status, operator snapshot, state export, and doctor output.
 - The bounded-context / rolling-summary / memory-retrieval policy now has a source-owned runtime implementation in `runtime/gateway/source_owned_context_engine.py`.
-- Live Discord/OpenClaw use still depends on the external runtime wiring that invokes that source-owned engine.
+- Live Discord/OpenClaw use now depends on the external runtime wiring invoking the source-owned engine for:
+  - bounded working memory
+  - dynamic tool exposure
+  - agent-specific skill/bootstrap filtering
 - The canonical source-owned agent roster now lives in `docs/agent_roster.md` and `runtime/core/agent_roster.py`.

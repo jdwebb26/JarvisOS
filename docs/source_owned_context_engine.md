@@ -76,6 +76,22 @@ It replaces the hotfix-only logic with a repo-owned policy layer that can be ins
   - `beforeCount`
   - `afterCount`
 
+## Skill / Bootstrap Policy
+
+- The same source-owned bridge now filters `skillsPrompt` per agent before the final OpenClaw system prompt is assembled.
+- Skill filtering is deny-by-default by agent role:
+  - Jarvis keeps coordination/voice/general skills only
+  - HAL keeps implementation skills
+  - Archimedes and Anton keep reviewer-oriented skills
+  - Hermes and Scout keep research-oriented skills
+  - Bowser keeps browser-only skills
+  - Muse keeps creative skills
+  - Ralph keeps maintenance/overflow skills
+- Operator-visible fields are persisted through:
+  - `systemPromptReport.loadedSkills`
+  - `systemPromptReport.loadedTools`
+  - `systemPromptReport.agentRuntimeLoadout`
+
 ## Forgetting / Distillation Policy
 
 - Distillation happens before model send.
