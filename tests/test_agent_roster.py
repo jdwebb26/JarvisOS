@@ -23,7 +23,7 @@ def test_agent_roster_summary_exposes_canonical_specialists(tmp_path: Path) -> N
     summary = build_agent_roster_summary(root=tmp_path)
     rows = {row["agent_id"]: row for row in summary["rows"]}
 
-    assert summary["agent_count"] == 10
+    assert summary["agent_count"] == 11
     assert rows["jarvis"]["status"] == "wired"
     assert rows["hal"]["routing_intent"]["preferred_model"] == "Qwen3.5-35B"
     assert rows["archimedes"]["routing_intent"]["preferred_model"] == "Qwen3.5-122B"
@@ -242,7 +242,7 @@ def test_status_snapshot_and_export_surface_agent_roster_summary(tmp_path: Path)
     snapshot = build_operator_snapshot(tmp_path)
     export = build_state_export(tmp_path)
 
-    assert status["agent_roster_summary"]["agent_count"] == 10
+    assert status["agent_roster_summary"]["agent_count"] == 11
     assert snapshot["agent_roster_summary"]["review_hierarchy"]["technical_reviewer"] == "archimedes"
     assert export["agent_roster_summary"]["review_hierarchy"]["supreme_reviewer"] == "anton"
 

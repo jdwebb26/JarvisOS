@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 
 from runtime.core.task_queue import list_running_tasks, pick_next_queued_task
 from runtime.core.task_runtime import checkpoint_task, complete_task, fail_task, start_task
+from runtime.executor.backend_dispatch import dispatch_to_backend, has_backend_adapter
 
 
 AUTO_COMPLETE_TYPES = {"general", "docs"}
@@ -81,6 +82,48 @@ def execute_once(*, root: Path, actor: str, lane: str, allow_parallel: bool) -> 
         root=root,
     )
 
+    # --- Backend-aware dispatch: if the task's execution_backend has a wired
+    # adapter (e.g. nvidia_executor), dispatch to it directly instead of
+    # falling through to the generic type-based decision logic.
+    execution_backend = task.get("execution_backend", "")
+    if execution_backend and has_backend_adapter(execution_backend):
+        routing_meta = (task.get("backend_metadata") or {}).get("routing") or {}
+        dispatch_result = dispatch_to_backend(
+            task_id=task["task_id"],
+            actor=actor,
+            lane=lane,
+            execution_backend=execution_backend,
+            messages=[{"role": "user", "content": task.get("normalized_request", "")}],
+            routing_decision_id=routing_meta.get("routing_decision_id"),
+            root=root,
+        )
+        if dispatch_result.get("status") == "completed":
+            finish_result = complete_task(
+                task_id=task["task_id"],
+                actor=actor,
+                lane=lane,
+                final_outcome=f"Backend {execution_backend} completed: {dispatch_result.get('content', '')[:200]}",
+                root=root,
+            )
+        else:
+            error_msg = dispatch_result.get("error", "Unknown backend error")
+            finish_result = fail_task(
+                task_id=task["task_id"],
+                actor=actor,
+                lane=lane,
+                reason=f"Backend {execution_backend} failed: {error_msg}",
+                root=root,
+            )
+        return {
+            "kind": "backend_dispatch",
+            "picked_task": task,
+            "start_result": start_result,
+            "checkpoint_result": checkpoint_result,
+            "dispatch_result": dispatch_result,
+            "finish_result": finish_result,
+        }
+
+    # --- Generic type-based decision for tasks without a wired backend adapter.
     action, message = _decide_executor_action(task)
 
     if action == "completed":

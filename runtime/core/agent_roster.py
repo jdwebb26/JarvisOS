@@ -560,12 +560,14 @@ REVIEW_LANE_SUMMARY = {
 
 # Runtime type per agent.
 # "embedded"  = runs inline inside the OpenClaw process (current live path for all Discord turns).
-# "acp_ready" = this agent is designated as the first ACP harness candidate; activation requires
+# "acp_ready" = this agent is designated as an ACP harness candidate; activation requires
 #               acp.enabled=true in openclaw.json AND per-agent runtime.type="acp" to be set.
-#               Default behaviour is unchanged while acp.enabled=false.
+# "acp"       = ACP is activated for this agent.  The gateway will spawn autonomous coding
+#               sessions via the configured ACP backend when this agent receives work.
+#               Requires the ACP backend dependency (qwen-agent) to be installed.
 AGENT_RUNTIME_TYPES: dict[str, str] = {
     "jarvis":     "embedded",    # must stay embedded — front door and control plane
-    "hal":        "acp_ready",   # first ACP candidate; active only when acp.enabled=true per agent
+    "hal":        "acp",         # ACP activated — task lifecycle proven; bridge needs qwen-agent installed
     "archimedes": "embedded",
     "anton":      "embedded",
     "hermes":     "embedded",    # second ACP candidate; not flipped until HAL is validated
@@ -610,7 +612,7 @@ def get_agent_profile(agent_id: str) -> dict[str, Any]:
 
 
 def get_agent_runtime_type(agent_id: str) -> str:
-    """Return "embedded" or "acp_ready" for the agent.  Falls back to "embedded" for unknowns."""
+    """Return "embedded", "acp_ready", or "acp" for the agent.  Falls back to "embedded" for unknowns."""
     normalized = infer_agent_id(agent_id=agent_id)
     return AGENT_RUNTIME_TYPES.get(normalized, "embedded")
 
@@ -995,6 +997,7 @@ def build_agent_roster_summary(*, root: Optional[Path] = None) -> dict[str, Any]
         else:
             blocked += 1
     acp_ready_count = sum(1 for r in rows if r["runtime_type"] == "acp_ready")
+    acp_active_count = sum(1 for r in rows if r["runtime_type"] == "acp")
     return {
         "schema_version": "v5.2_agent_roster_v2",
         "agent_count": len(rows),
@@ -1002,8 +1005,9 @@ def build_agent_roster_summary(*, root: Optional[Path] = None) -> dict[str, Any]
         "partial_agent_count": partial,
         "blocked_or_scaffold_agent_count": blocked,
         "configured_agent_policy_count": len(configured_agent_policies),
-        "embedded_agent_count": len(rows) - acp_ready_count,
+        "embedded_agent_count": len(rows) - acp_ready_count - acp_active_count,
         "acp_ready_agent_count": acp_ready_count,
+        "acp_active_agent_count": acp_active_count,
         "rows": rows,
         "review_hierarchy": dict(REVIEW_HIERARCHY),
         "delegation_wiring": list(DELEGATION_WIRING),
