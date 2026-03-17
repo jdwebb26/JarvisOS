@@ -287,11 +287,11 @@ def _build_prompt_budget(
     retrieved_text = _retrieved_memory_text(retrieved_items)
     categories = {
         "systemPrompt": {"tokens": estimate_tokens(system_prompt), "chars": len(system_prompt)},
-        "recentConversationTurns": {"tokens": estimate_tokens(recent_chars), "chars": recent_chars},
+        "recentConversationTurns": {"tokens": max(0, (recent_chars + 3) // 4), "chars": recent_chars},
         "toolSchemas": {"tokens": _tool_schema_tokens(tools), "chars": sum(len(json.dumps(tool, sort_keys=True)) for tool in tools)},
         "retrievedMemory": {"tokens": estimate_tokens(retrieved_text), "chars": len(retrieved_text)},
-        "rawToolOutputs": {"tokens": estimate_tokens(tool_output_chars), "chars": tool_output_chars},
-        "metadataWrappers": {"tokens": estimate_tokens(metadata_chars), "chars": metadata_chars},
+        "rawToolOutputs": {"tokens": max(0, (tool_output_chars + 3) // 4), "chars": tool_output_chars},
+        "metadataWrappers": {"tokens": max(0, (metadata_chars + 3) // 4), "chars": metadata_chars},
         "rollingSessionSummary": {"tokens": estimate_tokens(summary_text), "chars": len(summary_text)},
     }
     estimated_total_tokens = sum(int(entry["tokens"]) for entry in categories.values())
@@ -425,6 +425,31 @@ def build_context_packet(
             "reason": "budget" if budget["overSafeThreshold"] else "raw_turn_window",
             "compacted": True,
         }
+        # Emergency pass: if compacted window is still over safe threshold, distill all
+        # remaining tool results. Fires only when recent turns themselves have large outputs.
+        if budget["overSafeThreshold"]:
+            emergency_messages = [
+                {**msg, "content": _distill_tool_result(msg)} if str(msg.get("role") or "") == "toolResult" else msg
+                for msg in recent_messages
+            ]
+            emergency_budget = _build_prompt_budget(
+                system_prompt=system_prompt,
+                recent_messages=emergency_messages,
+                current_prompt=current_prompt,
+                tools=visible_tools,
+                retrieved_episodic=episodic[:1],
+                retrieved_semantic=semantic[:1],
+                rolling_summary=rolling_summary,
+                context_window_tokens=context_window_tokens,
+                raw_user_turn_window=tighter_window,
+                total_user_turns=total_user_turns,
+                distillation=distillation,
+                tool_exposure=tool_exposure,
+            )
+            if not emergency_budget["overHardThreshold"]:
+                recent_messages = emergency_messages
+                budget = emergency_budget
+                compaction["reason"] = "emergency_tool_distill"
     budget["preflightCompaction"] = compaction
     blocked = bool(budget["overHardThreshold"])
     summary_stats = {
