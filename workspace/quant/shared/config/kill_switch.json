@@ -1,0 +1,7 @@
+{
+  "engaged": false,
+  "engaged_at": null,
+  "engaged_by": null,
+  "reason": null,
+  "auto_engage_on_broker_disconnect_seconds": 60
+}

@@ -1,0 +1,9 @@
+{
+  "kitt":       {"default_interval_hours": 2, "notes": "1-4h during market hours, on-demand otherwise"},
+  "atlas":     {"default_interval_hours": 6, "notes": "4-8h batch work"},
+  "fish":      {"default_interval_hours": 8, "notes": "6-12h plus event-triggered"},
+  "sigma":     {"default_interval_hours": null, "notes": "on-demand, triggered by candidates"},
+  "hermes":    {"default_interval_hours": 3, "notes": "2-4h plus on-demand research requests"},
+  "executor":  {"default_interval_hours": null, "notes": "continuous when positions active, else dormant"},
+  "tradefloor":{"default_interval_hours": null, "max_per_6h": 1, "notes": "on-demand only, max 1x/6h"}
+}

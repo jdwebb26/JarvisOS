@@ -1,0 +1,26 @@
+{
+  "hosts": {
+    "NIMO": {
+      "role": "primary_quant_compute",
+      "specs": "128GB RAM, primary GPU",
+      "heavy_job_cap": 2,
+      "ip": "100.70.114.34"
+    },
+    "SonLM": {
+      "role": "secondary_overflow",
+      "specs": "lighter box",
+      "heavy_job_cap": 1,
+      "ip": null
+    }
+  },
+  "global_heavy_job_cap": 3,
+  "lane_placement": {
+    "kitt":       {"primary": "NIMO", "overflow": "cloud"},
+    "atlas":     {"primary": "NIMO", "overflow": "SonLM"},
+    "sigma":     {"primary": "NIMO", "overflow": "cloud"},
+    "fish":      {"primary": "SonLM", "overflow": "cloud"},
+    "hermes":    {"primary": "mixed", "overflow": "either"},
+    "executor":  {"primary": "NIMO", "overflow": null},
+    "tradefloor":{"primary": "strongest_available", "overflow": "cloud"}
+  }
+}

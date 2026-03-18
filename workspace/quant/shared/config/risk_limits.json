@@ -1,0 +1,13 @@
+{
+  "portfolio": {
+    "max_total_exposure": 4,
+    "max_correlated_strategies": 3,
+    "max_total_drawdown": 5000,
+    "concentration_threshold": 0.6
+  },
+  "per_strategy": {
+    "max_position_size": 2,
+    "max_loss_per_trade": 500,
+    "max_drawdown": 2000
+  }
+}
