@@ -120,6 +120,15 @@ def select_backend_for_task(task: Any) -> str:
     if current and current not in {"ralph_adapter", "unassigned", "qwen_executor", "qwen_planner"}:
         return current
 
+    # Lane-locked task types go straight to their default backend.
+    # This prevents keyword scoring from misrouting a creative task
+    # that mentions "trading" or "strategy" to kitt_quant.
+    task_type = (task.task_type or "").lower()
+    if task_type in {"creative"} and task_type in _TYPE_DEFAULTS:
+        backend = _TYPE_DEFAULTS[task_type]
+        log.info("Backend locked by task_type=%s: %s", task_type, backend)
+        return backend
+
     request = (task.normalized_request or task.raw_request or "").lower()
 
     # Keyword scoring — pick the backend with the most keyword hits.
@@ -136,7 +145,6 @@ def select_backend_for_task(task: Any) -> str:
         return best
 
     # Task type default.
-    task_type = (task.task_type or "").lower()
     if task_type in _TYPE_DEFAULTS:
         backend = _TYPE_DEFAULTS[task_type]
         log.info("Backend selected by task_type=%s: %s", task_type, backend)

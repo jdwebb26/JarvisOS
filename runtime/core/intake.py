@@ -56,7 +56,7 @@ def parse_explicit_task(text: str) -> ParsedIntent:
     return ParsedIntent(False, TriggerType.CHAT.value, raw, raw)
 
 
-def infer_task_type(normalized_request: str) -> str:
+def infer_task_type(normalized_request: str, *, channel: str = "") -> str:
     text = normalized_request.lower()
     tokens = set(re.findall(r"[a-z0-9_]+", text))
 
@@ -68,6 +68,19 @@ def infer_task_type(normalized_request: str) -> str:
             elif term in tokens:
                 return True
         return False
+
+    # Lane-aware override: messages from the #muse channel are always creative,
+    # even if they mention trading/market terms (e.g. "design a logo for our
+    # NQ trading dashboard").  This prevents creative prompts from being
+    # misclassified as quant/high_stakes.
+    if channel.lower() in {"muse", "creative"}:
+        return "creative"
+
+    # Explicit creative intent (any channel).
+    if has_any("creative", "poem", "brainstorm", "tagline", "slogan",
+               "marketing copy", "write a story", "brand", "logo",
+               "illustration", "mood board"):
+        return "creative"
 
     # Browser check runs before quant/code because the execution modality
     # (browser_backend) is more specific than a content-domain hint like "nq".
@@ -181,7 +194,7 @@ def create_task_from_message(
             "message": "A matching active task already exists, so no new task was created.",
         }
 
-    task_type = infer_task_type(parsed.normalized_request)
+    task_type = infer_task_type(parsed.normalized_request, channel=channel)
     priority = infer_priority(parsed.normalized_request)
     risk = infer_risk(task_type, parsed.normalized_request)
     normalized_workload_type = normalize_workload_type(
