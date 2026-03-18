@@ -69,6 +69,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Session hygiene**: automatic rotation before context builds for stale sessions
 - **Token budget enforcement**: global budget in `state/token_budgets/`, applied after every Ralph HAL/Archimedes call. 841 tokens tracked from live proof runs. Hard stop blocks task at threshold
 - **Regression scoring**: `scripts/run_regression.py` scores execution traces for output completeness, model drift, token efficiency, routing correctness. Traces recorded from every Ralph HAL/Archimedes call in `state/run_traces/`
+- **#todo intake**: `scripts/todo_intake.py` — submit plain text → task created with `ralph_adapter` backend → Ralph picks up on next cycle → HAL → review → approval. No Jarvis turn needed. Discord event emitted on creation
 
 ### Working (operator tooling)
 - **Runtime profiles**: 5 named profiles (local_only, hybrid, cloud_fast, cloud_smart, degraded). `set` → sync → gateway restart
