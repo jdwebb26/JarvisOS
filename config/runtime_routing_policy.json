@@ -46,7 +46,7 @@
   "agent_policies": {
     "jarvis": {
       "preferred_provider": "qwen",
-      "preferred_model": "Qwen3.5-9B",
+      "preferred_model": "Qwen3.5-35B",
       "preferred_host_role": "primary",
       "allowed_host_roles": [
         "primary"
@@ -58,7 +58,7 @@
         "qwen3.5"
       ],
       "allowed_fallbacks": [
-        "Qwen3.5-35B",
+        "Qwen3.5-9B",
         "Qwen3.5-122B"
       ],
       "burst_allowed": false
