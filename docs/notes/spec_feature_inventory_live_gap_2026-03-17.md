@@ -1204,7 +1204,7 @@ All 31 tests pass (kitt_quant_workflow + kitt_routing + bowser_adapter + browser
 
 | System | Status | Blocker | User action? |
 |---|---|---|---|
-| Discord webhooks | **PARTIAL** | JARVIS ✅ (200), REVIEW ✅ (200), COUNCIL ❌ (404). Per-agent webhooks not yet created. | Yes — create in Discord Server Settings, update `~/.openclaw/secrets.env` |
+| Discord webhooks | **LIVE** | All 12 webhooks HTTP 200 (2026-03-18). Path bug in `load_webhook_url` fixed; Council duplicate in secrets.env resolved. | — |
 | Cadence voice | **BLOCKED (parked)** | RDPSource mic unavailable in WSLg. Daemon retries every 15s. No `cadence_ingress.py` module exists yet. | When Windows audio input passthrough is active |
 | Anthropic/Claude provider | **OFFLINE** | `ANTHROPIC_API_KEY` not set in env. | Set in `~/.openclaw/.env` if needed |
 | Hermes adapter | **BLOCKED** | `hermes_adapter.py` exists but depends on external runtime infra (approval_store, artifact_store, execution_contracts). Status: `implemented_but_blocked_by_external_runtime`. | No — internal |
@@ -1316,8 +1316,8 @@ Full 11-agent roster visible. 9 agents with status files (was 5 before this pass
 
 ### Remaining open items
 
-1. **Discord webhooks (partial)** (user action) — JARVIS ✅ (HTTP 200), REVIEW ✅ (HTTP 200), COUNCIL ❌ (HTTP 404 — deleted). Per-agent webhooks (BOWSER, WORKLOG, HAL, etc.) set to REPLACE_ME. Create in Discord Server Settings and update `~/.openclaw/secrets.env`.
-2. **Discord message formatting** ✅ DONE (2026-03-18) — `_render_status_text()` rewritten for purpose-separated messages. Live proof delivered to #jarvis.
+1. **Discord webhooks** ✅ ALL LIVE (2026-03-18) — all 12 webhooks HTTP 200. Path bug in `load_webhook_url` fixed. Council duplicate in secrets.env resolved.
+2. **Discord message formatting** ✅ DONE (2026-03-18) — emoji-first glanceable format. Live proof delivered.
 3. **ANTHROPIC_API_KEY not set** (user action if needed)
 4. **Cadence mic** (user action when Windows audio passthrough available)
 5. **Archimedes/Anton preferred model load** — investigate LM Studio VRAM config; preferred models (`qwen/qwen3-coder-next`, `qwen3.5-122b-a10b`) return "Operation canceled" on load

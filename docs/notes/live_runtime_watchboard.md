@@ -99,7 +99,7 @@
 - **State dir**: `state/discord_delivery/dlv_*.json`
 - **Mechanism**: reads `discord_outbox/*.json` status=pending, resolves channel_id → JARVIS_DISCORD_WEBHOOK_* env var, POSTs via `dispatch_utils.post_webhook()`, marks delivered/failed/skipped
 - **Timer**: `openclaw-discord-outbox.service` + `.timer` (60s interval, systemd user unit, enabled)
-- **Status**: ✅ LIVE (mechanism proven; all existing webhook URLs in secrets.env are HTTP 403 expired)
+- **Status**: ✅ LIVE (all 12 webhooks proven live 2026-03-18; path bug in `load_webhook_url` fixed)
 
 ### I. Task/review/approval lifecycle emitters (2026-03-17)
 - `task_runtime.set_task_status()` → `emit_event()` + `update_agent_status()` on every transition
@@ -296,7 +296,7 @@
 
 | Item | Why Blocked | Fix |
 |------|-------------|-----|
-| **Discord webhooks (mostly live)** | JARVIS ✅, REVIEW ✅, BOWSER ✅, HAL ✅, KITT ✅, WORKLOG ✅, SCOUT ✅, CADENCE ✅, HERMES ✅, MUSE ✅, QWEN ✅. COUNCIL ❌ (HTTP 404 — deleted webhook). | User: recreate COUNCIL webhook in Discord Server Settings → set `COUNCIL_WEBHOOK_URL` in `~/.openclaw/secrets.env` |
+| ~~Discord webhooks~~ | ✅ ALL LIVE | All 12 webhooks verified HTTP 200 (2026-03-18). Council fixed: duplicate entry in secrets.env shadowed new URL. Path bug in `load_webhook_url` fixed. |
 | Claude agent live calls | `ANTHROPIC_API_KEY=REPLACE_ME` | User sets real key |
 | Hermes external daemon | External service not running | Activate external Hermes service |
 | Ralph autonomy loop | Needs ACP or external runtime | — |
@@ -306,9 +306,8 @@
 
 ## Exact Next Highest-Leverage Tasks
 
-1. **Recreate COUNCIL webhook** — only dead webhook (HTTP 404). User action in Discord Server Settings.
-2. **Set ANTHROPIC_API_KEY** — user action; unblocks Claude agent.
-3. **Hermes daemon activation** — external service prerequisite.
+1. **Set ANTHROPIC_API_KEY** — user action; unblocks Claude agent.
+2. **Hermes daemon activation** — external service prerequisite.
 
 ---
 

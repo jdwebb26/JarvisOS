@@ -55,13 +55,20 @@ def post_webhook(url: str, content: "str | dict[str, Any]") -> dict[str, Any]:
 
 
 def load_webhook_url(env_var: str, root: Path) -> str:
-    """Load webhook URL from env var, falling back to secrets.env / .env files."""
+    """Load webhook URL from env var, falling back to secrets.env / .env files.
+
+    Search order:
+    1. Shell environment variable
+    2. ~/.openclaw/secrets.env
+    3. ~/.openclaw/.env
+    """
     url = os.environ.get(env_var, "").strip()
     if url:
         return url
+    openclaw_root = Path.home() / ".openclaw"
     for env_path in [
-        root.parent.parent / ".openclaw" / "secrets.env",
-        root.parent.parent / ".openclaw" / ".env",
+        openclaw_root / "secrets.env",
+        openclaw_root / ".env",
     ]:
         if env_path.exists():
             for line in env_path.read_text(encoding="utf-8").splitlines():
