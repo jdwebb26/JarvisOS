@@ -41,7 +41,7 @@ class TestLoadNvidiaConfig:
         assert cfg["api_key"] == "nvapi-test-key-123"
         assert cfg["base_url"] == "https://integrate.api.nvidia.com/v1"
         assert cfg["model"] == "moonshotai/kimi-k2.5"
-        assert cfg["timeout"] == (10, 120)
+        assert cfg["timeout"] == (10, 180)
 
     def test_config_from_override(self, monkeypatch):
         from runtime.integrations.nvidia_executor import load_nvidia_config
@@ -326,7 +326,8 @@ class TestExecuteNvidiaChat:
                 root=tmp_path,
             )
 
-        assert result["status"] == "error"
+        assert result["status"] == "transient_error"
+        assert result["transient"] is True
         assert "timeout" in result["error"].lower()
         assert result["request_id"] is not None
         assert result["result_id"] is None
@@ -336,7 +337,7 @@ class TestExecuteNvidiaChat:
         res_files = list(res_dir.glob("*.json"))
         assert len(res_files) == 1
         res_data = json.loads(res_files[0].read_text())
-        assert res_data["status"] == "error"
+        assert res_data["status"] == "transient_error"
         assert res_data["error"]
 
     def test_override_config(self, tmp_path, monkeypatch):

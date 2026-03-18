@@ -38,7 +38,7 @@ NVIDIA_BACKEND_ID = "nvidia_executor"
 
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_MODEL = "moonshotai/kimi-k2.5"
-DEFAULT_TIMEOUT = (10, 120)  # (connect, read) seconds
+DEFAULT_TIMEOUT = (10, 180)  # (connect, read) seconds — 180s read for Kimi K2.5 thinking mode
 
 
 class NvidiaConfigError(Exception):
@@ -237,6 +237,15 @@ def execute_nvidia_chat(
             max_tokens=max_tokens,
         )
     except (NvidiaAPIError, RuntimeError) as exc:
+        err_str = str(exc)
+        error_type = type(exc).__name__
+        status_code = getattr(exc, "status_code", None)
+        # Classify transient vs permanent failures
+        is_transient = (
+            "timeout" in err_str.lower()
+            or "connection" in err_str.lower()
+            or (isinstance(status_code, int) and status_code in (429, 502, 503, 504))
+        )
         record_backend_execution_result(
             backend_execution_request_id=req_record.backend_execution_request_id,
             task_id=task_id,
@@ -246,23 +255,25 @@ def execute_nvidia_chat(
             execution_backend=NVIDIA_BACKEND_ID,
             provider_id="nvidia",
             model_name=cfg["model"],
-            status="error",
+            status="transient_error" if is_transient else "error",
             backend_run_id=backend_run_id,
-            outcome_summary="NVIDIA API call failed",
-            error=str(exc),
+            outcome_summary=f"NVIDIA API {'transient ' if is_transient else ''}failure",
+            error=err_str,
             metadata={
-                "error_type": type(exc).__name__,
-                "status_code": getattr(exc, "status_code", None),
+                "error_type": error_type,
+                "status_code": status_code,
+                "transient": is_transient,
             },
             root=root,
         )
         return {
-            "status": "error",
+            "status": "transient_error" if is_transient else "error",
             "content": "",
             "usage": {},
             "request_id": req_record.backend_execution_request_id,
             "result_id": None,
-            "error": str(exc),
+            "error": err_str,
+            "transient": is_transient,
         }
 
     content = extract_content(response)

@@ -283,8 +283,10 @@ def run_kitt_quant_brief(
 
     brief_text = nvidia_result.get("content", "")
     nvidia_ok = nvidia_result.get("status") == "completed" and bool(brief_text)
+    nvidia_transient = nvidia_result.get("transient", False) or nvidia_result.get("status") == "transient_error"
     if not nvidia_ok:
-        error_parts.append(f"nvidia_error: {nvidia_result.get('error', 'empty response')}")
+        prefix = "nvidia_transient" if nvidia_transient else "nvidia_error"
+        error_parts.append(f"{prefix}: {nvidia_result.get('error', 'empty response')}")
 
     # -----------------------------------------------------------------------
     # Step 5 — Save artifact
@@ -378,6 +380,7 @@ def run_kitt_quant_brief(
         "nvidia_result": nvidia_result,
         "model_used": "moonshotai/kimi-k2.5",
         "error": "; ".join(error_parts) if error_parts else "",
+        "transient": nvidia_transient,
     }
 
 
