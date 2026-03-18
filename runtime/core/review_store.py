@@ -202,7 +202,13 @@ def record_review_verdict(
     )
 
     if verdict == ReviewStatus.APPROVED.value:
-        if task.approval_required:
+        # Ralph-owned tasks: skip task transition. Ralph's cycle handles
+        # the review-approved → waiting_approval step explicitly.
+        # Without this guard, approval_required=False tasks would be
+        # re-queued, causing Ralph to duplicate HAL execution.
+        if task.execution_backend == "ralph_adapter":
+            pass  # verdict saved above; Ralph picks it up on next cycle
+        elif task.approval_required:
             from runtime.core.approval_store import latest_approval_for_task, request_approval
 
             latest_approval = latest_approval_for_task(record.task_id, root=root)
@@ -345,6 +351,25 @@ def record_review_verdict(
                     confidence_score=0.80,
                     root=root_path,
                 )
+    except Exception:
+        pass
+
+    # Learnings write — extract a durable learning from review rejections.
+    # Only fires for REJECTED verdict with a substantive reason. Never raises.
+    try:
+        if verdict == ReviewStatus.REJECTED.value and reason and len(reason.strip()) >= 10:
+            from runtime.core.learnings_store import record_review_rejection_learning
+            task_type = str(task.task_type or "general").strip()
+            # Find the agent who produced the work (requested_by on the review)
+            producer_agent = record.requested_by or ""
+            record_review_rejection_learning(
+                task_id=record.task_id,
+                reviewer=actor,
+                agent_id=producer_agent,
+                task_type=task_type,
+                reason=reason,
+                root=Path(root) if root else ROOT,
+            )
     except Exception:
         pass
 

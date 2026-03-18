@@ -224,6 +224,32 @@
   - Validate: 395/395 pass ✅
 - **Status**: ✅ LIVE
 
+### Q. Learnings ledger system (2026-03-18)
+- **File**: `runtime/core/learnings_store.py` (new)
+- **State**: `state/learnings/global.jsonl` + `state/learnings/agents/<agent>.jsonl`
+- **Purpose**: Lightweight durable ledger for cross-session agent improvement. Stores lessons from task failures, review/approval rejections, operator corrections, environment gotchas. JSONL-backed, append-only, easy to inspect.
+- **Write points wired**:
+  1. `task_runtime._write_task_outcome_memory()` → `record_task_failure_learning()` on FAILED tasks with substantive reason
+  2. `review_store.record_review_verdict()` → `record_review_rejection_learning()` on REJECTED verdicts with reason ≥10 chars
+  3. `approval_store.record_approval_decision()` → `record_approval_rejection_learning()` on REJECTED decisions with reason ≥10 chars
+  4. `record_operator_correction()` — direct write for operator guidance
+  5. `record_learning()` — general-purpose write for any trigger type
+- **Retrieval API**:
+  - `get_learnings_for_agent(agent_id, task_type=, max_results=, min_confidence=)` — agent-scoped, filtered
+  - `compile_learnings_digest(agent_id, task_type=, max_items=)` — compact text for prompt inclusion
+  - `get_recent_learnings(n=)` — global view
+- **Guards**: lessons <10 chars skipped; invalid triggers rejected; confidence clamped 0-1; agent_id sanitized
+- **Proven live** (2026-03-18):
+  - Task failure: `lrn_ae26e19e8703` (hal, code, Docker sandbox timeout) → global.jsonl + agents/hal.jsonl ✅
+  - Operator correction: `lrn_cb13d41f24a2` (PF gate) → global.jsonl + jarvis/hal/archimedes agent ledgers ✅
+  - Environment gotcha: `lrn_e061e9a3fc44` (SearXNG special chars) → global.jsonl + kitt/hermes/scout ✅
+  - `get_learnings_for_agent("hal")` → 2 relevant learnings (own failure + operator correction via applies_to) ✅
+  - `compile_learnings_digest("hal")` → concise 3-line digest ✅
+  - Cross-agent filtering: scout learning NOT visible to hal (correct scoping) ✅
+  - Tests: 20/20 pass ✅
+  - Validate: 395/395 pass ✅
+- **Status**: ✅ LIVE
+
 ---
 
 ## What Is Still Blocked / Partial

@@ -291,6 +291,21 @@ def _write_task_outcome_memory(
     except Exception:
         pass
 
+    # Learnings write — extract a durable learning from task failures.
+    # Only fires for FAILED status with a substantive reason. Never raises.
+    if new_status == TaskStatus.FAILED.value:
+        try:
+            from runtime.core.learnings_store import record_task_failure_learning
+            record_task_failure_learning(
+                task_id=str(task.task_id),
+                agent_id=actor,
+                task_type=task_type,
+                failure_reason=reason,
+                root=root,
+            )
+        except Exception:
+            pass
+
 
 def record_checkpoint(
     *,

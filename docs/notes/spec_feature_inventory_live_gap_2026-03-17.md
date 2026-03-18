@@ -480,6 +480,8 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 
 **Proof it is live**: After a live Discord conversation with a decision or finding, running `retrieve_memory_for_context()` returns non-empty results. `MemoryRetrievalRecord` shows `episodic_result_count > 0` or `semantic_result_count > 0`.
 
+**Update (2026-03-18)**: Memory write points confirmed live (task outcomes, review verdicts, approval decisions, routing decisions — see sections L, M in watchboard). Additionally, a dedicated **learnings ledger** (`runtime/core/learnings_store.py`) now provides structured cross-session learning from task failures, review/approval rejections, and operator corrections. Learnings are JSONL-backed (`state/learnings/global.jsonl` + per-agent files) with filtered retrieval (`get_learnings_for_agent()`) and digest compilation (`compile_learnings_digest()`). Status: **LIVE**.
+
 ---
 
 ### Target 3 — SearXNG lane activation check (Scout web search)

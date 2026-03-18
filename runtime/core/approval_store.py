@@ -100,6 +100,20 @@ def _is_ready_for_live_apply(task) -> bool:
     return (task.final_outcome or "").strip() == "candidate_ready_for_live_apply"
 
 
+def _choose_resume_target(task) -> str:
+    """Determine the correct resume target after approval.
+
+    - candidate_ready_for_live_apply → READY_TO_SHIP (original path)
+    - ralph_adapter with completed execution → COMPLETED (no re-execution)
+    - everything else → QUEUED (re-enter normal pipeline)
+    """
+    if _is_ready_for_live_apply(task):
+        return TaskStatus.READY_TO_SHIP.value
+    if task.execution_backend == "ralph_adapter" and task.final_outcome:
+        return TaskStatus.COMPLETED.value
+    return TaskStatus.QUEUED.value
+
+
 def _build_checkpoint(
     *,
     approval_id: str,
@@ -126,7 +140,7 @@ def _build_checkpoint(
         final_outcome_snapshot=task.final_outcome,
         execution_backend=task.execution_backend,
         backend_run_id=task.backend_run_id,
-        resume_target_status=TaskStatus.READY_TO_SHIP.value if _is_ready_for_live_apply(task) else TaskStatus.QUEUED.value,
+        resume_target_status=_choose_resume_target(task),
         resume_reason=details or summary,
         task_snapshot={
             "status": task.status,
@@ -439,6 +453,14 @@ def resume_approval_from_checkpoint(
         if _is_ready_for_live_apply(task)
         else checkpoint.resume_target_status
     )
+    # Catch existing checkpoints created before the _choose_resume_target fix:
+    # Ralph-owned tasks with completed execution must not re-queue.
+    if (
+        resume_target_status == TaskStatus.QUEUED.value
+        and task.execution_backend == "ralph_adapter"
+        and task.final_outcome
+    ):
+        resume_target_status = TaskStatus.COMPLETED.value
     checkpoint.resume_target_status = resume_target_status
 
     if resume_target_status == TaskStatus.READY_TO_SHIP.value:
@@ -452,10 +474,10 @@ def resume_approval_from_checkpoint(
     else:
         result = transition_task(
             task_id=approval.task_id,
-            to_status=TaskStatus.QUEUED.value,
+            to_status=resume_target_status,
             actor=actor,
             lane=lane,
-            summary=f"Approval resume queued task: {approval_id}",
+            summary=f"Approval resume {resume_target_status} task: {approval_id}",
             root=root,
             details=reason or checkpoint.resume_reason,
             approval_id=approval_id,
@@ -764,6 +786,23 @@ def record_approval_decision(
                     confidence_score=0.85,
                     root=root_path,
                 )
+    except Exception:
+        pass
+
+    # Learnings write — extract a durable learning from approval rejections.
+    # Only fires for REJECTED decision with a substantive reason. Never raises.
+    try:
+        if decision == ApprovalStatus.REJECTED.value and reason and len(reason.strip()) >= 10:
+            from runtime.core.learnings_store import record_approval_rejection_learning
+            task_type = str(task.task_type or "general").strip()
+            record_approval_rejection_learning(
+                task_id=record.task_id,
+                approver=actor,
+                agent_id=record.requested_by or "",
+                task_type=task_type,
+                reason=reason,
+                root=Path(root) if root else ROOT,
+            )
     except Exception:
         pass
 
