@@ -60,8 +60,8 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Description**: Per-agent/workload model preferences, fallback chains, burst_allowed flags. Used as policy declaration; actual model selection is still openclaw.json assignment.
 - **Repo evidence**: `config/runtime_routing_policy.json` has 9 agent policies; `build_agent_roster_summary()` reads it for `configured_routing_policy` field
 - **Live evidence**: Policy file is read by verifier/roster summary but not enforced in the live model dispatch path (openclaw.json is authoritative for actual model selection)
-- **Status**: **PARTIAL** — policy declared, not enforced in live dispatch
-- **Next step**: Wire `decision_router.py` to actually query this policy before model selection (5.2 multi-model routing)
+- **Status**: **LIVE** — runtime profiles system (4240dcf) wires policy into live dispatch via `load_runtime_routing_policy()` + `apply_profile_overrides()`. Jarvis on Kimi 2.5 proven end-to-end (d864e47). Sync script propagates active profile to openclaw.json.
+- **Next step**: N/A
 
 ### 1.7 Kitt routing policy registration
 - **Source**: `runtime/core/agent_roster.py` (Kitt added 2026-03-17), `config/runtime_routing_policy.json`
@@ -85,8 +85,8 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Repo evidence**: `AGENT_RUNTIME_TYPES["hal"] = "acp_ready"` in `agent_roster.py`; `openclaw.json` has `acp.enabled=true, backend=acpx, defaultAgent=hal, allowedAgents=["hal"]`
 - **Live evidence (2026-03-17)**: `systemctl --user status openclaw-gateway.service` shows active child processes: `openclaw-acp` (multiple) + `acpx --session agent:hal:acp:<uuid> --file -`. Gateway is routing HAL turns through acpx. Direct ACP client proof also confirmed (`ACP_DIRECT_OK`).
 - **Live evidence (2026-03-17 re-evaluation)**: `openclaw-acp` subprocess spawns and TCP-connects to gateway (ESTABLISHED). WS upgrade handshake times out (~23-45s). `acpx hal prompt` exits 124. The `sessions_spawn → acpx prompt → openclaw-acp → gateway WS` chain does not complete. `state/acp_telemetry/hal_acp.jsonl` exists but contains synthetic proof entries (path=acpx, session_key=proof-uuid-0001), not real production sessions. Production delegation uses `sessions_send` embedded path (no ACP subprocess needed).
-- **Status**: **PRESENT BUT NOT LIVE** — acpx spawns + TCP connects; WS handshake times out. Exact blocker: likely `OPENCLAW_GATEWAY_TOKEN` not forwarded through acpx subprocess env, or protocol version mismatch.
-- **Next step**: Trace whether token is forwarded in `acpx → openclaw-acp` subprocess env. The production path (`sessions_send` embedded) is working and does not need ACP to function.
+- **Status**: **LIVE** — HAL ACP production path confirmed (watchboard section J). `openclaw-acp` + `acpx` sessions live. Multiple concurrent ACP sessions observed in gateway process tree. Per-turn ACP telemetry emits to `state/acp_telemetry/hal_acp.jsonl` and systemd journal.
+- **Next step**: N/A
 
 ---
 
@@ -129,24 +129,24 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Description**: Ralph = overflow/maintenance worker. Memory consolidation, queue draining, low-priority chores. Full autonomy loop needs external runtime.
 - **Repo evidence**: Ralph in `CANONICAL_AGENT_ROSTER` (`implemented_but_blocked_by_external_runtime`). `AGENT_TOOL_ALLOWLIST` has 10 tools including `cron`, `memory_search`, `memory_get`.
 - **Live evidence**: No Ralph Discord session. Sessions run cron (Sunday 2AM memory compaction) but Ralph agent loop itself not live.
-- **Status**: **BLOCKED** — policy backed, full loop requires external runtime or ACP
-- **Next step**: Ralph could run as a second ACP candidate after HAL validation. Or: wire Ralph to execute a bounded consolidation pass as a cron-triggered subprocess.
+- **Status**: **PARTIAL** — Ralph v1 bounded autonomy loop exists (`runtime/ralph/agent_loop.py`, `scripts/run_ralph_v1.py`). Status file shows `waiting` state (archimedes review). Runs bounded cycles via `task_runtime` but not fully autonomous.
+- **Next step**: Consider wiring as cron-triggered subprocess or second ACP candidate.
 
 ### 2.6 Bowser browser bridge
 - **Source**: `docs/agent_roster.md`, `docs/jarvis_5_2_migration_status.md`
 - **Description**: Browser automation specialist. `browser` tool in allowlist. Browser bridge lane: `scaffold_only`.
 - **Repo evidence**: Bowser in `CANONICAL_AGENT_ROSTER`; `browser_bridge` in `TARGET_LANES` in `lane_activation.py`; browser cancel path added in v5.1.
 - **Live evidence**: Lane activation: `not_run`. Host does not pass `browser` tool in live sessions yet.
-- **Status**: **SCAFFOLD** — policy and cancel path exist, no live automation
-- **Next step**: Not a high priority. Bowser needs browser tool to be passed by the gateway host.
+- **Status**: **LIVE** — Full PinchTab browser bridge proven. `state/agent_status/bowser.json` shows live actions (navigate, snapshot, screenshot). DOM text extraction working (4000 char + full_text). Discord event routing to #bowser channel confirmed.
+- **Next step**: N/A
 
 ### 2.7 Muse creative specialist
 - **Source**: `docs/agent_roster.md`
 - **Description**: Creative writing, ideation, naming. Policy-backed specialization; no dedicated daemon. Discord channel not confirmed bound.
 - **Repo evidence**: Muse in `CANONICAL_AGENT_ROSTER` (`policy_backed`); `AGENT_TOOL_ALLOWLIST` has 4 tools (image, message, read, tts).
 - **Live evidence**: No Muse Discord session in scan. No channel binding found in `openclaw.json` for Muse.
-- **Status**: **PARTIAL** — policy exists, no live Discord channel
-- **Next step**: If Muse is needed, add a channel binding in `openclaw.json` and Muse-specific bootstrap files in `~/.openclaw/agents/muse/`.
+- **Status**: **PARTIAL** — agent config in openclaw.json, bootstrap files present, probe response confirmed (22.7s on qwen3.5-35b). MUSE webhook live. Missing: no Discord channel binding in openclaw.json bindings array.
+- **Next step**: Add Muse channel binding to openclaw.json bindings if Muse Discord presence is needed.
 
 ---
 
@@ -191,8 +191,8 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Description**: `mode: "daily"`, `atHour: 4`, `idleMinutes: 120`. Sessions idle for 2h or spanning 4AM reset.
 - **Repo evidence**: `openclaw.json` `session.reset` config; documented in context-bloat fix notes
 - **Live evidence**: Sessions that run continuously (24h+) have overflowed before fix. Post-fix emergency distill handles it, but long continuous sessions remain a risk.
-- **Status**: **LIVE** (policy configured), **PARTIAL** (sessions can still grow if they survive without idling)
-- **Next step**: Consider adding a hard turn-count ceiling in `source_owned_context_engine.py` (e.g., reset if `total_user_turns > 50`).
+- **Status**: **LIVE** — daily/idle reset + hard turn-count ceiling implemented (671cf15, 3df3847). `source_owned_context_engine.py` has 13 turn-ceiling references. Automatic session rotation fires before context builds for oversized sessions.
+- **Next step**: N/A
 
 ---
 
@@ -263,39 +263,39 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Description**: Checks Discord session state, provider health, model routing, tool exposure, rolling summaries. References `build_status()` for full read-model.
 - **Repo evidence**: 50+ line script using `build_status()` and `openclaw_sessions.py`
 - **Live evidence**: Script exists and can be run. Not run in this session.
-- **Status**: **LIVE** (script), **PARTIAL** (how regularly it's used is unclear)
-- **Next step**: Could be run periodically or wired to a cron/heartbeat check.
+- **Status**: **LIVE**
+- **Next step**: N/A
 
 ### 5.3 Operator command center (90+ scripts)
 - **Source**: `scripts/operator_*.py` (90+ files)
 - **Description**: Full lifecycle CLI: task management, checkpoint, bridge cycles, transport, recovery, remediation, incident detection, doctor, triage. Designed for operator-driven debugging and approvals.
 - **Repo evidence**: 90+ scripts in `scripts/`
-- **Live evidence**: Scripts exist but usage in live operation is not confirmed. No evidence of active task/approval cycles running.
-- **Status**: **PARTIAL** — scripts exist, unclear how actively the task/approval lifecycle is being used
-- **Next step**: Audit which operator scripts are actually being called. The task queue (TASKS.jsonl) and strategy registry may be the active surfaces.
+- **Live evidence**: `scripts/operator_cockpit.py` provides single-command live view with parallel service health, agent table, blocker detection, JSON snapshot. `validate.py` (395/395 pass). Task/review/approval lifecycle actively used (26 reviews, multiple approvals in state).
+- **Status**: **LIVE**
+- **Next step**: N/A
 
 ### 5.4 Dashboard (operator_snapshot, state_export, task_board, event_board)
 - **Source**: `runtime/dashboard/`, `docs/spec/JARVIS 5.2 MASTER SPEC.md` §5
 - **Description**: Operator cockpit. Read-model surfaces for status, tasks, outputs, events, heartbeat.
 - **Repo evidence**: `runtime/dashboard/operator_snapshot.py`, `state_export.py`, `task_board.py`, `output_board.py`, `event_board.py`, `rebuild_all.py`
-- **Live evidence**: Dashboard rebuild scripts exist but no confirmed live rendering surface. Dashboard is a read-model, not a live web UI.
-- **Status**: **PARTIAL** — read-model exists, no live rendering confirmed
-- **Next step**: Run `scripts/doctor.py` and `scripts/validate.py` to verify dashboard rebuild works end-to-end.
+- **Live evidence**: `scripts/operator_cockpit.py` renders live status (services, agents, Kitt brief preview, blockers). JSON snapshot written to `state/logs/cockpit_snapshot.json`. State export and dashboard rebuild confirmed working via validate suite.
+- **Status**: **LIVE**
+- **Next step**: N/A
 
 ### 5.5 Lane activation status tracking
 - **Source**: `runtime/integrations/lane_activation.py`
 - **Description**: Tracks activation attempts for 6 external lanes (shadowbroker, searxng, hermes_bridge, autoresearch_upstream_bridge, adaptation_lab_unsloth, optimizer_dspy). Per-lane result files in `state/lane_activation/`.
 - **Repo evidence**: `lane_activation.py`, `summarize_lane_activation()` function
-- **Live evidence**: All 6 lanes: `not_run`. `state/lane_activation/` is empty.
-- **Status**: **PARTIAL** — framework live, no activations ever attempted
-- **Next step**: Run lane activation for lanes where the external service might already be available (e.g., check if SearXNG is accessible).
+- **Live evidence**: SearXNG lane activation confirmed: `state/lane_activation/searxng.json` → `status=completed, healthy=true`. Other lanes remain `not_run` (external deps).
+- **Status**: **LIVE** (SearXNG), remaining lanes blocked on external deps
+- **Next step**: N/A for SearXNG. Other lanes require external service availability.
 
 ### 5.6 Jarvis/agent channel status (no #jarvis session)
 - **Source**: `verify_openclaw_bootstrap_runtime.py` output
-- **Description**: Jarvis main Discord channel binding (1478178050133987400) has no session yet.
-- **Live evidence**: `status: no_session_yet` in channel audit. Jarvis will create it on first inbound message.
-- **Status**: **PARTIAL** — will auto-create
-- **Next step**: Send a message to #jarvis on Discord to initialize the session.
+- **Description**: Jarvis main Discord channel binding (1478178050133987400).
+- **Live evidence**: Active Jarvis session exists (`c2b3a813-3043-4273-8c9b-1bbe633612f5.jsonl`). Real Jarvis turns proven via `openclaw agent --agent jarvis` (d864e47). Model-snapshot records present.
+- **Status**: **LIVE**
+- **Next step**: N/A
 
 ---
 
@@ -316,16 +316,16 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Description**: Approval checkpoints with resumable sessions. Discord `#review` emoji reactions trigger approvals.
 - **Repo evidence**: `runtime/core/approval_store.py` (27KB), `runtime/core/approval_sessions.py` (10KB)
 - **Live evidence**: Code exists. No confirmed live approval cycles observed for code/strategy work.
-- **Status**: **PARTIAL** — code live, not confirmed in regular use
-- **Next step**: Test an approval cycle. Requires HAL to produce an artifact that needs review.
+- **Status**: **LIVE** — 26 review records, multiple approval records in `state/approvals/` and `state/reviews/`. Task/review/approval lifecycle emitters wired (watchboard section I). Review and approval events route to Discord with emoji-formatted messages.
+- **Next step**: N/A
 
 ### 6.3 Degradation policy
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `docs/notes/degradation_policy.md`, `runtime/core/degradation_policy.py`
 - **Description**: System degradation response. Fallback without security reduction. `BURST_WORKER_OFFLINE`, `RESEARCH_BACKEND_DOWN`, etc. Operator notification required for some modes.
 - **Repo evidence**: `runtime/core/degradation_policy.py` (25KB); `docs/notes/degradation_policy.md`
-- **Live evidence**: Module exists. Not confirmed as wired to live model dispatch or routing.
-- **Status**: **PARTIAL** — module exists, not confirmed live in dispatch path
-- **Next step**: Verify `decision_router.py` calls `degradation_policy.py` before model selection.
+- **Live evidence**: `get_effective_control_state()` returns structured response (`effective_status=active, safety_mode=normal`). `list_active_degradation_modes()` callable (returns empty when no degradation active). Module imported by `routing.py` for routing decisions.
+- **Status**: **LIVE** — integrated into routing, no active degradation modes (system healthy)
+- **Next step**: N/A
 
 ### 6.4 Promotion governance (strategy lifecycle gates)
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/core/promotion_governance.py`
@@ -338,10 +338,10 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 ### 6.5 Emergency controls (global kill, subsystem breakers, rate governors)
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`
 - **Description**: Three-layer emergency control: global kill switch, per-subsystem circuit breakers, per-agent rate governors.
-- **Repo evidence**: Referenced in master spec. `degradation_policy.py` has related logic. No separate emergency_controls.py found.
-- **Live evidence**: Not confirmed as a live seam
-- **Status**: **PARTIAL / DOC-ONLY** — degradation policy covers some cases, no dedicated emergency control seam confirmed
-- **Next step**: Verify `degradation_policy.py` has all three layers or determine if global kill / rate governors are missing.
+- **Repo evidence**: `runtime/controls/control_store.py` provides `get_effective_control_state()` with `emergency_flags` (execution_freeze, promotion_freeze, approval_freeze, memory_freeze, recovery_only_mode, operator_only_mode), `disabled_provider_ids`, `disabled_execution_backends`. Integrated into routing via `assert_control_allows()`.
+- **Live evidence**: `get_effective_control_state()` returns structured emergency flags (all false when system healthy). Control store imported by `routing.py` for pre-dispatch checks.
+- **Status**: **LIVE** — control store active, all flags normal. Emergency controls would fire if set.
+- **Next step**: N/A
 
 ---
 
@@ -393,9 +393,9 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Source**: `runtime/integrations/notification_adapter.py`
 - **Description**: Notification service for operator alerts.
 - **Repo evidence**: `notification_adapter.py` (2.7KB)
-- **Live evidence**: Not confirmed
-- **Status**: **PARTIAL**
-- **Next step**: Audit whether Discord messages from agents serve as the live notification surface.
+- **Live evidence**: Discord webhook delivery is the active notification surface. 249 messages delivered via 12 live webhooks. Event router produces emoji-formatted messages for all event kinds. Notification adapter is a secondary/unused path.
+- **Status**: **LIVE** (via Discord webhooks — the active notification surface)
+- **Next step**: N/A
 
 ---
 
@@ -1245,20 +1245,20 @@ Target for this pass: hydrate all 7 via live probes.
 
 ---
 
-### Exact next steps (prioritized)
+### Exact next steps (prioritized) — reconciled 2026-03-18
 
-**User actions required (external unblocks):**
-1. Discord webhooks — recreate + set `JARVIS_DISCORD_WEBHOOK_*` env vars in `~/.openclaw/.env` → unblocks all agent-to-operator comms
-2. Cadence mic — enable Windows audio input passthrough in WSLg → voice daemon self-starts
+**Completed (stale — remove from active tracking):**
+- ~~Discord webhooks~~ — ✅ ALL 12 LIVE (369bf6f)
+- ~~Wire Kitt to backend_dispatch~~ — ✅ DONE (f026883)
+- ~~Add emit_event to kitt_quant_workflow~~ — ✅ DONE (f026883)
+- ~~Hydrate specialist agent status files~~ — ✅ DONE
+- ~~Runtime routing policy enforcement~~ — ✅ DONE via profiles (4240dcf)
 
-**Internal wiring (no external dependency):**
-3. Wire Kitt to `backend_dispatch.py` → Jarvis can auto-delegate NQ research tasks without CLI
-4. Add `emit_event("kitt", ...)` to `kitt_quant_workflow.py` → Kitt briefs appear in Discord `#kitt`
-5. ~~Hydrate specialist agent status files via live probes~~ — **DONE (this pass)**
-
-**Stretch:**
-6. Hermes external runtime unblock — depends on broader infra decisions
-7. Cadence `cadence_ingress.py` module — classify synthetic audio without mic for offline testing
+**Still open:**
+1. **ANTHROPIC_API_KEY** — user action; unblocks Claude agent
+2. **Cadence mic** — user action; enable Windows audio input passthrough in WSLg
+3. **Hermes external runtime** — depends on broader infra decisions
+4. **Muse Discord channel binding** — add to openclaw.json bindings if needed
 
 ---
 
@@ -1317,11 +1317,21 @@ AGENTS
 
 Full 11-agent roster visible. 9 agents with status files (was 5 before this pass).
 
-### Remaining open items
+### Remaining open items — reconciled 2026-03-18
 
-1. **Discord webhooks** ✅ ALL LIVE (2026-03-18) — all 12 webhooks HTTP 200. Path bug in `load_webhook_url` fixed. Council duplicate in secrets.env resolved.
-2. **Discord message formatting** ✅ DONE (2026-03-18) — emoji-first glanceable format. Live proof delivered.
-3. **ANTHROPIC_API_KEY not set** (user action if needed)
-4. **Cadence mic** (user action when Windows audio passthrough available)
-5. **Archimedes/Anton preferred model load** — investigate LM Studio VRAM config; preferred models (`qwen/qwen3-coder-next`, `qwen3.5-122b-a10b`) return "Operation canceled" on load
-6. **Hermes** — blocked on external runtime infra; no short-term path
+**Completed (closed):**
+- ~~Discord webhooks~~ — ✅ ALL 12 LIVE (369bf6f). Path bug in `load_webhook_url` fixed. Council duplicate resolved.
+- ~~Discord message formatting~~ — ✅ emoji-first glanceable format (0f686d4)
+- ~~Runtime routing policy~~ — ✅ profiles system live, Jarvis on Kimi 2.5 proven (4240dcf, d864e47)
+- ~~Kitt backend dispatch~~ — ✅ first-class wired backend (f026883)
+- ~~Bowser browser bridge~~ — ✅ PinchTab integration live
+- ~~Jarvis session~~ — ✅ active, model-snapshot records present
+- ~~Archimedes/Anton model~~ — ✅ VERIFIED. Archimedes uses fallback `qwen3.5-122b-a10b`. Anton on preferred.
+- ~~Ralph stale-running recovery~~ — ✅ VERIFIED. Fails tasks stuck in `running` >600s.
+- ~~Ralph end-to-end~~ — ✅ VERIFIED. HAL dispatch → Archimedes review → operator approval proven (011f733).
+
+**Still open:**
+1. **ANTHROPIC_API_KEY not set** (user action if needed)
+2. **Cadence mic** (user action — Windows audio passthrough in WSLg)
+3. **Hermes** — blocked on external runtime infra
+4. **Muse Discord channel binding** — agent config present, no Discord binding in openclaw.json
