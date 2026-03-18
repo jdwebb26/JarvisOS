@@ -1,173 +1,291 @@
-## Jarvis OS v5.1 status
+# Jarvis OS v5.1
 
-Jarvis OS v5.1 required bounded runtime scope is complete in the live repo.
+Autonomous multi-agent runtime for task execution, research, approvals, and operator supervision. Part of the [OpenClaw](https://github.com/jdwebb26/JarvisOS) project.
 
-This repo now includes the final bounded v5.1 runtime closures that were previously identified as concrete master-spec gaps:
+Jarvis OS coordinates a fleet of specialized AI agents that receive work through Discord, execute it via local LLMs (Qwen 3.5 on LM Studio), and surface results back to the operator for review and approval. Nothing reaches production without human sign-off.
 
-- Hermes adapter hardening
-- autoresearch adapter hardening
-- autoresearch standard run output materialization
-- bounded browser operator interrupt/cancel support
+---
 
-The current repo state should be understood as:
+## What's live right now
 
-- **v5.1 required bounded runtime closure: complete**
-- **documentation/tracker alignment: still being cleaned up**
-- **future work after freeze: optional hardening, broader smoke coverage, and post-v5.1 features**
+These components are running on the live machine and have been proven end-to-end.
 
-## What was closed in the final v5.1 passes
+| Component | How it runs | What it does |
+|-----------|------------|--------------|
+| **Gateway** | `openclaw-gateway.service` (persistent) | Node.js Discord bot, WebSocket, agent session routing |
+| **Inbound Server** | `openclaw-inbound-server.service` (persistent) | HTTP API on `:18790` for operator replies and approvals |
+| **Ralph** | `openclaw-ralph.timer` (every 10 min) | Picks queued tasks, dispatches to backend, requests review |
+| **Review Poller** | `openclaw-review-poller.timer` (every 30s) | Polls Discord `#review` for `approve`/`reject` reactions |
+| **Todo Intake** | `lobster-todo-intake.timer` (every 2 min) | Polls Discord `#todo` for new human tasks |
+| **Outbox Sender** | `openclaw-discord-outbox.timer` (every 60s) | Delivers pending Discord messages via webhooks |
+| **Operator Status** | `openclaw-operator-status.timer` (every 5 min) | Posts action summary to `#jarvis` when approvals/failures exist |
+| **Dashboard** | `openclaw-dashboard.service` (persistent) | Browser UI at `http://127.0.0.1:18793/` |
+| **Hermes** | On-demand via Ralph or gateway | Deep research via LM Studio Qwen — produces artifacts and evidence bundles |
+| **Auto-promotion** | Wired into task completion flow | Promotes completed task outputs through lifecycle gates |
 
-### 1. Hermes and autoresearch adapter contract hardening
+### Live backends
 
-The Hermes and autoresearch integration seams now fail closed instead of loosely accepting underspecified requests or malformed result payloads.
+| Backend | Status | Notes |
+|---------|--------|-------|
+| **Qwen (LM Studio)** | Live | Primary. Qwen 3.5 35B/122B at `http://100.70.114.34:1234/v1` |
+| **Hermes (research)** | Live | Calls Qwen via `hermes_transport.py`, returns structured reports |
+| **NVIDIA (Kimi 2.5)** | Live | Requires `NVIDIA_API_KEY` in `.env` |
+| **Browser (Bowser)** | Live | Headless browser actions, operator-cancellable |
+| **Kitt (quant)** | Live | Quant brief generation |
+| **SearXNG** | Live | Local search at `http://localhost:8888` |
+| **OpenAI / GPT** | Scaffolded | Adapter exists but requires valid API billing to activate |
+| **Claude** | Blocked | No API access configured |
 
-Hermes now enforces:
+### Not finished / out of scope here
 
-- objective required
-- valid timeout required
-- bounded sandbox class required
-- explicit allowed tools required
-- Qwen-only model policy required
-- callback contract consistency required
-- stricter response validation for:
-  - model_name
-  - status
-  - citations
-  - proposed_next_actions
-  - token_usage
+| Area | Status |
+|------|--------|
+| **Cadence (voice)** | Listener + TTS stack inventoried; integration in progress elsewhere |
+| **Strategy Factory** | Separate pipeline at `~/.openclaw/workspace/strategy_factory/` |
+| **v5.2 multi-model routing** | Scaffolding only — not active in production |
 
-Autoresearch now enforces:
+---
 
-- objective required
-- objective metrics required
-- primary metric must be valid
-- baseline_ref required
-- benchmark_slice_ref required
-- bounded sandbox class required
-- sandbox_root required
-- target_module required
-- program_md_path required
-- eval_command required
-- task metadata required
-- stricter result validation for:
-  - hypothesis
-  - metrics maps
-  - token usage
-  - recommendation shape
-  - allowed success statuses
+## Quick start
 
-Both adapter paths now persist durable failure categorization and surface those categories through the existing status/read-model spine.
+### 1. Check health
 
-### 2. Standard autoresearch run outputs
+Open the dashboard:
+```
+http://127.0.0.1:18793/
+```
 
-The bounded autoresearch run path now materializes the standard run outputs required by the v5.1 master spec.
+Or from terminal:
+```bash
+cd ~/.openclaw/workspace/jarvis-v5
+python3 scripts/validate.py            # full runtime validation (395 checks)
+python3 scripts/operator_status.py     # what needs attention right now
+python3 scripts/operator_next.py       # single next recommended action
+```
 
-Per lab run, the repo now writes:
+### 2. Process approvals
 
-- `run_config.json`
-- `baseline_metrics.json`
-- `candidate_metrics.json`
-- `delta_metrics.json`
-- `candidate.patch`
-- `experiment_log.md`
-- `recommendation.json`
+Tasks that complete execution wait for human approval before their outputs are promoted.
 
-These are written under the bounded research workspace using the pattern:
+**Via Discord**: React with the appropriate emoji in `#review`, or type `approve apr_xxxxx`.
 
-`<repo_root>/<sandbox_root>/<run_id>/standard_run_outputs/`
+**Via CLI**:
+```bash
+python3 scripts/run_ralph_v1.py --approve task_xxxxx
+```
 
-The durable `LabRunResultRecord` continues to hold the canonical structured result fields, while the standard output directory provides the required materialized run artifacts.
+**Via dashboard**: Click the "Approve" button next to any pending approval — it copies the command to your clipboard.
 
-### 3. Browser operator interrupt/cancel
+### 3. Retry failures
 
-The bounded browser path now supports operator cancellation for pending or accepted browser actions.
+```bash
+python3 scripts/run_ralph_v1.py --retry task_xxxxx
+```
 
-Added browser behavior:
+### 4. Submit new work
 
-- cancellable browser request/result state
-- durable cancel metadata:
-  - `cancelled_at`
-  - `cancelled_by`
-  - `cancel_reason`
-- gateway cancel path
-- browser cancellation task event emission
-- reporting/read-model visibility for cancelled browser requests/results
-- guard that prevents cancelled browser requests from executing later
+**Via Discord**: Post a message in `#todo`. The intake timer picks it up within 2 minutes.
 
-Supported transitions now include:
+**Via CLI**:
+```bash
+python3 scripts/todo_intake.py --message "Research the latest VIX regime characteristics"
+```
 
-- `pending_review -> cancelled`
-- `accepted -> cancelled`
+### 5. Promote outputs
 
-A cancelled browser request cannot later be completed into execution.
+```bash
+python3 scripts/promote_output.py --promote task_xxxxx
+```
 
-## Validation baseline actually proven in the live repo
+---
 
-The validated baseline currently proven in the live repo is:
+## Agent model
 
-- `python3 scripts/validate.py`
-- `python3 runtime/core/run_runtime_regression_pack.py`
-- `python3 tests/test_hermes_adapter.py`
-- `python3 tests/test_autoresearch_adapter.py`
-- `python3 tests/test_browser_gateway.py`
+Jarvis OS uses specialized agents that communicate through Discord channels. Each agent has a defined role, bounded authority, and a dedicated workspace.
 
-Do not describe the current validated baseline as "the full pytest suite" unless that full suite has been explicitly rerun and confirmed.
+| Agent | Role | Execution |
+|-------|------|-----------|
+| **Jarvis** | Orchestrator — routes tasks, decomposes work | Coordination only, no direct code execution |
+| **Hal** | Builder — implements code, runs backtests | Sandboxed (Docker) |
+| **Ralph** | Task runner — picks queued work, dispatches, requests review | Bounded autonomy loop (10-min timer) |
+| **Hermes** | Research daemon — deep research, evidence generation | Calls Qwen LLM, produces structured reports |
+| **Scout** | Recon — market analysis, web search | SearXNG-backed |
+| **Archimedes** | Technical reviewer — code review, quality gates | Review-only authority |
+| **Anton** | Supreme reviewer — council decisions | Approval authority |
+| **Bowser** | Browser agent — automated web workflows | Headless browser, operator-cancellable |
+| **Muse** | Creative — design, copy, brainstorming | Suggestion-only |
 
-## Source of truth
+### Discord channels
 
-For v5.1 completion state, use this precedence:
+| Channel | Purpose |
+|---------|---------|
+| `#todo` | Human task intake — messages become queued tasks |
+| `#work` | Agent output — completed work posted here |
+| `#review` | Approval flow — operators approve/reject here |
+| `#flowstate` | Status updates — agent heartbeats, cycle summaries |
+| `#jarvis` | Operator alerts — action summaries when approvals/failures exist |
 
-1. `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`
-2. live runtime code
-3. focused validation/tests that prove the implemented behavior
-4. tracker/checklist files
+### Task lifecycle
 
-The rebuild checklist is a historical implementation tracker and may lag the actual repo state.
+```
+QUEUED → RUNNING → WAITING_REVIEW → WAITING_APPROVAL → COMPLETED → PROMOTED
+                 ↘ FAILED (retryable)
+                 ↘ BLOCKED (needs operator intervention)
+```
 
-## Freeze posture
+Every task flows through this lifecycle. Nothing is auto-promoted to production — all promotions require explicit operator action.
 
-At this freeze point, no additional required bounded runtime pass is known to remain for v5.1.
+---
 
-Remaining work is in the category of:
+## Dashboard
 
-- documentation alignment
-- tracker cleanup
-- optional broader validation
-- future features beyond required bounded v5.1 closure
+The operator dashboard runs at `http://127.0.0.1:18793/` (localhost only) and auto-refreshes every 30 seconds.
 
-## Runtime posture: live vs 5.2 target
+**What it shows:**
+- **Status strip** — health verdict, approval/failure/blocked/queued counts at a glance
+- **Next Action** — the single most important thing to do right now
+- **Pending Approvals** — tasks awaiting human sign-off, with one-click approve buttons
+- **Failed** — retryable failures with error context and retry buttons
+- **Blocked** — tasks that need manual intervention
+- **Queued** — work waiting to be picked up
+- **Promotable Outputs** — completed work ready for promotion
 
-Current live runtime posture:
-- Qwen-default / Qwen-first
-- bounded provider-agnostic architecture
-- explicit `task:` execution boundary
-- no silent widening of execution authority
+**API endpoint**: `GET http://127.0.0.1:18793/api/data` returns the full dashboard state as JSON.
 
-5.2 target posture:
-- multi-model, policy-routed runtime
-- richer backend health and accelerator visibility
-- replay/scoring scaffolding expanded into deeper routing evaluation
+---
 
-This repo does not claim that the 5.2 target posture is already implemented. Current 5.2 work in this branch is scaffolding only unless a later routing-core ticket says otherwise.
+## Key scripts
 
-Current extension/sidecar lane labels are tracked in:
+All scripts live in `scripts/` and are run from the repo root.
 
-- [docs/jarvis_5_2_migration_status.md](/home/rollan/.openclaw/workspace/jarvis-v5/docs/jarvis_5_2_migration_status.md)
-- [docs/external_lane_activation.md](/home/rollan/.openclaw/workspace/jarvis-v5/docs/external_lane_activation.md)
+### Operator workflow
+| Script | What it does |
+|--------|-------------|
+| `operator_status.py` | Current state: approvals, failures, queue depth |
+| `operator_next.py` | Single recommended next action |
+| `run_ralph_v1.py --approve <id>` | Approve a pending task |
+| `run_ralph_v1.py --retry <id>` | Retry a failed task |
+| `todo_intake.py --message "..."` | Submit new work |
+| `promote_output.py --promote <id>` | Promote a completed output |
 
-Those labels are operational, not aspirational:
+### Diagnostics
+| Script | What it does |
+|--------|-------------|
+| `validate.py` | Full runtime validation suite (395 checks) |
+| `runtime_doctor.py` | Health checks with fix suggestions |
+| `smoke_test.py` | Quick deployment smoke test |
+| `hermes_live_proof.py` | Verify Hermes research path end-to-end |
 
-- `live_and_usable`
-- `implemented_but_blocked_by_external_runtime`
-- `scaffold_only`
-- `deprecated_alias`
+### Dashboard / status
+| Script | What it does |
+|--------|-------------|
+| `dashboard.py` | Serve the operator dashboard (default `:18792`) |
+| `dashboard.py --json` | Dump dashboard data to stdout |
+| `dashboard.py --snapshot` | Write snapshot to `state/logs/dashboard.json` |
 
-## External sidecars
+---
 
-ShadowBroker is treated as an external OSINT sidecar.
+## Project structure
 
-- Jarvis may use ShadowBroker-backed snapshots for evidence, research, and operator visibility.
-- ShadowBroker is not runtime truth.
-- ShadowBroker does not directly control approvals, promotions, or routing legality.
-- If ShadowBroker is absent or degraded, operator surfaces must report that honestly rather than implying real-time coverage.
-- Deployment/install contract: [docs/shadowbroker_deployment.md](/home/rollan/.openclaw/workspace/jarvis-v5/docs/shadowbroker_deployment.md)
+```
+jarvis-v5/
+├── runtime/
+│   ├── core/           # Task store, models, routing, status, approvals, reviews
+│   ├── controls/       # Control plane — pause, resume, degradation
+│   ├── executor/       # Backend dispatch (Qwen, NVIDIA, Hermes, browser, quant)
+│   ├── gateway/        # Gateway CLI wrappers for each backend
+│   ├── integrations/   # Backend adapters (hermes, nvidia, bowser, searxng, etc.)
+│   ├── ralph/          # Ralph v1 bounded autonomy loop
+│   ├── browser/        # Headless browser subsystem
+│   ├── evals/          # Trace store, replay, eval scaffolding
+│   └── researchlab/    # Autoresearch and evidence bundle system
+├── scripts/            # Operator-facing CLI tools (90+ scripts)
+├── tests/              # pytest test suite
+├── agents/             # Per-agent bootstrap workspaces (hermes/, etc.)
+├── state/              # Runtime state (tasks, requests, results, logs)
+├── docs/               # Architecture docs, runbooks, specs
+│   └── spec/           # Master specs (v5.1, v5.2)
+└── configs/            # Runtime configuration
+```
+
+### State directories
+
+| Path | Contents |
+|------|----------|
+| `state/tasks/` | One JSON file per task |
+| `state/hermes_requests/` | Hermes research request records |
+| `state/hermes_results/` | Hermes research result records |
+| `state/approvals/` | Approval records |
+| `state/reviews/` | Review records |
+| `state/artifacts/` | Generated artifacts (reports, patches, configs) |
+| `state/logs/` | Dashboard snapshots, event boards, operator exports |
+
+---
+
+## Configuration
+
+### Environment (`.env`)
+
+Secrets and config live in `~/.openclaw/.env`:
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENCLAW_GATEWAY_TOKEN` | Gateway API authentication |
+| `JARVIS_WEBHOOK_URL` | Discord webhook for `#jarvis` |
+| `CREW_WEBHOOK_URL` | Discord webhook for `#work` |
+| `REVIEW_WEBHOOK_URL` | Discord webhook for `#review` |
+| `JARVIS_SEARXNG_URL` | SearXNG instance URL |
+| `NVIDIA_API_KEY` | NVIDIA API access (for Kimi 2.5) |
+
+### LLM models
+
+Model configuration lives in `~/.openclaw/agents/hermes/models.json`. The primary backend is LM Studio running locally with Qwen 3.5 models. The system enforces a Qwen-first policy — no silent cross-family model switching.
+
+### Agent config
+
+Agent definitions, workspaces, and Discord channel bindings are in `~/.openclaw/openclaw.json`.
+
+---
+
+## Validation
+
+```bash
+# Full validation (395 checks)
+python3 scripts/validate.py
+
+# Runtime regression pack
+python3 runtime/core/run_runtime_regression_pack.py
+
+# Focused test suites
+python3 -m pytest tests/test_hermes_adapter.py -v
+python3 -m pytest tests/test_hermes_transport.py -v
+python3 -m pytest tests/test_autoresearch_adapter.py -v
+python3 -m pytest tests/test_browser_gateway.py -v
+```
+
+Current baseline: **395 pass, 1 warn, 0 fail**.
+
+---
+
+## Known limits
+
+- **Single operator** — designed for one operator (Rollan) on one machine. No multi-user auth.
+- **Localhost only** — dashboard and gateway bind to `127.0.0.1`. Not exposed to the network.
+- **LM Studio required** — Hermes and Qwen backends need LM Studio running at the configured address.
+- **No Claude API** — Claude integration is blocked until real API access is configured.
+- **No GPT in production** — OpenAI adapter is scaffolded but not active without valid billing.
+- **Voice not integrated** — Cadence voice stack (listener + TTS) is inventoried but not wired into the runtime.
+- **Strategy Factory separate** — the quant backtesting pipeline lives at `~/.openclaw/workspace/strategy_factory/` and is operated independently.
+- **v5.2 features are scaffolding** — multi-model routing, deeper replay/scoring, and accelerator visibility are not yet active.
+
+---
+
+## Further reading
+
+| Document | What it covers |
+|----------|---------------|
+| [Operating Guide](docs/OPERATING_GUIDE.md) | Full operator manual — daily workflows, subsystem details, troubleshooting |
+| [Master Spec](docs/spec/Jarvis_OS_v5_1_Master_Spec.md) | Complete v5.1 technical specification |
+| [Agent Roster](docs/agent_roster.md) | Detailed agent role definitions and capabilities |
+| [External Lane Activation](docs/external_lane_activation.md) | Backend lane status labels and activation state |
+| [Deployment](docs/deployment.md) | Service installation and systemd setup |

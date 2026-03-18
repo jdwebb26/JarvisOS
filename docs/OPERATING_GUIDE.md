@@ -41,6 +41,8 @@ Everything below describes what is **actually running right now** and how to ope
 | Outbox sender | `openclaw-discord-outbox.timer` | 60s | Delivers pending Discord outbox entries via webhooks |
 | Operator status | `openclaw-operator-status.timer` | 5 min | Posts action summary to #jarvis when approvals/failures exist |
 | Dashboard | `openclaw-dashboard.service` | persistent | Browser UI at **http://127.0.0.1:18793/** — health, approvals, queue, next action |
+| Hermes | on-demand (via Ralph or gateway) | per-task | Deep research via LM Studio Qwen — produces artifacts and evidence bundles |
+| Auto-promotion | wired into task completion | per-task | Promotes completed outputs through lifecycle gates |
 
 ### Daily operator commands
 
