@@ -56,7 +56,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 |-------|--------|----------------|
 | **Hermes** | BLOCKED | Adapter hardened, but external Hermes daemon not running. Needs manual service activation |
 | **Cadence** | PARTIAL | Voice stack built (ingress, TTS, call routing). Mic blocked: RDPSource unavailable in WSL2. Parked until mic passthrough |
-| **Muse** | NOT ACTIVE | Channel ID configured, bootstrap files present. No live session or task yet |
+| **Muse** | LIVE | Creative lane active. Gateway binding → channel 1483133844663304272, model lmstudio/qwen3.5-35b-a3b, webhook delivery verified. Session + outbox operational |
 | **Claude** | BLOCKED | `ANTHROPIC_API_KEY=REPLACE_ME`. User must set real key |
 
 ## 5. Core Runtime Systems
@@ -113,7 +113,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 ### High-leverage improvements
 3. **First real strategy factory run with operator review** — prove the end-to-end IDEA → BACKTESTED → PROMOTED pipeline with a real NQ strategy candidate
 4. ~~Wire Ralph to cron~~ **DONE** — Ralph timer (`openclaw-ralph.timer`, 90s) and review poller (`openclaw-review-poller.timer`, 30s) are live
-5. **Activate Muse** — send first message to Muse Discord channel to create session
+5. ~~Activate Muse~~ **DONE** — Muse live as creative Discord lane (channel 1483133844663304272, model qwen3.5-35b-a3b via LM Studio). `openclaw agent --agent muse --message "..."` for direct turns
 
 ### Medium-leverage
 6. **Session monitoring dashboard** — surface session sizes, turn counts, stale sessions for operator visibility

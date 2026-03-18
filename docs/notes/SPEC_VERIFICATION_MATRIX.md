@@ -37,7 +37,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 2.7 | Bowser browser bridge | v5.1 §26 | Bounded browser automation via PinchTab | `bowser_adapter.py`, PinchTab at `127.0.0.1:9867` | Navigate, snapshot, screenshot, DOM text extraction (4000 char). Status file shows live actions. | **LIVE** | Watchboard §F | — |
 | 2.8 | Ralph task runner | v5.1 §20 | Task runner + memory consolidation | `runtime/ralph/agent_loop.py`, `scripts/run_ralph_v1.py` | Full operator-usable loop: claim → HAL → auto-review → approval → completion. CLI: `--status`, `--approve`, `--reject`, `--retry`. Rejected reviews fail cleanly. Stale recovery. Idle clears error state. E2E proven with real task. | **LIVE** | This commit | No cron timer. No memory consolidation. |
 | 2.9 | Hermes research daemon | v5.1 §21 | Long-form research, source gathering, synthesis | `hermes_adapter.py` (43KB). Contract hardened. | Adapter importable. Lane activation: `not_run`. External daemon not running. | **BLOCKED** | — | External Hermes service not configured. |
-| 2.10 | Muse creative | v5.1 §4 | Creative specialist | Agent config in `openclaw.json`. Bootstrap files present. Webhook live. | Probe response confirmed (22.7s). No Discord channel binding. | **PARTIAL** | Probe results | No Discord channel binding in `openclaw.json` bindings. |
+| 2.10 | Muse creative | v5.1 §4 | Creative specialist | Agent config + gateway binding (channel 1483133844663304272). Model: lmstudio/qwen3.5-35b-a3b. Webhook + outbox delivery live. | Live agent turn via gateway proven. Session file created. Webhook delivery to Discord verified (HTTP 204). Event routing + outbox working. No channel collisions across 11 bindings. | **LIVE** | 527ede7 | Ralph muse_creative backend path untested under timer. |
 | 2.11 | Cadence voice | v5.1 §25 | Wake detection → VAD → STT → routing → TTS | Full voice stack in `runtime/voice/`. Daemon active. OWW + Silero + faster-whisper + Piper. | Daemon running. Transcript routing proven. TTS proven. Mic blocked: RDPSource unavailable in WSL2. | **PARTIAL** | Watchboard §7.3 | Mic blocked. No live end-to-end wake+command proof. |
 | 2.12 | Flowstate distillation | v5.1 §4 | Ingestion and distillation lane | No dedicated Flowstate module found. Rolling summary in context engine serves partial role. | Context engine rolling summary distills session state. No separate Flowstate daemon. | **SUPERSEDED** | — | Replaced by context engine rolling summary. |
 
@@ -161,7 +161,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 
 | # | Feature | What Works | What's Missing |
 |---|---------|-----------|----------------|
-| 2.10 | Muse | Agent config + probe response | No Discord channel binding |
+| ~~2.10~~ | ~~Muse~~ | Moved to LIVE | Gateway binding + session + webhook delivery proven |
 | 2.11 | Cadence voice | Stack built, daemon running, transcript routing | Mic blocked (WSL2 RDPSource) |
 | 3.7 | Autonomy modes | Ralph uses bounded pattern | No formal mode field on tasks |
 | 7.4 | Promotion provenance | Module exists, routing provenance saves | Not all artifacts carry full chain |
