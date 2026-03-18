@@ -7,7 +7,7 @@ Design rules:
   - Cadence channel is VOICE-ONLY. Non-voice events are rejected/rerouted.
   - Every event writes a dispatch_event record.
   - Outbox entries written to state/discord_outbox/ for delivery.
-  - Messages are purpose-separated: status / result / warning / action-required.
+  - Messages are emoji-first, glanceable: ✅ result / ❌ fail / ⚠️ warn / 📌 next step.
 
 Event kinds supported:
     task_created, task_started, task_progress, task_completed, task_failed,
@@ -91,36 +91,36 @@ _NOISE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\(\)"),                                # empty parens left by removals
 ]
 
-# Purpose labels for event categories
-_PURPOSE: dict[str, str] = {
-    "task_created": "STATUS",
-    "task_started": "STATUS",
-    "task_progress": "STATUS",
-    "task_completed": "RESULT",
-    "task_failed": "ALERT",
-    "task_blocked": "ALERT",
-    "review_requested": "ACTION REQUIRED",
-    "review_completed": "RESULT",
-    "approval_requested": "ACTION REQUIRED",
-    "approval_completed": "RESULT",
-    "artifact_promoted": "RESULT",
-    "browser_action": "STATUS",
-    "browser_result": "RESULT",
-    "kitt_brief_completed": "RESULT",
-    "kitt_brief_failed": "ALERT",
-    "voice_session_started": "STATUS",
-    "voice_session_ended": "STATUS",
-    "tts_started": "STATUS",
-    "tts_completed": "STATUS",
-    "call_started": "STATUS",
-    "call_ended": "STATUS",
-    "agent_online": "STATUS",
-    "agent_offline": "ALERT",
-    "agent_status": "STATUS",
-    "delegation_sent": "STATUS",
-    "delegation_received": "STATUS",
-    "warning": "WARNING",
-    "error": "ERROR",
+# Emoji prefix per event kind — drives the glanceable visual shape
+_EMOJI: dict[str, str] = {
+    "task_created": "\U0001f4cb",       # 📋
+    "task_started": "\u25b6\ufe0f",     # ▶️
+    "task_progress": "\U0001f504",      # 🔄
+    "task_completed": "\u2705",         # ✅
+    "task_failed": "\u274c",            # ❌
+    "task_blocked": "\U0001f6ab",       # 🚫
+    "review_requested": "\U0001f440",   # 👀
+    "review_completed": "\U0001f4cb",   # 📋
+    "approval_requested": "\U0001f510", # 🔐
+    "approval_completed": "\U0001f513", # 🔓
+    "artifact_promoted": "\U0001f4e6",  # 📦
+    "browser_action": "\U0001f310",     # 🌐
+    "browser_result": "\U0001f310",     # 🌐
+    "kitt_brief_completed": "\U0001f9e0", # 🧠
+    "kitt_brief_failed": "\u274c",      # ❌
+    "voice_session_started": "\U0001f399\ufe0f", # 🎙️
+    "voice_session_ended": "\U0001f399\ufe0f",
+    "tts_started": "\U0001f399\ufe0f",
+    "tts_completed": "\U0001f399\ufe0f",
+    "call_started": "\U0001f399\ufe0f",
+    "call_ended": "\U0001f399\ufe0f",
+    "agent_online": "\U0001f7e2",       # 🟢
+    "agent_offline": "\U0001f534",      # 🔴
+    "agent_status": "\U0001f4ac",       # 💬
+    "delegation_sent": "\U0001f500",    # 🔀
+    "delegation_received": "\U0001f500",
+    "warning": "\u26a0\ufe0f",         # ⚠️
+    "error": "\U0001f534",             # 🔴
 }
 
 
@@ -183,14 +183,14 @@ def _extract_error_summary(detail: str) -> str:
 
 
 def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
-    """Produce a structured, purpose-separated Discord message for a runtime event.
+    """Produce an emoji-first, glanceable Discord message for a runtime event.
 
-    Format:
-        **[LABEL] Header**
-        > detail line (cleaned)
+    Shape:
+        <emoji> **Agent** action `task`
+        > detail (cleaned, one line)
+        📌 next step (only when action needed)
 
-    Action-required and alert messages include explicit next-step lines.
-    Simple status messages stay compact (2-3 lines max).
+    Optimized for phone readability: short, scannable, no wall-of-text.
     """
     agent = _display(payload.get("agent_id", "unknown"))
     task_id = payload.get("task_id", "")
@@ -199,183 +199,159 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
     target = payload.get("target", "")
     reviewer = _display(payload.get("reviewer_id", ""))
     artifact = payload.get("artifact_id", "")
-    purpose = _PURPOSE.get(kind, "INFO")
+    e = _EMOJI.get(kind, "\u2139\ufe0f")  # ℹ️ fallback
 
     clean = _clean_detail(detail)
 
-    # --- Simple status events (compact, 1-2 lines) ---
+    # --- Voice (ultra-compact) ---
 
     if kind in ("voice_session_started", "voice_session_ended",
                 "tts_started", "tts_completed", "call_started", "call_ended"):
         label_map = {
-            "voice_session_started": "Voice session started",
-            "voice_session_ended": "Voice session ended",
+            "voice_session_started": "session started",
+            "voice_session_ended": "session ended",
             "tts_started": "TTS started",
-            "tts_completed": "TTS completed",
-            "call_started": "Call started",
-            "call_ended": "Call ended",
+            "tts_completed": "TTS done",
+            "call_started": "call started",
+            "call_ended": "call ended",
         }
-        return f"**[{purpose}]** Cadence \u2014 {label_map[kind]}"
+        return f"{e} **Cadence** {label_map[kind]}"
 
-    if kind in ("agent_online", "agent_offline"):
-        status = "online" if kind == "agent_online" else "offline"
-        return f"**[{purpose}]** {agent} is {status}"
+    # --- Agent status ---
+
+    if kind == "agent_online":
+        return f"{e} **{agent}** online"
+
+    if kind == "agent_offline":
+        return f"{e} **{agent}** offline"
 
     if kind == "agent_status":
-        return f"**[{purpose}]** {agent}\n> {clean}" if clean else f"**[{purpose}]** {agent}"
+        return f"{e} **{agent}** {clean}" if clean else f"{e} **{agent}**"
 
     # --- Task lifecycle ---
 
     if kind == "task_created":
-        lines = [f"**[{purpose}]** {agent} created task `{short_tid}`"]
-        if clean:
-            lines.append(f"> {clean}")
-        return "\n".join(lines)
+        line = f"{e} **{agent}** created `{short_tid}`"
+        return f"{line}\n> {clean}" if clean else line
 
     if kind == "task_started":
-        lines = [f"**[{purpose}]** {agent} started task `{short_tid}`"]
-        if clean:
-            lines.append(f"> {clean}")
-        return "\n".join(lines)
+        line = f"{e} **{agent}** started `{short_tid}`"
+        return f"{line}\n> {clean}" if clean else line
 
     if kind == "task_progress":
-        lines = [f"**[{purpose}]** {agent} task `{short_tid}` in progress"]
-        if clean:
-            lines.append(f"> {clean}")
-        return "\n".join(lines)
+        line = f"{e} **{agent}** `{short_tid}` in progress"
+        return f"{line}\n> {clean}" if clean else line
 
     if kind == "task_completed":
-        lines = [f"**[{purpose}]** {agent} completed task `{short_tid}`"]
-        if clean:
-            lines.append(f"\n**What changed**\n> {clean}")
-        return "\n".join(lines)
+        line = f"{e} **{agent}** completed `{short_tid}`"
+        return f"{line}\n> {clean}" if clean else line
 
     if kind == "task_failed":
         err = _extract_error_summary(detail)
-        lines = [f"**[{purpose}]** {agent} FAILED task `{short_tid}`"]
+        line = f"{e} **{agent}** failed `{short_tid}`"
         if err:
-            lines.append(f"\n**Error**\n> {err}")
-        lines.append(f"\n**Next step**\n> Check logs or retry")
-        return "\n".join(lines)
+            line += f"\n> {err}"
+        line += f"\n\U0001f4cc Check logs or retry"  # 📌
+        return line
 
     if kind == "task_blocked":
-        lines = [f"**[{purpose}]** {agent} task `{short_tid}` BLOCKED"]
+        line = f"{e} **{agent}** `{short_tid}` blocked"
         if clean:
-            lines.append(f"\n**Reason**\n> {clean}")
-        lines.append(f"\n**Needs attention**\n> Unblock or reassign")
-        return "\n".join(lines)
+            line += f"\n> {clean}"
+        line += f"\n\U0001f4cc Unblock or reassign"  # 📌
+        return line
 
-    # --- Review / Approval (action-required messages) ---
+    # --- Review / Approval ---
 
     if kind == "review_requested":
-        lines = [f"**[{purpose}]** {agent} requests review for `{short_tid}`"]
+        line = f"{e} **{agent}** needs review on `{short_tid}`"
         if clean:
-            lines.append(f"> {clean}")
-        lines.append(f"\n**Needs attention**\n> Review in #review")
-        return "\n".join(lines)
+            line += f"\n> {clean}"
+        line += f"\n\U0001f4cc Review in #review"  # 📌
+        return line
 
     if kind == "review_completed":
         who = reviewer or agent
-        # Parse verdict from detail if present
         verdict_match = re.match(r"verdict:\s*(\w+)[.\s]*(.*)", detail, re.IGNORECASE)
         if verdict_match:
             verdict = verdict_match.group(1).upper()
             reason = _clean_detail(verdict_match.group(2))
-            lines = [f"**[{purpose}]** {who} reviewed `{short_tid}` \u2014 **{verdict}**"]
-            if reason:
-                lines.append(f"> {reason}")
-        else:
-            lines = [f"**[{purpose}]** {who} completed review for `{short_tid}`"]
-            if clean:
-                lines.append(f"> {clean}")
-        return "\n".join(lines)
+            v_emoji = "\u2705" if verdict == "APPROVED" else "\u274c"  # ✅ or ❌
+            line = f"{v_emoji} **{who}** reviewed `{short_tid}` \u2014 {verdict}"
+            return f"{line}\n> {reason}" if reason else line
+        line = f"{e} **{who}** reviewed `{short_tid}`"
+        return f"{line}\n> {clean}" if clean else line
 
     if kind == "approval_requested":
-        lines = [f"**[{purpose}]** Approval needed for `{short_tid}`"]
+        line = f"{e} Approval needed for `{short_tid}`"
         if clean:
-            lines.append(f"\n**Details**\n> {clean}")
-        lines.append(f"\n**Needs attention**\n> React in #review to approve/reject")
-        return "\n".join(lines)
+            line += f"\n> {clean}"
+        line += f"\n\U0001f4cc React in #review to approve/reject"  # 📌
+        return line
 
     if kind == "approval_completed":
-        # Parse decision from detail
         decision_match = re.match(r"decision:\s*(\w+)[.\s]*(.*)", detail, re.IGNORECASE)
         if decision_match:
             decision = decision_match.group(1).upper()
             reason = _clean_detail(decision_match.group(2))
-            lines = [f"**[{purpose}]** Approval for `{short_tid}` \u2014 **{decision}**"]
-            if reason:
-                lines.append(f"> {reason}")
-        else:
-            lines = [f"**[{purpose}]** Approval completed for `{short_tid}`"]
-            if clean:
-                lines.append(f"> {clean}")
-        return "\n".join(lines)
+            d_emoji = "\u2705" if decision == "APPROVED" else "\u274c"
+            line = f"{d_emoji} Approval `{short_tid}` \u2014 {decision}"
+            return f"{line}\n> {reason}" if reason else line
+        line = f"{e} Approval `{short_tid}` completed"
+        return f"{line}\n> {clean}" if clean else line
 
     # --- Artifacts ---
 
     if kind == "artifact_promoted":
         short_art = artifact[4:10] if artifact.startswith("art_") and len(artifact) > 10 else artifact
-        lines = [f"**[{purpose}]** {agent} promoted artifact `{short_art}`"]
-        if clean:
-            lines.append(f"> {clean}")
-        return "\n".join(lines)
+        line = f"{e} **{agent}** promoted `{short_art}`"
+        return f"{line}\n> {clean}" if clean else line
 
     # --- Browser ---
 
     if kind == "browser_action":
-        return f"**[{purpose}]** {agent} executing browser action on `{target}`"
+        return f"{e} **{agent}** browsing `{target}`"
 
     if kind == "browser_result":
-        lines = [f"**[{purpose}]** {agent} browser action on `{target}`"]
-        if clean:
-            lines.append(f"> {clean}")
-        return "\n".join(lines)
+        line = f"{e} **{agent}** browsed `{target}`"
+        return f"{line}\n> {clean}" if clean else line
 
     # --- Kitt brief ---
 
     if kind == "kitt_brief_completed":
-        lines = [f"**[{purpose}]** Kitt brief ready"]
-        if clean:
-            lines.append(f"> {clean}")
-        return "\n".join(lines)
+        line = f"{e} **Kitt** brief ready"
+        return f"{line}\n> {clean}" if clean else line
 
     if kind == "kitt_brief_failed":
-        lines = [f"**[{purpose}]** Kitt brief FAILED"]
-        if clean:
-            lines.append(f"> {clean}")
-        return "\n".join(lines)
+        line = f"{e} **Kitt** brief failed"
+        return f"{line}\n> {clean}" if clean else line
 
     # --- Delegation ---
 
     if kind == "delegation_sent":
-        return f"**[{purpose}]** {agent} delegated `{short_tid}` to {target}"
+        return f"{e} **{agent}** delegated `{short_tid}` \u2192 {target}"
 
     if kind == "delegation_received":
-        return f"**[{purpose}]** {agent} received delegation `{short_tid}` from {target}"
+        return f"{e} **{agent}** received `{short_tid}` \u2190 {target}"
 
     # --- Warning / Error ---
 
     if kind == "warning":
         err = _extract_error_summary(detail) if len(detail) > 120 else clean
-        lines = [f"**[{purpose}]** {agent}"]
-        if err:
-            lines.append(f"> {err}")
-        return "\n".join(lines)
+        line = f"{e} **{agent}**"
+        return f"{line}\n> {err}" if err else line
 
     if kind == "error":
         err = _extract_error_summary(detail) if len(detail) > 120 else clean
-        lines = [f"**[{purpose}]** {agent}"]
+        line = f"{e} **{agent}**"
         if err:
-            lines.append(f"> {err}")
-        lines.append(f"\n**Needs attention**\n> Investigate immediately")
-        return "\n".join(lines)
+            line += f"\n> {err}"
+        line += f"\n\U0001f4cc Investigate immediately"  # 📌
+        return line
 
     # --- Fallback ---
-    lines = [f"**[INFO]** {agent} \u2014 {kind}"]
-    if clean:
-        lines.append(f"> {clean}")
-    return "\n".join(lines)
+    line = f"\u2139\ufe0f **{agent}** {kind}"
+    return f"{line}\n> {clean}" if clean else line
 
 
 # ---------------------------------------------------------------------------

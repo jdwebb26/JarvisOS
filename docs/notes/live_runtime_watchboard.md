@@ -201,26 +201,34 @@
 - **After**: Kitt is a first-class wired backend (`kitt_quant`) in `BACKEND_ADAPTERS`; any task with `execution_backend="kitt_quant"` dispatches through the full pipeline with operator-visible completion
 - **Status**: ✅ LIVE
 
-### P. Discord message formatting cleanup (2026-03-18)
+### P. Discord message formatting — emoji-first glanceable style (2026-03-18)
 - **File**: `runtime/core/discord_event_router.py`
-- **Problem fixed**: All Discord messages were flat one-liners that mashed purpose, status, results, and internal IDs (tab hashes, cycle IDs, raw exceptions) into unreadable blobs. No visual separation between status updates, results, warnings, and action-required messages.
-- **Changes**:
-  - Rewrote `_render_status_text()` — messages now use Discord markdown with purpose labels (`[STATUS]`, `[RESULT]`, `[ALERT]`, `[ACTION REQUIRED]`, `[WARNING]`, `[ERROR]`), blockquote details, and separate sections for "What changed", "Error", "Needs attention", "Next step"
-  - Added `_clean_detail()` — strips internal noise (PinchTab tab hashes, snapshot counts, Ralph cycle IDs, artifact IDs, urllib exception wrappers, empty parens)
-  - Added `_extract_error_summary()` — pulls human-readable error from long exception strings
-  - Added `_short_task_id()` — shortens `task_abc123def456` to `abc123` for readability
-  - Added `_PURPOSE` label map for all 28+ event kinds
-- **Before**: `Bowser completed browser action on https://example.com. Navigated to https://example.com; tab ECBD52325D568DBD385B6764C81AC804; snapshot nodes=8`
-- **After**:
+- **Evolution**: Phase 1 (cac72fe) added `[LABEL]` blocks, noise stripping, error extraction. Phase 2 (this change) replaced label-heavy format with emoji-first, phone-scannable style per operator preference.
+- **Changes (phase 2)**:
+  - Replaced `_PURPOSE` label map with `_EMOJI` per-event emoji map (28 kinds)
+  - Rewrote `_render_status_text()` — emoji prefix, bold agent, short action, blockquote detail, 📌 pin only when action needed
+  - Preserved: `_clean_detail()`, `_extract_error_summary()`, `_short_task_id()`, all noise stripping
+  - Review completed: dynamic ✅/❌ emoji based on APPROVED/REJECTED verdict
+- **Before** (phase 1):
   ```
   **[RESULT]** Bowser browser action on `https://example.com`
   > Navigated to https://example.com
   ```
+- **After** (phase 2):
+  ```
+  🌐 **Bowser** browsed `https://example.com`
+  > Navigated to https://example.com
+  ```
+  ```
+  ❌ **HAL** failed `fmt_pr`
+  > Docker sandbox timeout after 120s
+  📌 Check logs or retry
+  ```
 - **Proven live** (2026-03-18):
-  - `emit_event("browser_result", ...)` → clean outbox text, no tab hashes ✅
-  - `emit_event("approval_requested", ...)` → purpose-separated with "Needs attention" section ✅
-  - `emit_event("warning", ...)` → error summary extracted, no raw exception stack ✅
-  - Live webhook delivery to #jarvis channel → HTTP 200, formatted message visible in Discord ✅
+  - 9 event kinds rendered: task_completed, task_failed, review_requested, review_completed, kitt_brief_completed, warning, browser_result, delegation_sent, error ✅
+  - All produce emoji-first, no `[LABEL]` blocks ✅
+  - Live webhook delivery to #jarvis → HTTP 200 ✅
+  - Tests: 19/19 pass (format shape + noise stripping + no-old-labels sweep) ✅
   - Validate: 395/395 pass ✅
 - **Status**: ✅ LIVE
 
@@ -283,7 +291,7 @@
 
 | Item | Why Blocked | Fix |
 |------|-------------|-----|
-| **Discord webhooks (partial)** | JARVIS_WEBHOOK_URL ✅ (HTTP 200). REVIEW_WEBHOOK_URL ✅ (HTTP 200). COUNCIL_WEBHOOK_URL ❌ (HTTP 404 — deleted). New per-agent webhooks (BOWSER, WORKLOG, HAL, SCOUT, etc.) set to REPLACE_ME. | User: create webhooks in Discord Server Settings → Integrations → set real URLs in `~/.openclaw/secrets.env` |
+| **Discord webhooks (mostly live)** | JARVIS ✅, REVIEW ✅, BOWSER ✅, HAL ✅, KITT ✅, WORKLOG ✅, SCOUT ✅, CADENCE ✅, HERMES ✅, MUSE ✅, QWEN ✅. COUNCIL ❌ (HTTP 404 — deleted webhook). | User: recreate COUNCIL webhook in Discord Server Settings → set `COUNCIL_WEBHOOK_URL` in `~/.openclaw/secrets.env` |
 | Claude agent live calls | `ANTHROPIC_API_KEY=REPLACE_ME` | User sets real key |
 | Hermes external daemon | External service not running | Activate external Hermes service |
 | Ralph autonomy loop | Needs ACP or external runtime | — |
@@ -293,7 +301,7 @@
 
 ## Exact Next Highest-Leverage Tasks
 
-1. **Create per-agent Discord webhooks** — JARVIS and REVIEW webhooks are live. Create webhooks for BOWSER, WORKLOG, HAL, SCOUT, HERMES, KITT, MUSE, QWEN channels. Recreate COUNCIL (deleted/404). Set env vars in `~/.openclaw/secrets.env`.
+1. **Recreate COUNCIL webhook** — only dead webhook (HTTP 404). User action in Discord Server Settings.
 2. **Set ANTHROPIC_API_KEY** — user action; unblocks Claude agent.
 3. **Hermes daemon activation** — external service prerequisite.
 
