@@ -47,7 +47,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 |---|---------|------|-------------------|---------------|---------------|--------|-------|-----|
 | 3.1 | Explicit task creation | v5.1 §3 | `task:` trigger, no implicit execution from chat | `task_runtime.py`, `intake.py` | Tasks created via `create_task_from_message()`. Status transitions emit events. | **LIVE** | — | — |
 | 3.2 | Task lifecycle events | v5.1 §12 | created → started → progress → completed/failed | `emit_event()` wired to all status transitions in `task_runtime.py` | Events route to Discord with emoji format. Outbox entries for each transition. | **LIVE** | Watchboard §I | — |
-| 3.3 | Backend dispatch | v5.2 §2 | Map tasks to legal backends | `backend_dispatch.py` with `BACKEND_ADAPTERS`: nvidia_executor, browser_backend, kitt_quant, hermes_adapter | `dispatch_to_backend()` dispatches to correct adapter. Backend execution request/result records written. | **LIVE** | f026883, b70a8b4 | qwen_executor/planner handled by gateway, not Python dispatch |
+| 3.3 | Backend dispatch | v5.2 §2 | Map tasks to legal backends | `backend_dispatch.py` with `BACKEND_ADAPTERS`: nvidia_executor, openai_executor, browser_backend, kitt_quant, hermes_adapter | `dispatch_to_backend()` dispatches to correct adapter. Backend execution request/result records written. | **LIVE** | f026883, b70a8b4, 490e83f | qwen_executor/planner handled by gateway, not Python dispatch |
 | 3.4 | Resumable approvals | v5.1 §13 | Checkpoint with approve/reject/rerun/escalate/defer | `approval_store.py` (27KB), `approval_sessions.py` (10KB) | Approval records in `state/approvals/`. Review/approval events emit to Discord. | **LIVE** | 011f733 (Ralph proof) | — |
 | 3.5 | Review hierarchy | v5.1 §4 | HAL → Archimedes → Anton | `review_store.py`, `decision_router.py` | Full chain proven: HAL code → Archimedes review → Anton/operator approval. 26 review records. | **LIVE** | bbe7132 | — |
 | 3.6 | Task envelopes | v5.1 §11 | Per-task autonomy constraints, allowed apps/sites/paths | TaskEnvelope fields defined in spec | No TaskEnvelope enforcement in live dispatch path. Tasks execute without per-task sandbox constraints. | **DOC-ONLY** | — | Not implemented as runtime enforcement. |
@@ -107,7 +107,8 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 8.5 | ShadowBroker OSINT | v5.2 | OSINT sidecar for research | Module referenced. No live service. | External service not present. | **DOC-ONLY** | — | Not implemented or deployed. |
 | 8.6 | Autoresearch / Strategy Lab | v5.1 §22 | Bounded experiment loops in sandbox | `autoresearch_adapter.py` importable. Strategy factory pipeline exists. | Strategy factory cron scheduled (Sunday 2AM batch). No autoresearch lab runs confirmed. | **PARTIAL** | — | Adapter exists. Strategy factory active. No lab experiment runs. |
 | 8.7 | A2A protocol | v5.2 | Agent-to-agent communication | `a2a_policy.py` importable. Scaffold only. | Agent comms happen via Discord channels / `sessions_send` tool, not A2A protocol. | **DOC-ONLY** | — | Scaffold. Not used in practice. |
-| 8.8 | Anthropic / Claude | v5.1 §6 | Cloud provider option | Provider config in `openclaw.json`. `claude-sonnet-4-6` configured. | `ANTHROPIC_API_KEY=REPLACE_ME`. No real API calls possible. | **BLOCKED** | — | User must set real API key. |
+| 8.8 | Anthropic / Claude | v5.1 §6 | Cloud provider option | Provider config in `openclaw.json`. `claude-sonnet-4-6` configured. `ModelFamily.CLAUDE` enum exists. | `ANTHROPIC_API_KEY=REPLACE_ME`. No Python-track adapter (`claude_executor.py`) exists — gateway config only. No real API calls possible. | **BLOCKED** | — | User must set real API key. No Python dispatch adapter — only gateway-level config. |
+| 8.8b | OpenAI / GPT | v5.1 §6 | Cloud provider option | `openai_executor.py` adapter. `openai_executor` in `BACKEND_ADAPTERS`. Model registry entry `gpt-4.1-mini`. Capability profile `cap_general_gpt`. Provider in `openclaw.json`. `BackendRuntime.OPENAI_EXECUTOR` enum. 26 tests. | Adapter wired, dispatch registered, model+profile registered. Current `OPENAI_API_KEY` returns 401 (unfunded). `gpt` family not in any agent's `allowed_families` — routing never selects it without explicit opt-in. | **WIRED (inactive)** | 490e83f | Requires funded OpenAI API key. ChatGPT subscription does NOT fund API usage. Must add `gpt` to agent `allowed_families` to enable routing. |
 | 8.9 | TradingView adapter | v5.2 | Market data integration | `tradingview_adapter.py` (1.6KB) | Not confirmed in active use. | **DOC-ONLY** | — | Adapter exists but unused. |
 | 8.10 | Mission control | v5.2 §5 | Gateway mode ops, mission sync | `scripts/mission_control_sync.py` | Scaffold only. | **DOC-ONLY** | — | Not implemented. |
 
@@ -157,27 +158,28 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | Integrations | 4 | SearXNG, PinchTab, NVIDIA/Kimi, LM Studio |
 | Strategy | 2 | Factory pipeline, durable queues |
 
-### Partially Verified — 6 features
+### Partially Verified — 5 features
 
 | # | Feature | What Works | What's Missing |
 |---|---------|-----------|----------------|
-| ~~2.10~~ | ~~Muse~~ | Moved to LIVE | Gateway binding + session + webhook delivery proven |
 | 2.11 | Cadence voice | Stack built, daemon running, transcript routing | Mic blocked (WSL2 RDPSource) |
 | 3.7 | Autonomy modes | Ralph uses bounded pattern | No formal mode field on tasks |
 | 7.4 | Promotion provenance | Module exists, routing provenance saves | Not all artifacts carry full chain |
 | 8.6 | Autoresearch | Adapter + strategy factory exist | No lab experiment runs confirmed |
 | 9.3 | Strategy diversity | Factory scoring exists | No promoted strategies to verify |
 
+### Wired but Inactive — 1 feature
+
+| Feature | Status | Blocker |
+|---------|--------|---------|
+| 8.8b OpenAI/GPT provider | Adapter + dispatch + model registry + tests all wired | Requires funded API key (current key returns 401). `gpt` family not in any agent's `allowed_families`. ChatGPT subscription does NOT fund API. |
+
 ### Still Blocked — 1 feature
 
 | Feature | Blocker |
 |---------|---------|
-| 8.8 Anthropic/Claude provider | `ANTHROPIC_API_KEY=REPLACE_ME` |
+| 8.8 Anthropic/Claude provider | `ANTHROPIC_API_KEY=REPLACE_ME`. No Python-track adapter exists (gateway config only). |
 
 ### DOC-ONLY (spec-defined, not runtime-implemented) — 9 features
 
 1.8 Multi-node burst, 3.6 Task envelopes, 4.6 Memory consolidation, 8.5 ShadowBroker, 8.7 A2A protocol, 8.9 TradingView, 8.10 Mission control, 10.4 Layered eval profiles, 11.1–11.6 v5.2 advanced features (skills engine, generative UI, knowledge vault, director, self-optimization, fine-tuning).
-
-### SUPERSEDED — 0 features
-
-(Previously listed 2.12 Flowstate as superseded — corrected: Flowstate module exists and is live.)

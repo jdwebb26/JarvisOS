@@ -42,6 +42,15 @@ Everything below describes what is **actually running right now** and how to ope
 | Operator status | `openclaw-operator-status.timer` | 5 min | Posts action summary to #jarvis when approvals/failures exist |
 | Dashboard | `openclaw-dashboard.service` | persistent | Browser UI at **http://127.0.0.1:18793/** — health, approvals, queue, next action |
 
+### LLM provider status
+
+| Provider | Backend | Status | Notes |
+|----------|---------|--------|-------|
+| LM Studio / Qwen | `qwen_executor`, `qwen_planner` (gateway) | **LIVE** | Primary. All local agents use Qwen via LM Studio |
+| NVIDIA / Kimi K2.5 | `nvidia_executor` | **LIVE** | Used by Kitt (default), Jarvis (via hybrid profile) |
+| OpenAI / GPT | `openai_executor` | **WIRED (inactive)** | Adapter + dispatch + model registry wired. Requires `OPENAI_API_KEY` with funded billing. **A ChatGPT subscription does NOT fund API usage.** Check: `python3 scripts/check_openai_provider.py` |
+| Anthropic / Claude | gateway config only | **BLOCKED** | `ANTHROPIC_API_KEY=REPLACE_ME`. No Python-track adapter exists — gateway config only |
+
 ### Daily operator commands
 
 Open the dashboard in a browser:
@@ -243,7 +252,7 @@ Voice pipeline, routing, session handling, and safety-aware dispatch behavior.
 
 ### `runtime/integrations/`
 
-Bounded adapters for subsystems such as Hermes and autoresearch.
+Bounded adapters for execution backends: NVIDIA/Kimi (`nvidia_executor.py`), OpenAI/GPT (`openai_executor.py`), Hermes (`hermes_adapter.py`, `hermes_transport.py`), Bowser browser (`bowser_adapter.py`), Kitt quant (`kitt_quant_workflow.py`), and autoresearch.
 
 ### `runtime/researchlab/`
 
