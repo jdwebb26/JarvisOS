@@ -20,6 +20,7 @@ Updated by proven facts only. Supersedes narrative in older trackers.
 | Service | Endpoint | Status |
 |---------|----------|--------|
 | Gateway | ws://127.0.0.1:18789 (systemd) | **LIVE** |
+| Dashboard | http://127.0.0.1:18793/ (systemd) | **LIVE** |
 | LM Studio (Qwen) | 100.70.114.34:1234 | **LIVE** |
 | NVIDIA / Kimi K2.5 | api.nvidia.com | **LIVE** |
 | SearXNG | localhost:8888 | **LIVE** |
@@ -50,22 +51,22 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 | **Kitt** | Kimi K2.5 (NVIDIA) | Quant briefs via `kitt_quant` dispatch: SearXNG → Bowser → Kimi synthesis → artifact |
 | **Bowser** | PinchTab browser | Navigate, snapshot, screenshot, text extraction |
 | **Ralph** | Qwen 3.5-35B | Full operator-usable loop: task claim → HAL dispatch → Archimedes auto-review → operator approval → completion → **auto-promotion** (artifact + output published automatically). CLI: `--status`, `--approve`, `--reject`, `--retry`. Rejected reviews fail cleanly. Stale-running recovery. Idle clears error state. |
+| **Hermes** | Qwen 3.5-35B (LM Studio) | Fully wired: `hermes_adapter` in backend_dispatch + Ralph ELIGIBLE_BACKENDS. Transport calls LM Studio directly (no external daemon needed). Proven 2026-03-18. Requires LM Studio running. |
+| **Muse** | Qwen 3.5-35B (LM Studio) | Creative lane active. Gateway binding → Discord channel. Full round-trip proven: Discord message → gateway session → LLM response → Discord delivery. |
 
 ## 4. Agents — Partial or Blocked
 
 | Agent | Status | What's missing |
 |-------|--------|----------------|
-| **Hermes** | LIVE | Fully wired: `hermes_adapter` in backend_dispatch + Ralph ELIGIBLE_BACKENDS. Transport calls LM Studio Qwen 3.5-35B directly (no external daemon needed). Proven 2026-03-18: task `task_7b4905b3005f` → result `bres_7b10e9081a58` → artifact `art_bf1920942594` (3342 chars, 1284 tokens). Requires LM Studio to be running. |
 | **Cadence** | PARTIAL | Voice stack built (ingress, TTS, call routing). Mic blocked: RDPSource unavailable in WSL2. Parked until mic passthrough |
-| **Muse** | LIVE | Creative lane active. Gateway binding → channel 1483133844663304272, model lmstudio/qwen3.5-35b-a3b. Full round-trip proven: human Discord message → gateway session `agent:muse:discord:channel:1483133844663304272` → LLM response → Discord delivery. Session + outbox + worklog mirror operational |
-| **Claude** | BLOCKED | `ANTHROPIC_API_KEY=REPLACE_ME`. User must set real key |
+| **Claude** | BLOCKED | `ANTHROPIC_API_KEY=REPLACE_ME` in `secrets.env`. No Python-track adapter exists (gateway config only). User must set a real key AND a `claude_executor` adapter would need to be built for Python-track dispatch. |
 
 ## 5. Core Runtime Systems
 
 ### Working
 - **Task lifecycle**: create → queue → start → checkpoint → complete/fail. Events emitted at every transition
 - **Review/approval chain**: HAL → Archimedes review → Anton/operator approval. Resumable checkpoints
-- **Backend dispatch**: `nvidia_executor`, `browser_backend`, `kitt_quant`, `hermes_adapter` wired. `execute_once()` picks queued tasks
+- **Backend dispatch**: `nvidia_executor`, `openai_executor`, `browser_backend`, `kitt_quant`, `hermes_adapter` wired. `execute_once()` picks queued tasks
 - **Context engine**: bounded 6-turn working memory, budget guard (72%/82%), tool filtering, skill allowlists
 - **Memory system**: episodic + semantic writes from task outcomes, review verdicts, approval decisions, routing decisions
 - **Learnings ledger**: JSONL-backed (`state/learnings/`), writes from failures/rejections/operator corrections, filtered retrieval per agent
@@ -86,11 +87,12 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Validate**: `scripts/validate.py` — 395 checks, comprehensive
 
 ### Not working / scaffold only
+- **OpenAI / GPT**: Fully wired as `openai_executor` adapter + model registry entry (`gpt-4.1-mini`) + capability profile + `openclaw.json` provider. **Disabled by default** — `gpt` family not in any agent's `allowed_families`. Gated behind `OPENAI_API_KEY` presence. Current key returns 401 (unfunded or invalid). **A ChatGPT subscription does NOT fund API usage** — requires separate billing at https://platform.openai.com/account/billing. Status check: `python3 scripts/check_openai_provider.py --ping`. 26 tests pass. Commit 490e83f.
 - **Multi-node burst routing** (NIMO/Koolkidclub): scaffolded, `burst_allowed=false` everywhere. Not live
 - **Routing policy enforcement**: `runtime_routing_policy.json` is enforced via runtime profiles (4240dcf). `load_runtime_routing_policy()` applies active profile overrides. `sync_routing_policy_to_openclaw.py` propagates to `openclaw.json`. Gateway uses `openclaw.json` as its config surface, which the sync script keeps aligned with the policy
 - **A2A protocol**: doc-only, no implementation
 - **Adaptation lab / DSPy optimizer**: scaffold, never run live
-- **Token budget cost tracking**: token counts tracked, USD cost tracking wired but local LLMs report $0. Will matter when cloud providers are active
+- **Token budget cost tracking**: token counts tracked, USD cost tracking wired but local LLMs report $0. Will matter when cloud providers (OpenAI, Claude) are active
 - **ShadowBroker**: scaffold, external runtime not present
 - **TradingView adapter**: doc-only
 - **Mission control adapter**: doc-only
