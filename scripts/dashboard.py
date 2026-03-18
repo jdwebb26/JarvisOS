@@ -125,144 +125,391 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenClaw Dashboard</title>
+<title>OpenClaw Ops</title>
 <style>
-:root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9;
-        --dim: #8b949e; --green: #3fb950; --yellow: #d29922; --red: #f85149;
-        --blue: #58a6ff; --mono: 'SF Mono', 'Fira Code', monospace; }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-       background: var(--bg); color: var(--text); padding: 16px; max-width: 900px; margin: 0 auto; }
-h1 { font-size: 1.3em; margin-bottom: 4px; }
-.ts { color: var(--dim); font-size: 0.85em; }
-.section { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-           padding: 14px; margin: 12px 0; }
-.section h2 { font-size: 1em; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;
-         font-weight: 600; }
-.badge-pass { background: #1a3a2a; color: var(--green); }
-.badge-warn { background: #3a2a1a; color: var(--yellow); }
-.badge-fail { background: #3a1a1a; color: var(--red); }
-.badge-count { background: var(--border); color: var(--text); }
-.item { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.9em; }
-.item:last-child { border-bottom: none; }
-.item-id { font-family: var(--mono); font-size: 0.8em; color: var(--blue); }
-.item-label { color: var(--dim); font-size: 0.8em; }
-.cmd { font-family: var(--mono); font-size: 0.78em; color: var(--dim); background: #0d1117;
-       padding: 2px 6px; border-radius: 3px; display: inline-block; margin-top: 3px;
-       word-break: break-all; cursor: pointer; }
-.cmd:hover { color: var(--text); }
-.next-box { background: #1a2233; border: 1px solid var(--blue); border-radius: 8px;
-            padding: 14px; margin: 12px 0; }
-.next-box h2 { color: var(--blue); font-size: 1em; margin-bottom: 6px; }
-.empty { color: var(--dim); font-style: italic; font-size: 0.9em; }
-.check-row { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 0.85em; }
-.check-label { min-width: 60px; }
-.loading { color: var(--dim); text-align: center; padding: 40px; }
+:root {
+  --bg: #0b0e14; --surface: #141820; --surface2: #1a1f2b;
+  --border: #252b37; --border-hover: #3a4258;
+  --text: #d4dae4; --text2: #9aa3b4; --dim: #626d82;
+  --green: #4ade80; --green-bg: rgba(74,222,128,.08); --green-border: rgba(74,222,128,.18);
+  --yellow: #facc15; --yellow-bg: rgba(250,204,21,.08); --yellow-border: rgba(250,204,21,.18);
+  --red: #f87171; --red-bg: rgba(248,113,113,.06); --red-border: rgba(248,113,113,.15);
+  --blue: #60a5fa; --blue-bg: rgba(96,165,250,.08); --blue-border: rgba(96,165,250,.18);
+  --purple: #a78bfa; --purple-bg: rgba(167,139,250,.08); --purple-border: rgba(167,139,250,.15);
+  --orange: #fb923c; --orange-bg: rgba(251,146,60,.08); --orange-border: rgba(251,146,60,.15);
+  --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --radius: 10px; --radius-sm: 6px;
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body {
+  font-family: var(--sans); background: var(--bg); color: var(--text);
+  padding: 20px 16px 40px; max-width: 720px; margin: 0 auto;
+  line-height: 1.5; font-size: 14px;
+}
+
+/* --- Header --- */
+.header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+.header h1 { font-size: 17px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.header .meta { font-size: 12px; color: var(--dim); font-family: var(--mono); }
+.refresh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green); margin-right: 6px; vertical-align: middle;
+  animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
+
+/* --- Status strip --- */
+.status-strip {
+  display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.stat {
+  flex: 1; min-width: 80px; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  text-align: center;
+}
+.stat-value { font-size: 22px; font-weight: 700; font-family: var(--mono); line-height: 1.2; }
+.stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--dim); margin-top: 2px; }
+.stat-pass .stat-value { color: var(--green); }
+.stat-warn .stat-value { color: var(--yellow); }
+.stat-fail .stat-value { color: var(--red); }
+
+/* --- Cards --- */
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 12px; overflow: hidden;
+}
+.card-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  font-size: 13px; font-weight: 600;
+}
+.card-header .icon { font-size: 15px; line-height: 1; }
+.card-header .count {
+  margin-left: auto; font-family: var(--mono); font-size: 11px; font-weight: 500;
+  padding: 2px 8px; border-radius: 10px;
+  background: var(--surface2); color: var(--text2);
+}
+.card-body { padding: 0; }
+.card-empty { padding: 16px; color: var(--dim); font-size: 13px; }
+
+/* --- Next Action (hero) --- */
+.hero {
+  background: var(--blue-bg); border: 1px solid var(--blue-border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 12px;
+}
+.hero-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--blue); font-weight: 600; margin-bottom: 6px; }
+.hero-text { font-size: 14px; color: var(--text); line-height: 1.45; }
+.hero-action { margin-top: 10px; }
+.hero-also { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--blue-border); }
+.hero-also-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--dim); margin-bottom: 6px; }
+
+/* --- Row items --- */
+.row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+.row:last-child { border-bottom: none; }
+.row:hover { background: var(--surface2); }
+.row-id { font-family: var(--mono); font-size: 11px; color: var(--dim);
+  flex-shrink: 0; min-width: 85px; padding-top: 1px; }
+.row-body { flex: 1; min-width: 0; }
+.row-text { font-size: 13px; color: var(--text); display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.row-error { font-size: 12px; color: var(--red); margin-top: 2px;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.row-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+
+/* --- Approval cards --- */
+.approval-row {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+.approval-row:last-child { border-bottom: none; }
+.approval-row:hover { background: var(--surface2); }
+.approval-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.approval-id { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.approval-badge { font-size: 10px; padding: 1px 7px; border-radius: 10px;
+  background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border);
+  font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.approval-text { font-size: 13px; color: var(--text); margin-bottom: 8px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* --- Buttons --- */
+.btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  padding: 4px 10px; border-radius: var(--radius-sm);
+  cursor: pointer; border: 1px solid; transition: all .15s;
+  background: transparent; text-decoration: none; white-space: nowrap;
+}
+.btn-approve { color: var(--green); border-color: var(--green-border); }
+.btn-approve:hover { background: var(--green-bg); border-color: var(--green); }
+.btn-retry { color: var(--yellow); border-color: var(--yellow-border); }
+.btn-retry:hover { background: var(--yellow-bg); border-color: var(--yellow); }
+.btn-copy { color: var(--text2); border-color: var(--border); }
+.btn-copy:hover { background: var(--surface2); border-color: var(--border-hover); color: var(--text); }
+.btn-promote { color: var(--purple); border-color: var(--purple-border); }
+.btn-promote:hover { background: var(--purple-bg); border-color: var(--purple); }
+.btn .copied { display: none; }
+.btn.is-copied .label { display: none; }
+.btn.is-copied .copied { display: inline; }
+
+/* --- Health checks inline --- */
+.health-checks { padding: 4px 16px 12px; }
+.hc-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+.hc-level { font-family: var(--mono); font-size: 10px; font-weight: 700;
+  text-transform: uppercase; min-width: 36px; }
+.hc-warn { color: var(--yellow); }
+.hc-fail { color: var(--red); }
+.hc-text { color: var(--text2); flex: 1; }
+.hc-fix .btn { font-size: 10px; padding: 2px 8px; }
+
+/* --- Collapsible sections --- */
+.section-toggle { cursor: pointer; user-select: none; }
+.section-toggle .chevron { transition: transform .2s; display: inline-block; font-size: 10px;
+  color: var(--dim); margin-left: 4px; }
+.section-toggle.collapsed .chevron { transform: rotate(-90deg); }
+.section-toggle.collapsed + .card-body { display: none; }
+
+/* --- Overflow --- */
+.overflow { padding: 8px 16px; font-size: 12px; color: var(--dim); }
+
+/* --- Footer --- */
+.footer { text-align: center; padding: 20px 0 0; font-size: 11px; color: var(--dim);
+  font-family: var(--mono); }
+
+/* --- Loading --- */
+.loading { color: var(--dim); text-align: center; padding: 60px 0; font-size: 13px; }
+
+/* --- Responsive --- */
+@media (max-width: 480px) {
+  body { padding: 12px 10px 32px; font-size: 13px; }
+  .status-strip { gap: 6px; }
+  .stat { padding: 8px 6px; min-width: 60px; }
+  .stat-value { font-size: 18px; }
+  .row { padding: 8px 12px; gap: 8px; }
+  .row-id { min-width: 70px; font-size: 10px; }
+  .approval-row { padding: 10px 12px; }
+  .card-header { padding: 10px 12px; }
+  .hero { padding: 12px; }
+}
 </style>
 </head>
 <body>
-<h1>&#x1F41E; OpenClaw Dashboard</h1>
-<div class="ts" id="ts">Loading...</div>
 
-<div id="app" class="loading">Fetching live state...</div>
+<div class="header">
+  <h1>OpenClaw Ops</h1>
+  <span class="meta"><span class="refresh-dot"></span><span id="ts">...</span></span>
+</div>
+
+<div id="app" class="loading">Loading live state...</div>
 
 <script>
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-function badge(level) {
-  const cls = level === 'PASS' ? 'badge-pass' : level === 'WARN' ? 'badge-warn' : 'badge-fail';
-  return `<span class="badge ${cls}">${esc(level)}</span>`;
+function esc(s) {
+  if (s == null) return '';
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
 }
 
-function countBadge(n) { return `<span class="badge badge-count">${n}</span>`; }
+function shortId(id) { return (id || '').replace(/^(task_|apr_|art_)/, '').substring(0, 10); }
 
-function cmd(c) { return `<span class="cmd" title="Click to copy" onclick="navigator.clipboard.writeText('${esc(c)}')">${esc(c)}</span>`; }
+function copyBtn(cmd, label, cls) {
+  const escaped = esc(cmd).replace(/'/g, "\\'");
+  return `<button class="btn ${cls}" onclick="copyCmd(this, '${escaped}')"><span class="label">${label}</span><span class="copied">copied</span></button>`;
+}
 
+function copyCmd(el, text) {
+  navigator.clipboard.writeText(text);
+  el.classList.add('is-copied');
+  setTimeout(() => el.classList.remove('is-copied'), 1200);
+}
+
+function toggleSection(el) {
+  el.classList.toggle('collapsed');
+}
+
+/* --- Status strip --- */
+function renderStrip(data) {
+  const h = data.health || {};
+  const verdictCls = h.verdict === 'PASS' ? 'stat-pass' : h.verdict === 'WARN' ? 'stat-warn' : 'stat-fail';
+  const approvals = (data.approvals || []).length;
+  const failed = (data.failed || []).length;
+  const queued = (data.queued || []).length;
+  const blocked = (data.blocked || []).length;
+  return `<div class="status-strip">
+    <div class="stat ${verdictCls}"><div class="stat-value">${esc(h.verdict || '?')}</div><div class="stat-label">Health</div></div>
+    <div class="stat ${approvals > 0 ? 'stat-warn' : ''}"><div class="stat-value">${approvals}</div><div class="stat-label">Approvals</div></div>
+    <div class="stat ${failed > 0 ? 'stat-fail' : ''}"><div class="stat-value">${failed}</div><div class="stat-label">Failed</div></div>
+    <div class="stat"><div class="stat-value">${blocked}</div><div class="stat-label">Blocked</div></div>
+    <div class="stat"><div class="stat-value">${queued}</div><div class="stat-label">Queued</div></div>
+  </div>`;
+}
+
+/* --- Health card --- */
 function renderHealth(h) {
-  let html = `<div class="section"><h2>Runtime Health ${badge(h.verdict)}</h2>`;
-  if (h.checks && h.checks.length > 0) {
-    h.checks.forEach(c => {
-      const lvl = c.level === 'fail' ? 'var(--red)' : 'var(--yellow)';
-      html += `<div class="check-row"><span class="check-label" style="color:${lvl}">${esc(c.level.toUpperCase())}</span> <span>${esc(c.label)}: ${esc(c.detail)}</span></div>`;
-      if (c.fix) html += `<div style="margin-left:68px">${cmd(c.fix)}</div>`;
-    });
-  } else if (h.verdict === 'PASS') {
-    html += `<div class="empty">All checks passing</div>`;
+  if (!h || !h.checks || h.checks.length === 0) {
+    if (h && h.verdict === 'PASS') return '';
+    if (h && h.error) return `<div class="card"><div class="card-header"><span class="icon">&#x26A0;</span> Health Error</div><div class="card-body"><div class="card-empty">${esc(h.error)}</div></div></div>`;
+    return '';
   }
-  html += '</div>';
+  let html = `<div class="card"><div class="card-header"><span class="icon">&#x1F3E5;</span> Health Issues <span class="count">${h.checks.length}</span></div><div class="health-checks">`;
+  h.checks.forEach(c => {
+    const cls = c.level === 'fail' ? 'hc-fail' : 'hc-warn';
+    html += `<div class="hc-row"><span class="hc-level ${cls}">${esc(c.level)}</span><span class="hc-text">${esc(c.label)}: ${esc(c.detail)}</span>`;
+    if (c.fix) html += `<span class="hc-fix">${copyBtn(c.fix, 'Fix', 'btn-copy')}</span>`;
+    html += `</div>`;
+  });
+  html += `</div></div>`;
   return html;
 }
 
+/* --- Next Action hero --- */
 function renderNext(actions) {
-  if (!actions || actions.length === 0) return `<div class="next-box"><h2>&#x2714;&#xfe0f; Next Action</h2><div class="empty">Nothing needs attention right now.</div></div>`;
-  const a = actions[0];
-  let html = `<div class="next-box"><h2>&#x27a1;&#xfe0f; Next Action</h2>`;
-  html += `<div>${esc(a.summary || a.category || '')}</div>`;
-  if (a.command) html += `<div style="margin-top:6px">${cmd(a.command)}</div>`;
-  if (actions.length > 1) {
-    html += `<div style="margin-top:10px;color:var(--dim);font-size:0.85em">Also:</div>`;
-    actions.slice(1, 4).forEach(x => {
-      html += `<div class="item"><span>${esc(x.summary || x.category || '')}</span>`;
-      if (x.command) html += `<br>${cmd(x.command)}`;
-      html += '</div>';
-    });
+  if (!actions || actions.length === 0) {
+    return `<div class="hero"><div class="hero-label">Next Action</div><div class="hero-text" style="color:var(--dim)">Nothing needs attention right now.</div></div>`;
   }
-  html += '</div>';
+  const a = actions[0];
+  // Extract just the description after the task_id prefix
+  const summary = (a.summary || a.category || '').replace(/^(approve|retry|review)\s+task_\w+\s*\u2014\s*/, '');
+  const taskId = a.task_id || '';
+
+  let html = `<div class="hero"><div class="hero-label">Next Action</div>`;
+  html += `<div class="hero-text">${esc(summary)}</div>`;
+  if (a.command) {
+    html += `<div class="hero-action">${copyBtn(a.command, a.category === 'approval' ? 'Approve' : 'Run', a.category === 'approval' ? 'btn-approve' : 'btn-retry')}</div>`;
+  }
+
+  if (actions.length > 1) {
+    html += `<div class="hero-also"><div class="hero-also-label">${actions.length - 1} more action${actions.length > 2 ? 's' : ''}</div>`;
+    actions.slice(1, 4).forEach(x => {
+      const xs = (x.summary || '').replace(/^(approve|retry|review)\s+task_\w+\s*\u2014\s*/, '');
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0"><span style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(xs)}</span>`;
+      if (x.command) html += copyBtn(x.command, x.category === 'approval' ? 'Approve' : 'Run', 'btn-copy');
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
   return html;
 }
 
-function renderList(title, items, idField, labelField, cmdPrefix, emoji) {
-  let html = `<div class="section"><h2>${emoji} ${esc(title)} ${countBadge(items.length)}</h2>`;
+/* --- Approvals --- */
+function renderApprovals(items) {
+  let html = `<div class="card"><div class="card-header section-toggle" onclick="toggleSection(this)"><span class="icon">&#x1F514;</span> Pending Approvals <span class="chevron">&#x25BC;</span><span class="count">${items.length}</span></div><div class="card-body">`;
   if (items.length === 0) {
-    html += `<div class="empty">None</div>`;
+    html += `<div class="card-empty">No pending approvals</div>`;
+  } else {
+    items.slice(0, 10).forEach(item => {
+      const tid = item.task_id || '';
+      html += `<div class="approval-row">`;
+      html += `<div class="approval-meta"><span class="approval-id">${esc(shortId(tid))}</span><span class="approval-badge">Awaiting</span></div>`;
+      html += `<div class="approval-text">${esc(item.request || '')}</div>`;
+      html += `<div class="row-actions">`;
+      html += copyBtn('python3 scripts/run_ralph_v1.py --approve ' + tid, 'Approve', 'btn-approve');
+      html += copyBtn(tid, 'Copy ID', 'btn-copy');
+      html += `</div></div>`;
+    });
+    if (items.length > 10) html += `<div class="overflow">+${items.length - 10} more</div>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+/* --- Failed --- */
+function renderFailed(items) {
+  let html = `<div class="card"><div class="card-header section-toggle" onclick="toggleSection(this)"><span class="icon">&#x26A0;</span> Failed <span class="chevron">&#x25BC;</span><span class="count">${items.length}</span></div><div class="card-body">`;
+  if (items.length === 0) {
+    html += `<div class="card-empty">No failures</div>`;
   } else {
     items.slice(0, 8).forEach(item => {
-      const id = item[idField] || item.task_id || '';
-      const shortId = id.substring(0, 16);
-      const label = item[labelField] || item.request || item.error || '';
-      html += `<div class="item"><span class="item-id">${esc(shortId)}</span> ${esc(label.substring(0, 60))}`;
-      if (cmdPrefix) {
-        const fullId = item.task_id || id;
-        html += `<br>${cmd(cmdPrefix + fullId)}`;
-      }
-      html += '</div>';
+      const tid = item.task_id || '';
+      html += `<div class="row"><div class="row-id">${esc(shortId(tid))}</div><div class="row-body">`;
+      html += `<div class="row-text">${esc(item.request || '')}</div>`;
+      if (item.error) html += `<div class="row-error">${esc(item.error)}</div>`;
+      html += `<div class="row-actions">${copyBtn('python3 scripts/run_ralph_v1.py --retry ' + tid, 'Retry', 'btn-retry')} ${copyBtn(tid, 'Copy ID', 'btn-copy')}</div>`;
+      html += `</div></div>`;
     });
-    if (items.length > 8) html += `<div class="item-label">+${items.length - 8} more</div>`;
+    if (items.length > 8) html += `<div class="overflow">+${items.length - 8} more</div>`;
   }
-  html += '</div>';
+  html += `</div></div>`;
   return html;
 }
 
-function renderOutputs(items) {
-  let html = `<div class="section"><h2>&#x1F4E6; Promotable Outputs ${countBadge(items.length)}</h2>`;
+/* --- Blocked --- */
+function renderBlocked(items) {
+  let html = `<div class="card"><div class="card-header section-toggle" onclick="toggleSection(this)"><span class="icon">&#x1F6D1;</span> Blocked <span class="chevron">&#x25BC;</span><span class="count">${items.length}</span></div><div class="card-body">`;
   if (items.length === 0) {
-    html += `<div class="empty">No unpromoted outputs</div>`;
+    html += `<div class="card-empty">Nothing blocked</div>`;
   } else {
-    items.slice(0, 5).forEach(item => {
-      const tid = (item.task_id || '').substring(0, 16);
-      html += `<div class="item"><span class="item-id">${esc(tid)}</span> ${esc((item.request || item.preview || '').substring(0, 55))}`;
-      if (item.task_id) html += `<br>${cmd('python3 scripts/promote_output.py --promote ' + item.task_id)}`;
-      html += '</div>';
+    items.slice(0, 8).forEach(item => {
+      const tid = item.task_id || '';
+      html += `<div class="row"><div class="row-id">${esc(shortId(tid))}</div><div class="row-body">`;
+      html += `<div class="row-text">${esc(item.request || '')}</div>`;
+      if (item.error) html += `<div class="row-error">${esc(item.error)}</div>`;
+      html += `<div class="row-actions">${copyBtn('python3 scripts/run_ralph_v1.py --retry ' + tid, 'Retry', 'btn-retry')} ${copyBtn(tid, 'Copy ID', 'btn-copy')}</div>`;
+      html += `</div></div>`;
     });
+    if (items.length > 8) html += `<div class="overflow">+${items.length - 8} more</div>`;
   }
-  html += '</div>';
+  html += `</div></div>`;
   return html;
 }
 
+/* --- Queued --- */
+function renderQueued(items) {
+  let html = `<div class="card"><div class="card-header section-toggle" onclick="toggleSection(this)"><span class="icon">&#x23F3;</span> Queued <span class="chevron">&#x25BC;</span><span class="count">${items.length}</span></div><div class="card-body">`;
+  if (items.length === 0) {
+    html += `<div class="card-empty">Queue empty</div>`;
+  } else {
+    items.slice(0, 8).forEach(item => {
+      const tid = item.task_id || '';
+      html += `<div class="row"><div class="row-id">${esc(shortId(tid))}</div><div class="row-body">`;
+      html += `<div class="row-text">${esc(item.request || '')}</div>`;
+      html += `</div></div>`;
+    });
+    if (items.length > 8) html += `<div class="overflow">+${items.length - 8} more</div>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+/* --- Promotable outputs --- */
+function renderOutputs(items) {
+  let html = `<div class="card"><div class="card-header section-toggle" onclick="toggleSection(this)"><span class="icon">&#x1F4E6;</span> Promotable Outputs <span class="chevron">&#x25BC;</span><span class="count">${items.length}</span></div><div class="card-body">`;
+  if (items.length === 0) {
+    html += `<div class="card-empty">No outputs ready</div>`;
+  } else {
+    items.slice(0, 6).forEach(item => {
+      const tid = item.task_id || '';
+      html += `<div class="row"><div class="row-id">${esc(shortId(tid))}</div><div class="row-body">`;
+      html += `<div class="row-text">${esc(item.request || item.preview || '')}</div>`;
+      html += `<div class="row-actions">${copyBtn('python3 scripts/promote_output.py --promote ' + tid, 'Promote', 'btn-promote')} ${copyBtn(tid, 'Copy ID', 'btn-copy')}</div>`;
+      html += `</div></div>`;
+    });
+    if (items.length > 6) html += `<div class="overflow">+${items.length - 6} more</div>`;
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+/* --- Main render --- */
 function render(data) {
-  document.getElementById('ts').textContent = data.generated_at + ' UTC';
+  document.getElementById('ts').textContent = (data.generated_at || '').replace('T', ' ').replace('Z', '') + ' UTC';
   let html = '';
+  html += renderStrip(data);
   html += renderHealth(data.health || {});
   html += renderNext(data.next_actions || []);
-  html += renderList('Pending Approvals', data.approvals || [], 'task_id', 'request',
-                      'python3 scripts/run_ralph_v1.py --approve ', '&#x1F514;');
-  html += renderList('Failed (Retryable)', data.failed || [], 'task_id', 'error',
-                      'python3 scripts/run_ralph_v1.py --retry ', '&#x274C;');
-  html += renderList('Blocked', data.blocked || [], 'task_id', 'request',
-                      'python3 scripts/run_ralph_v1.py --retry ', '&#x1F6AB;');
-  html += renderList('Queued', data.queued || [], 'task_id', 'request', '', '&#x1F4E5;');
+  html += renderApprovals(data.approvals || []);
+  html += renderFailed(data.failed || []);
+  html += renderBlocked(data.blocked || []);
+  html += renderQueued(data.queued || []);
   html += renderOutputs(data.promotable_outputs || []);
+  html += `<div class="footer">auto-refresh 30s</div>`;
   document.getElementById('app').innerHTML = html;
 }
 
@@ -272,7 +519,7 @@ async function refresh() {
     const data = await resp.json();
     render(data);
   } catch(e) {
-    document.getElementById('app').innerHTML = `<div style="color:var(--red)">Error: ${e.message}</div>`;
+    document.getElementById('app').innerHTML = `<div style="color:var(--red);padding:40px;text-align:center">Error: ${esc(e.message)}</div>`;
   }
 }
 
