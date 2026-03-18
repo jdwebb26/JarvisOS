@@ -20,6 +20,9 @@ from typing import Any, Optional
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 OPENCLAW_ROOT = Path.home() / ".openclaw"
 POLICY_PATH = ROOT / "config" / "runtime_routing_policy.json"
 OPENCLAW_JSON = OPENCLAW_ROOT / "openclaw.json"
@@ -81,13 +84,24 @@ def resolve_fallback_refs(allowed_fallbacks: list[str]) -> list[str]:
 def compute_sync_plan(
     policy: dict[str, Any],
     openclaw: dict[str, Any],
+    *,
+    profile_name: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Compare policy agent_policies against openclaw agent configs.
 
+    If profile_name is provided, applies that profile's overrides before computing.
     Returns a list of changes needed, each with:
       agent_id, field, current, desired, reason
     """
-    agent_policies = policy.get("agent_policies", {})
+    agent_policies = dict(policy.get("agent_policies", {}))
+
+    # Apply profile overrides if requested
+    if profile_name:
+        try:
+            from runtime.core.runtime_profiles import apply_profile_overrides
+            agent_policies = apply_profile_overrides(agent_policies, profile_name)
+        except ImportError:
+            pass  # runtime_profiles not available — use base policy
     agents_list = (openclaw.get("agents") or {}).get("list") or []
     agents_by_id = {str(a.get("id") or ""): a for a in agents_list}
 
@@ -168,6 +182,11 @@ def main() -> int:
     )
     parser.add_argument("--check", action="store_true", help="Dry-run: show changes without applying.")
     parser.add_argument(
+        "--profile",
+        default=None,
+        help="Apply a runtime profile's overrides before syncing (e.g. hybrid, cloud_fast).",
+    )
+    parser.add_argument(
         "--policy",
         default=str(POLICY_PATH),
         help="Path to runtime_routing_policy.json",
@@ -192,12 +211,23 @@ def main() -> int:
     policy = _load_json(policy_path)
     openclaw = _load_json(openclaw_path)
 
-    changes = compute_sync_plan(policy, openclaw)
+    # Resolve profile: explicit --profile flag, or read active profile from state
+    profile_name = args.profile
+    if not profile_name:
+        try:
+            from runtime.core.runtime_profiles import get_active_profile, DEFAULT_PROFILE
+            state = get_active_profile(root=ROOT)
+            profile_name = state.get("profile", DEFAULT_PROFILE)
+        except ImportError:
+            profile_name = None
+
+    changes = compute_sync_plan(policy, openclaw, profile_name=profile_name)
 
     if args.check:
         print(json.dumps({
             "ok": True,
             "mode": "check",
+            "active_profile": profile_name,
             "changes_needed": len(changes),
             "changes": changes,
         }, indent=2))
@@ -207,6 +237,7 @@ def main() -> int:
         print(json.dumps({
             "ok": True,
             "mode": "apply",
+            "active_profile": profile_name,
             "changes_applied": 0,
             "message": "Already in sync — no changes needed.",
         }, indent=2))
@@ -219,6 +250,7 @@ def main() -> int:
     print(json.dumps({
         "ok": True,
         "mode": "apply",
+        "active_profile": profile_name,
         "changes_applied": applied,
         "backup": str(backup_path),
         "changes": changes,

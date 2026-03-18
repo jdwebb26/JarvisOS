@@ -250,6 +250,33 @@
   - Validate: 395/395 pass ✅
 - **Status**: ✅ LIVE
 
+### R. Runtime provider profiles (2026-03-18)
+- **Files**:
+  - `runtime/core/runtime_profiles.py` — profile definitions, get/set/show, CLI
+  - `runtime/core/routing.py` — `load_runtime_routing_policy()` now applies active profile overrides
+  - `scripts/sync_routing_policy_to_openclaw.py` — profile-aware sync (reads active profile, accepts `--profile` flag)
+  - `state/active_profile.json` — persisted active profile state
+- **Profiles available**:
+  - `local_only` — All Qwen on LM Studio (default, safe)
+  - `hybrid` — Jarvis/Scout/Hermes on Kimi 2.5, coders stay local
+  - `cloud_fast` — Jarvis + research agents on Kimi 2.5
+  - `cloud_smart` — All reasoning-heavy agents on Kimi 2.5
+  - `degraded` — Minimal local fallbacks for LM Studio outage
+- **Usage**:
+  - `python3 -m runtime.core.runtime_profiles list` — show available profiles
+  - `python3 -m runtime.core.runtime_profiles set hybrid` — switch profile
+  - `python3 -m runtime.core.runtime_profiles show` — show realized routing per agent
+  - `python3 scripts/sync_routing_policy_to_openclaw.py` — sync active profile to gateway
+- **Proven live** (2026-03-18):
+  - Set `hybrid` → `resolve_runtime_route_policy(agent_id="jarvis")` returns `preferred_provider=nvidia, preferred_model=moonshotai/kimi-k2.5` ✅
+  - Sync applied → `openclaw.json` Jarvis primary changed to `nvidia/moonshotai/kimi-k2.5` ✅
+  - Real Kimi 2.5 API call: `model=moonshotai/kimi-k2.5`, content="I am live and ready to assist." ✅
+  - Switch back to `local_only` → sync restored Jarvis to `lmstudio/qwen3.5-35b-a3b` ✅
+  - Tests: 16/16 profile tests pass, 395/395 validate pass ✅
+- **Before**: All agents hardcoded to local Qwen. No way to switch providers without editing JSON files.
+- **After**: Explicit named profiles. `set hybrid` → Jarvis runs on Kimi 2.5. `set local_only` → safe default restored. Active profile visible in `state/active_profile.json` and `show` output.
+- **Status**: ✅ LIVE
+
 ---
 
 ## What Is Still Blocked / Partial

@@ -44,6 +44,7 @@ from runtime.controls.control_store import assert_control_allows, get_effective_
 from runtime.core.provenance_store import save_routing_provenance
 from runtime.core.modality_contracts import build_modality_summary, ensure_default_modality_contracts
 from runtime.core.agent_roster import build_agent_roster_summary
+from runtime.core.runtime_profiles import apply_profile_overrides, get_active_profile
 
 
 ACTIVE_QWEN_MODELS = [
@@ -508,7 +509,8 @@ def validate_runtime_routing_policy(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_runtime_routing_policy(root: Optional[Path] = None) -> dict[str, Any]:
-    path = runtime_routing_policy_path(root=root)
+    resolved_root = Path(root or ROOT).resolve()
+    path = runtime_routing_policy_path(root=resolved_root)
     if not path.exists():
         return json.loads(json.dumps(DEFAULT_RUNTIME_ROUTING_POLICY))
     try:
@@ -522,6 +524,18 @@ def load_runtime_routing_policy(root: Optional[Path] = None) -> dict[str, Any]:
     for key, value in payload.items():
         if key not in merged:
             merged[key] = value
+
+    # Apply active runtime profile overrides to agent_policies
+    try:
+        profile_state = get_active_profile(root=resolved_root)
+        profile_name = profile_state.get("profile", "local_only")
+        merged["agent_policies"] = apply_profile_overrides(
+            merged["agent_policies"], profile_name
+        )
+        merged["_active_profile"] = profile_name
+    except Exception:
+        merged["_active_profile"] = "local_only"
+
     return merged
 
 
