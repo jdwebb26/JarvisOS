@@ -99,6 +99,15 @@ def _find_latest_todo_task(root: Path = ROOT) -> Optional[dict[str, Any]]:
     return todo[0]
 
 
+def _find_latest_by_status(status: str, root: Path = ROOT) -> Optional[dict[str, Any]]:
+    tasks = _load_all_tasks(root)
+    matched = [t for t in tasks if t.get("status") == status]
+    if not matched:
+        return None
+    matched.sort(key=lambda t: t.get("updated_at", t.get("created_at", "")), reverse=True)
+    return matched[0]
+
+
 # ---------------------------------------------------------------------------
 # Task age
 # ---------------------------------------------------------------------------
@@ -311,10 +320,12 @@ def explain(task_id: str, root: Path = ROOT) -> dict[str, Any]:
             result["approval_id"] = approval.get("approval_id", "")
             result["approval_status"] = approval.get("status", "")
             if approval.get("status") == "pending":
+                aid = approval.get("approval_id", "")
                 result["action"] = (
                     f"Waiting for operator approval.\n"
                     f"  python3 scripts/run_ralph_v1.py --approve {task_id}\n"
-                    f"  python3 scripts/run_ralph_v1.py --reject {task_id}"
+                    f"  python3 scripts/run_ralph_v1.py --reject {task_id}\n"
+                    f"  Discord #review: approve {aid}"
                 )
             elif approval.get("status") == "approved":
                 result["action"] = "Approval granted. Ralph will finalize on next cycle."
@@ -325,7 +336,11 @@ def explain(task_id: str, root: Path = ROOT) -> dict[str, Any]:
         error = task.get("last_error", "")
         result["last_error"] = error[:200]
         result["error_count"] = task.get("error_count", 0)
-        transient = any(kw in error.lower() for kw in ["timeout", "connection", "rate limit", "502", "503"])
+        transient = any(kw in error.lower() for kw in [
+            "[transient]", "timeout", "timed out", "connection refused",
+            "connection error", "nvidia_transient", "read timed out",
+            "max retries exceeded", "rate limit", "502", "503",
+        ])
         result["looks_transient"] = transient
         result["action"] = (
             f"{'Looks transient — safe to retry.' if transient else 'Check last_error before retrying.'}\n"
@@ -429,25 +444,44 @@ def render_compact(data: dict[str, Any]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Explain why a task is waiting")
+    parser.add_argument("--root", default=str(ROOT), help="Project root")
     parser.add_argument("--task-id", help="Task ID to explain")
     parser.add_argument("--latest-todo", action="store_true",
                         help="Explain the most recently created #todo task")
+    parser.add_argument("--latest-failed", action="store_true",
+                        help="Explain the most recently failed task")
+    parser.add_argument("--latest-approval", action="store_true",
+                        help="Explain the most recent waiting_approval task")
     parser.add_argument("--json", action="store_true", help="JSON output")
     parser.add_argument("--compact", action="store_true", help="One-line output")
     args = parser.parse_args()
 
+    root = Path(args.root).resolve()
     task_id = args.task_id
+
     if args.latest_todo:
-        task = _find_latest_todo_task()
+        task = _find_latest_todo_task(root)
         if not task:
             print("No #todo tasks found")
             return 1
         task_id = task["task_id"]
+    elif args.latest_failed:
+        task = _find_latest_by_status("failed", root)
+        if not task:
+            print("No failed tasks found")
+            return 1
+        task_id = task["task_id"]
+    elif args.latest_approval:
+        task = _find_latest_by_status("waiting_approval", root)
+        if not task:
+            print("No waiting_approval tasks found")
+            return 1
+        task_id = task["task_id"]
 
     if not task_id:
-        parser.error("Provide --task-id or --latest-todo")
+        parser.error("Provide --task-id, --latest-todo, --latest-failed, or --latest-approval")
 
-    data = explain(task_id)
+    data = explain(task_id, root)
 
     if args.json:
         print(json.dumps(data, indent=2))

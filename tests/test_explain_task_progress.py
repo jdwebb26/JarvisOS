@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from scripts.explain_task_progress import (
     _is_ralph_eligible,
     _build_ralph_queue,
+    _find_latest_by_status,
     explain,
     render_terminal,
     render_compact,
@@ -258,3 +259,154 @@ class TestRenderers:
         data = {"ok": False, "error": "Task not found"}
         assert "not found" in render_terminal(data)
         assert "not found" in render_compact(data)
+
+
+# ---------------------------------------------------------------------------
+# waiting_approval with Discord path
+# ---------------------------------------------------------------------------
+
+class TestWaitingApproval:
+    def test_pending_approval_shows_discord_command(self, tmp_path):
+        (tmp_path / "state" / "tasks").mkdir(parents=True)
+        (tmp_path / "state" / "approvals").mkdir(parents=True)
+        task = {
+            "task_id": "task_apr", "status": "waiting_approval",
+            "task_type": "code", "risk_level": "risky",
+            "review_required": True, "approval_required": True,
+            "execution_backend": "ralph_adapter",
+            "source_channel": "", "source_user": "", "source_message_id": "",
+            "created_at": "2026-03-18T10:00:00+00:00",
+            "updated_at": "2026-03-18T11:00:00+00:00",
+        }
+        approval = {
+            "approval_id": "apr_test123", "task_id": "task_apr",
+            "status": "pending", "requested_at": "2026-03-18T11:00:00+00:00",
+            "updated_at": "2026-03-18T11:00:00+00:00",
+        }
+        (tmp_path / "state/tasks/task_apr.json").write_text(json.dumps(task))
+        (tmp_path / "state/approvals/apr_test123.json").write_text(json.dumps(approval))
+        result = explain("task_apr", root=tmp_path)
+        assert result["approval_id"] == "apr_test123"
+        assert "approve apr_test123" in result["action"]
+        assert "--approve" in result["action"]
+        assert "Discord" in result["action"]
+
+    def test_approved_approval_shows_auto(self, tmp_path):
+        (tmp_path / "state" / "tasks").mkdir(parents=True)
+        (tmp_path / "state" / "approvals").mkdir(parents=True)
+        task = {
+            "task_id": "task_ok", "status": "waiting_approval",
+            "task_type": "general", "risk_level": "normal",
+            "execution_backend": "ralph_adapter",
+            "source_channel": "", "source_user": "", "source_message_id": "",
+            "created_at": "2026-03-18T10:00:00+00:00",
+            "updated_at": "2026-03-18T11:00:00+00:00",
+        }
+        approval = {
+            "approval_id": "apr_done1", "task_id": "task_ok",
+            "status": "approved", "requested_at": "2026-03-18T11:00:00+00:00",
+            "updated_at": "2026-03-18T12:00:00+00:00",
+        }
+        (tmp_path / "state/tasks/task_ok.json").write_text(json.dumps(task))
+        (tmp_path / "state/approvals/apr_done1.json").write_text(json.dumps(approval))
+        result = explain("task_ok", root=tmp_path)
+        assert "finalize" in result["action"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Transient tag detection
+# ---------------------------------------------------------------------------
+
+class TestTransientDetection:
+    def test_transient_tag(self, tmp_path):
+        (tmp_path / "state" / "tasks").mkdir(parents=True)
+        task = {
+            "task_id": "task_tr", "status": "failed",
+            "task_type": "quant", "risk_level": "normal",
+            "execution_backend": "ralph_adapter",
+            "source_channel": "", "source_user": "", "source_message_id": "",
+            "created_at": "2026-03-18T10:00:00+00:00",
+            "updated_at": "2026-03-18T11:00:00+00:00",
+            "last_error": "[TRANSIENT] kitt_quant: NVIDIA API timeout",
+            "error_count": 1,
+        }
+        (tmp_path / "state/tasks/task_tr.json").write_text(json.dumps(task))
+        result = explain("task_tr", root=tmp_path)
+        assert result["looks_transient"] is True
+        assert "--retry" in result["action"]
+
+    def test_permanent_error(self, tmp_path):
+        (tmp_path / "state" / "tasks").mkdir(parents=True)
+        task = {
+            "task_id": "task_perm", "status": "failed",
+            "task_type": "general", "risk_level": "normal",
+            "execution_backend": "ralph_adapter",
+            "source_channel": "", "source_user": "", "source_message_id": "",
+            "created_at": "2026-03-18T10:00:00+00:00",
+            "updated_at": "2026-03-18T11:00:00+00:00",
+            "last_error": "Backend browser_backend failed: auth required",
+            "error_count": 1,
+        }
+        (tmp_path / "state/tasks/task_perm.json").write_text(json.dumps(task))
+        result = explain("task_perm", root=tmp_path)
+        assert result["looks_transient"] is False
+
+
+# ---------------------------------------------------------------------------
+# _find_latest_by_status
+# ---------------------------------------------------------------------------
+
+class TestFindLatest:
+    def test_finds_latest_failed(self, tmp_path):
+        (tmp_path / "state" / "tasks").mkdir(parents=True)
+        for i, ts in enumerate(["2026-03-18T08:00:00Z", "2026-03-18T12:00:00Z"]):
+            t = {"task_id": f"task_f{i}", "status": "failed", "updated_at": ts, "created_at": ts}
+            (tmp_path / f"state/tasks/task_f{i}.json").write_text(json.dumps(t))
+        result = _find_latest_by_status("failed", tmp_path)
+        assert result["task_id"] == "task_f1"  # more recent
+
+    def test_returns_none_when_empty(self, tmp_path):
+        (tmp_path / "state" / "tasks").mkdir(parents=True)
+        assert _find_latest_by_status("failed", tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# Higher-priority stage explanation
+# ---------------------------------------------------------------------------
+
+class TestHigherPriorityExplanation:
+    def test_queued_delayed_by_approval(self, tmp_path):
+        (tmp_path / "state" / "tasks").mkdir(parents=True)
+        (tmp_path / "state" / "approvals").mkdir(parents=True)
+        # A waiting_approval task (Ralph serves this first)
+        t1 = {
+            "task_id": "task_apr_ahead", "status": "waiting_approval",
+            "execution_backend": "ralph_adapter", "normalized_request": "ahead task",
+            "created_at": "2026-03-18T09:00:00+00:00",
+        }
+        apr = {
+            "approval_id": "apr_ahead1", "task_id": "task_apr_ahead",
+            "status": "pending", "requested_at": "2026-03-18T09:30:00+00:00",
+            "updated_at": "2026-03-18T09:30:00+00:00",
+        }
+        # The queued task we're asking about
+        t2 = {
+            "task_id": "task_queued", "status": "queued",
+            "task_type": "general", "risk_level": "normal",
+            "execution_backend": "ralph_adapter",
+            "source_channel": "", "source_user": "", "source_message_id": "",
+            "created_at": "2026-03-18T10:00:00+00:00",
+            "updated_at": "2026-03-18T10:00:00+00:00",
+            "normalized_request": "my queued task",
+            "final_outcome": "", "related_review_ids": [], "related_approval_ids": [],
+        }
+        (tmp_path / "state/tasks/task_apr_ahead.json").write_text(json.dumps(t1))
+        (tmp_path / "state/tasks/task_queued.json").write_text(json.dumps(t2))
+        (tmp_path / "state/approvals/apr_ahead1.json").write_text(json.dumps(apr))
+
+        result = explain("task_queued", root=tmp_path)
+        assert result["status"] == "queued"
+        higher = result.get("higher_priority_work", [])
+        assert len(higher) == 1
+        assert higher[0]["task_id"] == "task_apr_ahead"
+        assert "approval" in result["action"]
