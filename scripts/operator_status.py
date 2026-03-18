@@ -65,17 +65,17 @@ def _pending_approvals() -> list[dict[str, Any]]:
         if a.get("status") != "pending":
             continue
         task_id = a.get("task_id", "")
-        request = ""
         task_path = tasks_dir / f"{task_id}.json"
-        if task_path.exists():
-            try:
-                t = json.loads(task_path.read_text(encoding="utf-8"))
-                # skip if task is no longer waiting for approval — stale
-                if t.get("status") not in ("waiting_approval",):
-                    continue
-                request = t.get("normalized_request", "")
-            except Exception:
-                pass
+        if not task_path.exists():
+            continue  # orphaned — task file missing
+        try:
+            t = json.loads(task_path.read_text(encoding="utf-8"))
+            # skip if task is no longer waiting for approval — stale
+            if t.get("status") not in ("waiting_approval",):
+                continue
+            request = t.get("normalized_request", "")
+        except Exception:
+            continue
         results.append({
             "approval_id": a.get("approval_id", ""),
             "task_id": task_id,
