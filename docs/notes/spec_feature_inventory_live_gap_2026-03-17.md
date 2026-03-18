@@ -303,9 +303,10 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Description**: HAL builds → Archimedes technical review → Anton supreme/high-stakes review. Wired via `decision_router.py` which posts completed work to reviewer channels.
 - **Repo evidence**: `REVIEW_HIERARCHY`, `DELEGATION_WIRING` in `agent_roster.py`; `decision_router.py`
 - **Live evidence (2026-03-17)**: `route_task_for_decision_explainable()` writes `routing_decision` episodic memory entries. Routing policy (code→archimedes, deploy→anton) durably captured in memory.
-- **Live evidence (2026-03-18)**: End-to-end sessions_send delegation chain proven live. Gateway logs confirm: `[agent:nested] session=agent:hal:main run=54fd99b2 reply=HAL_FROM_JARVIS_OK` → `session=agent:archimedes:main run=6fdf128c reply=ARCHIMEDES_REVIEW_OK` → `session=agent:anton:main run=26ca9afa reply=ANTON_ESCALATION_OK`. Path: sessions_send embedded (not ACP). Required config gates: `tools.sessions.visibility=all` + `tools.agentToAgent.enabled=true` in `~/.openclaw/openclaw.json` (checked by preflight; see section 1.10).
-- **Status**: **WORKING** — end-to-end Jarvis→HAL→Archimedes→Anton delegation confirmed live via sessions_send embedded path.
-- **Next step**: Exercise from a real Discord-triggered HAL task to complete the production loop.
+- **Live evidence (2026-03-18 proof chain)**: sessions_send delegation chain proven live. Gateway logs: `session=agent:hal:main run=54fd99b2 reply=HAL_FROM_JARVIS_OK` → `session=agent:archimedes:main run=6fdf128c reply=ARCHIMEDES_REVIEW_OK` → `session=agent:anton:main run=26ca9afa reply=ANTON_ESCALATION_OK`. Required config gates: `tools.sessions.visibility=all` + `tools.agentToAgent.enabled=true`.
+- **Live evidence (2026-03-18 production loop)**: Discord-ingress bounded coding task proven end-to-end. `openclaw agent --agent jarvis --channel discord --deliver` → Jarvis delegated to HAL via sessions_send → HAL wrote `def greet(): return "hello world"` (run=5710e6ae, session=agent:hal:main) → Jarvis sent HAL's output to Archimedes via sessions_send → Archimedes replied `LGTM` (run=5165b288, session=agent:archimedes:main) → Jarvis consolidated and delivered final result (run=56449514). Anton correctly skipped — code tasks route to Archimedes per `choose_reviewer()`. All three agents ran on qwen3.5-35b-a3b (same model avoids LM Studio cold-swap timeout).
+- **Status**: **WORKING** — full production loop proven: Discord ingress → Jarvis → HAL implementation → Archimedes review → final delivery.
+- **Remaining gap**: Jarvis 9B (production primary) hallucinates tool calls and cannot reliably call sessions_send. Production loop requires 35B or larger for Jarvis. Either promote 35B to Jarvis primary, or trim Jarvis system prompt to fit 9B's n_ctx.
 
 ### 6.2 Approval store / resumable approvals
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/core/approval_store.py`
@@ -702,3 +703,180 @@ Capture one unambiguous HAL ACP production-path proof with either:
 2. **No "Cadence" OWW model**: OWW fires on `hey_jarvis_v0.1` only. "Hey Cadence" wake phrase exists in text-match list for legacy path but has no ML model. Would need custom openWakeWord model trained on "Cadence". Low priority — "Hey Jarvis" works.
 3. **Coqui startup latency**: ~3s first-inference (model load). Piper is <200ms. Coqui is `optional` and not on the live path (CADENCE_TTS_ENGINE=piper).
 4. **Intent routing**: `browse` commands route to `unclassified` (no browser intent pattern). Scout/research works. Browser routing patterns need expansion in `cadence_ingress`.
+
+---
+
+## Bowser / PinchTab Live Validation — 2026-03-18 (fourth pass)
+
+### Scope
+
+Full live proof run: PinchTab service, Bowser Python adapter, direct browser task execution,
+and Jarvis→Bowser delegation chain. One bounded fix applied (allowlist addition).
+
+---
+
+### PinchTab service status
+
+| Check | Result |
+|---|---|
+| `systemctl --user status pinchtab.service` | **LIVE** — active (running) since 2026-03-17T12:19:30 CDT, 11h uptime |
+| Process tree | `pinchtab-linux-amd64 server` + `bridge` + Chrome headless (PID 1815181+) |
+| Chrome version | 145.0.7632.45 (headless=new mode) |
+| Memory | 1.1 GB RSS (peak 3.8 GB) |
+| `GET /health` (no token) | `{"code":"missing_token","error":"unauthorized"}` — auth required, expected |
+| `GET /health` (with token) | `{"status":"ok","mode":"dashboard","version":"0.8.3","uptime":37984959,"profiles":1,"instances":1}` ✅ |
+| `GET /instances` | `[{"id":"inst_8f99302b","status":"running","headless":true}]` — one live instance ✅ |
+
+**PinchTab: LIVE** — headless Chrome running, authenticated API responding.
+
+---
+
+### Browser allowlist fix
+
+`example.com` was missing from the allowlist, which would cause all `example.com` probes to
+return `target_url_not_allowlisted`. Added it as a bounded fix:
+
+- **File**: `state/browser_control_allowlists/browserallow_2482765783a7.json`
+- **Change**: added `"example.com"` to `allowed_sites` list
+- **No code change** — data-only state update to the existing allowlist record
+
+---
+
+### Proof results
+
+#### Proof 1 — PinchTab direct API (bypass Python stack)
+
+```
+POST /instances/inst_8f99302b/tabs/open  {"url":"https://example.com","waitFor":"load"}
+→ {"tabId":"1F440BC77525936DB02FE30A6B8B96DB","title":"Example Domain","url":"https://example.com/"}
+
+GET /tabs/1F440BC77525936DB02FE30A6B8B96DB/text
+→ "Example Domain\nThis domain is for use in documentation examples..."
+
+GET /tabs/.../snapshot
+→ 8 accessibility-tree nodes, title="Example Domain"
+```
+
+**PASSED** ✅ — PinchTab opens tabs and returns real content.
+
+#### Proof 2 — Bowser Python probe (health check, no side effects)
+
+```python
+probe_bowser_runtime() → {'reachable': True, 'status': 'ok', 'version': '0.8.3', 'instances': 1, 'error': None}
+```
+
+**PASSED** ✅
+
+#### Proof 3 — Bowser CLI / direct browser proof: example.com
+
+```
+python3 runtime/integrations/bowser_adapter.py \
+  --task-id proof_example_com_001 --actor operator --lane browser \
+  --action-type navigate --target-url https://example.com --execute
+
+→ status: "completed"
+→ content: "Navigated to https://example.com; tab 0E20DB3248EBFB01781D9EB71E4B3B72; snapshot nodes=8"
+→ request_id: breq_1a130ea3d211 / result_id: bres_b76d4170bab9
+→ risk_tier: medium / review_required: false / kind: executed
+→ browser trace btrace_7c0404f54d78 + run trace trace_4c5f06dcaa88 written
+→ evidence snapshot bsnap_b51c5b6f8272 written
+```
+
+**PASSED** ✅ — Full stack: adapter → gateway → policy → PinchTab → trace/snapshot artifacts.
+
+#### Proof 4 — Bowser CLI / direct browser proof: Yahoo Finance NQ=F (real market page)
+
+```
+--action-type navigate --target-url "https://finance.yahoo.com/quote/NQ=F" --execute
+
+→ status: "completed"
+→ content: "Navigated to https://finance.yahoo.com/quote/NQ=F; tab 37A9CF241F10ABF7958774CCD84F9EDD; snapshot nodes=481"
+→ request_id: breq_6bb4364abdaf / result_id: bres_1b9346e781c1
+→ risk_tier: medium / review_required: false / kind: executed
+→ 481 accessibility-tree nodes (real dynamic page content loaded)
+```
+
+**PASSED** ✅ — Finance page fully loaded, 481 DOM nodes captured.
+
+#### Proof 5 — Jarvis → Bowser delegation via backend_dispatch
+
+```python
+from runtime.executor.backend_dispatch import dispatch_to_backend
+
+dispatch_to_backend(
+    execution_backend='browser_backend',
+    task_id='proof_jarvis_delegation_001',
+    actor='jarvis',    # ← jarvis as the delegating actor
+    lane='browser',
+    messages=[{"role":"user","content":'{"action_type":"navigate","target_url":"https://example.com","execute":true}'}]
+)
+
+→ status: "completed"
+→ content: "Navigated to https://example.com; tab 168075587C075ADE05920E16AA9E9847; snapshot nodes=8"
+→ actor recorded as "jarvis" throughout request/result/trace chain
+→ request_id: breq_ada5225726b5 / result_id: bres_793b53838c36
+```
+
+**PASSED** ✅ — Jarvis → `backend_dispatch` → `bowser_adapter` → gateway → PinchTab: full delegation chain proven end-to-end.
+
+#### Proof 6 — Test suite (unit + integration)
+
+```
+pytest tests/test_bowser_adapter.py tests/test_browser_gateway.py -v
+→ 14 passed in 9.79s
+```
+
+All 14 tests pass including:
+- `test_browser_backend_is_registered_in_dispatch` — dispatch wiring ✅
+- `test_dispatch_to_browser_backend_routes_correctly` — end-to-end dispatch ✅
+- `test_probe_bowser_runtime_returns_reachability_info` — health check ✅
+- `test_accepted_low_risk_action_with_execute_true_returns_live_result_and_trace` — live execution ✅
+
+---
+
+### Updated section 2.6 status
+
+| Item | Prior status | Current status |
+|---|---|---|
+| PinchTab service | PARTIAL (installed, not proven live) | **LIVE** — v0.8.3, headless Chrome, 11h uptime |
+| Bowser Python probe | PARTIAL | **LIVE** — `probe_bowser_runtime()` returns ok |
+| Bowser direct browser action | PARTIAL | **LIVE** — navigate, snapshot, trace fully working |
+| Bowser on real external URL | NOT PROVEN | **LIVE** — Yahoo Finance NQ=F loaded (481 nodes) |
+| Jarvis → Bowser delegation | NOT PROVEN | **LIVE** — `backend_dispatch` → `bowser_adapter` proven |
+| Browser policy + allowlist | LIVE (conservative) | **LIVE** — example.com added, finance.yahoo.com already present |
+| Test suite | 14 passing | **14/14 passing** |
+
+---
+
+### Remaining gaps / blockers
+
+1. **Discord outbox delivery** — browser_result events are written to `state/discord_outbox/` but not
+   delivered. All webhook URLs in `~/.openclaw/secrets.env` return HTTP 403 (expired). Mechanism
+   is proven; user must recreate Discord webhooks and update `JARVIS_DISCORD_WEBHOOK_*` env vars.
+
+2. **Cadence → Bowser intent routing** — `browse` commands transcribed by Cadence voice stack
+   route to `unclassified` (no browser intent pattern in `cadence_ingress`). Scout/research works.
+   Browser routing patterns need expansion in `cadence_ingress.py`. Blocked on: WSLg mic input
+   (RDPSource unavailable) + intent pattern work.
+
+3. **LLM-orchestrated Bowser task** — the proofs above use `actor=operator` and `actor=jarvis`
+   with a pre-formed JSON spec. A full Jarvis LLM turn that _generates_ a browser spec and
+   dispatches it has not been proven live. Requires LM Studio model to be serving + a live
+   gateway task turn. Not a code gap — Bowser and gateway are ready.
+
+4. **page_agent stub** — `runtime/browser/backends/page_agent.py` is a stub (proposes next actions
+   via heuristics, no LLM call). Multi-step agentic browsing (e.g. "log in and extract data") is
+   not yet backed by a real page analysis loop.
+
+---
+
+### Exact next step
+
+**Highest-value immediate next step:**
+Add browser intent patterns to `cadence_ingress.py` so that voice commands like
+`"browse to finance.yahoo.com"` route to `lane=browser` + `execution_backend=browser_backend`
+instead of `unclassified`. This closes the last mile between the proven Cadence voice stack
+and the proven Bowser/PinchTab execution path.
+
+**Prerequisite**: RDPSource mic passthrough must be active for end-to-end voice→browser proof.
+The code side can be added and tested with synthetic input even while mic is blocked.
