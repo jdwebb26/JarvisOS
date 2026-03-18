@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenClaw Discord Todo Poller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/discord_todo_poller.py --once --verbose
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+Environment=HOME=/home/rollan
+
+[Install]
+WantedBy=default.target
