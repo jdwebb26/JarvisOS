@@ -40,10 +40,17 @@ Everything below describes what is **actually running right now** and how to ope
 | Todo poller | `lobster-todo-intake.timer` | 2 min | Polls Discord #todo, calls `submit_todo()` for each human message |
 | Outbox sender | `openclaw-discord-outbox.timer` | 60s | Delivers pending Discord outbox entries via webhooks |
 | Operator status | `openclaw-operator-status.timer` | 5 min | Posts action summary to #jarvis when approvals/failures exist |
+| Dashboard | `openclaw-dashboard.service` | persistent | Browser UI at **http://127.0.0.1:18793/** — health, approvals, queue, next action |
 
 ### Daily operator commands
 
-Check what needs attention:
+Open the dashboard in a browser:
+
+```
+http://127.0.0.1:18793/
+```
+
+Check what needs attention (terminal):
 
 ```bash
 python3 scripts/operator_status.py

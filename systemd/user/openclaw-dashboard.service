@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenClaw Operator Dashboard (port 18793)
+After=network-online.target openclaw-gateway.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/dashboard.py --port 18793
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+Restart=on-failure
+RestartSec=10
+Environment=HOME=/home/rollan
+
+[Install]
+WantedBy=default.target
