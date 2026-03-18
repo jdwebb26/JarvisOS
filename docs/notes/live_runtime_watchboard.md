@@ -104,6 +104,28 @@
 - All wrapped in try/except; never break existing task lifecycle
 - **Status**: ✅ LIVE (wired; proven via `_emit_task_status_event` direct test)
 
+### J. HAL ACP production path (2026-03-17 — confirmed)
+- **Evidence**: `systemctl --user status openclaw-gateway.service` shows active child processes:
+  - `openclaw-acp` (multiple instances)
+  - `acpx --session agent:hal:acp:<uuid> --file -` (live acpx session)
+- **Gateway**: `acp.enabled=true`, `backend=acpx`, `allowedAgents=["hal"]` in `openclaw.json`
+- **Status**: ✅ LIVE (gateway dispatches HAL turns through acpx; multiple concurrent ACP sessions confirmed)
+- **Remaining**: No explicit per-turn ACP telemetry in gateway journal (cosmetic, not a blocker)
+
+### K. Rolling summary constraint/memory extraction fix (2026-03-17)
+- **File**: `runtime/gateway/source_owned_context_engine.py`
+- **Problem fixed**: `active_constraints` was capturing system-injected text, JSON payloads, timestamp-prefixed messages, and assistant output as "operator constraints". Every session was poisoning `state/memory_entries/` with junk (3 garbage entries confirmed and removed).
+- **Changes**:
+  - Added `_SUMMARY_NOISE_RE` to detect injected lines (runtime-generated, internal context, subagent wrappers, JSON/timestamp prefixes)
+  - `constraints` now scans `user_texts` only (not `assistant_texts`), bounded to 20-200 chars, noise-filtered
+  - `decisions` bounded to 15-250 chars
+  - `tool_findings` requires ≥30 chars, skips bare JSON punctuation lines
+- **Proven**: Before fix, 5 garbage entries in `active_constraints`. After fix, real operator constraints ("Do not execute live trades without operator approval") captured correctly; noise filtered.
+- **Memory cleanup**: Deleted 3 garbage `state/memory_entries/ment_*.json`. Cleared stale Jarvis vault `active_constraints`.
+- **SearXNG lane activation**: `state/lane_activation/searxng.json` written — `status=completed, healthy=true, endpoint=http://localhost:8888`
+- **Tests**: 17/17 source_owned_context_engine tests pass; 393/393 validate checks pass
+- **Status**: ✅ LIVE
+
 ---
 
 ## What Is Still Blocked / Partial

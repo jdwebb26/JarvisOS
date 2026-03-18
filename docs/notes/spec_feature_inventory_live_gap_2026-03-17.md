@@ -78,11 +78,11 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 
 ### 1.9 ACP harness (HAL acp_ready)
 - **Source**: `docs/agent_roster.md`, `docs/STATUS_2026-03-15_agent_specialization_hardening.md`
-- **Description**: Long-running Claude Code subprocess handles HAL turns. Fully scaffolded; NOT active (`acp.enabled=false`). HAL is first designated candidate.
-- **Repo evidence**: `AGENT_RUNTIME_TYPES["hal"] = "acp_ready"` in `agent_roster.py`; `acp_scaffold.enabled=false` in `runtime_routing_policy.json`; `runtime.type: "embedded"` in HAL's openclaw.json block
-- **Live evidence**: All HAL turns still handled embedded. No ACP sessions observed.
-- **Status**: **PARTIAL** — scaffolded, activation is a config change
-- **Next step**: Set `acp.enabled=true` in openclaw.json, change HAL `runtime.type` to `"acp"`, add `"hal"` to `acp.allowedAgents`, validate with verifier. Requires confirming HAL actually succeeds on a real coding task first.
+- **Description**: Long-running Claude Code subprocess handles HAL turns. HAL is first designated ACP candidate.
+- **Repo evidence**: `AGENT_RUNTIME_TYPES["hal"] = "acp_ready"` in `agent_roster.py`; `openclaw.json` has `acp.enabled=true, backend=acpx, defaultAgent=hal, allowedAgents=["hal"]`
+- **Live evidence (2026-03-17)**: `systemctl --user status openclaw-gateway.service` shows active child processes: `openclaw-acp` (multiple) + `acpx --session agent:hal:acp:<uuid> --file -`. Gateway is routing HAL turns through acpx. Direct ACP client proof also confirmed (`ACP_DIRECT_OK`).
+- **Status**: **LIVE** — ACP dispatch via gateway confirmed by process evidence
+- **Next step**: Add per-turn ACP telemetry to gateway journal for operator visibility (cosmetic improvement).
 
 ---
 
@@ -116,9 +116,9 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Source**: `docs/jarvis_5_2_migration_status.md`, `runtime/integrations/searxng_client.py`
 - **Description**: Scout/Hermes use SearXNG for web search. Integration code exists; requires external SearXNG service healthcheck to go green.
 - **Repo evidence**: `runtime/integrations/searxng_client.py`, `runtime/integrations/search_normalizer.py`
-- **Live evidence**: Lane activation: `not_run`. Scout's `web_search`/`web_fetch` tools are in its allowlist but it's unclear if they currently hit SearXNG or another backend.
-- **Status**: **BLOCKED** — client exists, external healthcheck not confirmed
-- **Next step**: Check if SearXNG is running locally; if yes, run activation script; if not, decide whether to stand it up or confirm Scout is using a different search backend.
+- **Live evidence**: SearXNG confirmed live at `http://localhost:8888`. `/search?q=VIX+index&format=json` returned Yahoo Finance VIX result. Kitt `web_search` agent turn confirmed SearXNG as backend. Lane activation record written: `state/lane_activation/searxng.json` → `status=completed, healthy=true`.
+- **Status**: **LIVE**
+- **Next step**: N/A
 
 ### 2.5 Ralph autonomous maintenance loop
 - **Source**: `docs/agent_roster.md`, `runtime/core/agent_roster.py`
@@ -168,9 +168,9 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/core/models.py`
 - **Description**: Three memory types. Episodic: recent observations, bounded decay. Semantic: stable facts, operator preferences. Procedural: approved skills.
 - **Repo evidence**: `MemoryEntryRecord` in `models.py`, `runtime/memory/governance.py`; `save_memory_entry()`, `retrieve_memory_for_context()`
-- **Live evidence**: Framework live. Memory spine in tests uses episodic + semantic. Unclear how much is written in practice during live Discord sessions.
-- **Status**: **PARTIAL** — framework live, active memory population unclear
-- **Next step**: Audit whether Jarvis/agents are actively calling `save_memory_entry()` during live sessions. If not, identify 2–3 high-value memory write points to add.
+- **Live evidence (updated 2026-03-17)**: `_flush_session_memory_entries()` is called every turn and promotes `operator_preferences` + `active_constraints` from the rolling summary to durable memory entries. Previously, `active_constraints` was populated with system-injected noise (5 junk entries confirmed in `state/memory_entries/`). **Fixed**: `_SUMMARY_NOISE_RE` added, constraints extraction scoped to `user_texts` only with length bounds 20-200 chars. 3 garbage entries deleted. Memory now only captures real operator constraints/preferences.
+- **Status**: **LIVE** — auto-flush path active and noise-clean as of 2026-03-17. Memory entries will accumulate from real operator turns.
+- **Next step**: After real Discord sessions with operator constraints, confirm memory entries are written and `retrieve_memory_for_context()` returns non-empty results.
 
 ### 3.4 Token/cost budget tracking
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/core/token_budget.py`

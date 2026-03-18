@@ -44,6 +44,11 @@ QUESTION_RE = re.compile(r"([^\n?]+\?)")
 CONSTRAINT_RE = re.compile(r"\b(?:must|must not|do not|don't|never|keep|preserve|require|required|constraint|bounded|fail-closed)\b", re.IGNORECASE)
 DECISION_RE = re.compile(r"\b(?:i will|we will|let's|decided|decision|plan|next step)\b", re.IGNORECASE)
 PREFERENCE_RE = re.compile(r"\b(?:prefer|preference|always|never|keep .* as|default to)\b", re.IGNORECASE)
+# Lines that look like system injections, JSON, or timestamps — not real operator constraints.
+_SUMMARY_NOISE_RE = re.compile(
+    r'^[\[{\`]|runtime.generated|internal.context.private|subagent.task.is.ready|not.user.authored|assistant.voice',
+    re.IGNORECASE,
+)
 
 
 def estimate_tokens(text: Any) -> int:
@@ -233,9 +238,31 @@ def _build_summary_from_messages(
     if not objective:
         objective = str(prior_summary.get("objective") or "")
     unresolved = _top_unique([match.group(1).strip() for text in user_texts for match in QUESTION_RE.finditer(text)], limit=5)
-    constraints = _top_unique([line.strip() for text in [*user_texts, *assistant_texts] for line in text.splitlines() if CONSTRAINT_RE.search(line)], limit=6)
-    decisions = _top_unique([line.strip() for text in assistant_texts for line in text.splitlines() if DECISION_RE.search(line)], limit=6)
-    tool_findings = _top_unique([line.strip() for text in tool_texts for line in text.splitlines() if line.strip()], limit=6)
+    # Constraints come from operator (user) turns only, not assistant output.
+    # Bounded to 20-200 chars to skip one-word matches and multiline JSON payloads.
+    # Noise filter drops system-injected lines, JSON objects, and timestamp prefixes.
+    constraints = _top_unique([
+        line.strip()
+        for text in user_texts
+        for line in text.splitlines()
+        if CONSTRAINT_RE.search(line)
+        and 20 <= len(line.strip()) <= 200
+        and not _SUMMARY_NOISE_RE.search(line.strip())
+    ], limit=6)
+    # Decisions from assistant only; bounded to avoid capturing long internal reasoning.
+    decisions = _top_unique([
+        line.strip()
+        for text in assistant_texts
+        for line in text.splitlines()
+        if DECISION_RE.search(line) and 15 <= len(line.strip()) <= 250
+    ], limit=6)
+    # Tool findings: skip bare JSON punctuation lines and very short fragments.
+    tool_findings = _top_unique([
+        line.strip()
+        for text in tool_texts
+        for line in text.splitlines()
+        if len(line.strip()) >= 30 and not line.strip().startswith(("{", "}", "[", "]", "```"))
+    ], limit=6)
     operator_preferences = _top_unique(
         [str(item.get("summary") or item.get("title") or "").strip() for item in retrieved_semantic if str(item.get("memory_class") or "") == "operator_preference_memory"]
         + [line.strip() for text in user_texts for line in text.splitlines() if PREFERENCE_RE.search(line)],
