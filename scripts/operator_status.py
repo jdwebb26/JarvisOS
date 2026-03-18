@@ -382,24 +382,51 @@ def _state_dir() -> Path:
     return d
 
 
-def _is_duplicate(fp: str) -> bool:
-    """True if the last posted fingerprint matches."""
+_CLEAR_SENTINEL = "clear"
+
+
+def _load_last_fingerprint() -> str:
+    """Return the last saved fingerprint, or '' if none."""
     path = _state_dir() / "last_fingerprint.txt"
     if path.exists():
         try:
-            return path.read_text(encoding="utf-8").strip() == fp
+            return path.read_text(encoding="utf-8").strip()
         except Exception:
             pass
-    return False
+    return ""
+
+
+def _is_duplicate(fp: str) -> bool:
+    """True if the last posted fingerprint matches."""
+    return _load_last_fingerprint() == fp
+
+
+def _was_actionable() -> bool:
+    """True if the last posted state had actionable items (not a clear)."""
+    last = _load_last_fingerprint()
+    return bool(last) and last != _CLEAR_SENTINEL
 
 
 def _save_fingerprint(fp: str) -> None:
     (_state_dir() / "last_fingerprint.txt").write_text(fp + "\n", encoding="utf-8")
 
 
-def _post_discord(data: dict[str, Any]) -> str:
+def render_recovery(data: dict[str, Any]) -> str:
+    """Short all-clear message for when actionable items are resolved."""
+    ts = data["ts"][:16].replace("T", " ")
+    timers = data.get("timers", [])
+    queued = data.get("queued", [])
+    lines = [
+        f"\u2705 **All clear** \u2014 {ts} UTC",
+        f"\u2705 All {len(timers)} services OK" if timers else "",
+        f"\U0001f4e5 {len(queued)} queued" if queued else "",
+    ]
+    return "\n".join(ln for ln in lines if ln)
+
+
+def _post_discord(data: dict[str, Any], *, recovery: bool = False) -> str:
     """Post status to #jarvis. Returns event_id or raises."""
-    text = render_discord(data)
+    text = render_recovery(data) if recovery else render_discord(data)
     from runtime.core.discord_event_router import emit_event
     result = emit_event(
         "cockpit_status", "jarvis",
@@ -426,7 +453,18 @@ def main() -> int:
 
     if args.if_needed:
         if not needs_attention(data):
-            print("Nothing needs attention — skipping.")
+            # Nothing actionable now — but was there before?
+            if _was_actionable():
+                # Transition: actionable → clear. Post one recovery message.
+                try:
+                    eid = _post_discord(data, recovery=True)
+                    _save_fingerprint(_CLEAR_SENTINEL)
+                    print("All clear — recovery posted to Discord.")
+                except Exception as exc:
+                    print(f"Discord recovery post failed: {exc}", file=sys.stderr)
+                    return 1
+            else:
+                print("Nothing needs attention — skipping.")
             return 0
         fp = _fingerprint(data)
         if _is_duplicate(fp):

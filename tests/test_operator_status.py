@@ -17,10 +17,13 @@ from scripts.operator_status import (
     _outbox_health,
     _fingerprint,
     _is_duplicate,
+    _was_actionable,
     _save_fingerprint,
+    _CLEAR_SENTINEL,
     collect,
     needs_attention,
     render_discord,
+    render_recovery,
     render_terminal,
 )
 
@@ -296,3 +299,51 @@ def test_duplicate_suppression_round_trip(tmp_path):
         _save_fingerprint(fp)
         assert _is_duplicate(fp) is True
         assert _is_duplicate("different") is False
+
+
+# ---------------------------------------------------------------------------
+# Recovery / all-clear logic
+# ---------------------------------------------------------------------------
+
+def test_was_actionable_false_when_no_file(tmp_path):
+    with patch("scripts.operator_status._state_dir", return_value=tmp_path):
+        assert _was_actionable() is False
+
+
+def test_was_actionable_true_after_actionable_post(tmp_path):
+    with patch("scripts.operator_status._state_dir", return_value=tmp_path):
+        _save_fingerprint("some_real_hash")
+        assert _was_actionable() is True
+
+
+def test_was_actionable_false_after_clear(tmp_path):
+    with patch("scripts.operator_status._state_dir", return_value=tmp_path):
+        _save_fingerprint(_CLEAR_SENTINEL)
+        assert _was_actionable() is False
+
+
+def test_recovery_render_is_short():
+    data = {
+        "ts": "2026-03-18T21:30:00Z",
+        "timers": [
+            {"unit": "a", "label": "Ralph", "active": True},
+            {"unit": "b", "label": "Gateway", "active": True},
+        ],
+        "queued": [{"task_id": "q1"}],
+    }
+    text = render_recovery(data)
+    assert "All clear" in text
+    assert "2 services OK" in text
+    assert "1 queued" in text
+    assert len(text) < 200  # must be very short
+
+
+def test_recovery_not_repeated(tmp_path):
+    """After a recovery post, _was_actionable() should be False → no repeat."""
+    with patch("scripts.operator_status._state_dir", return_value=tmp_path):
+        # Simulate: actionable state posted
+        _save_fingerprint("actionable_hash_xyz")
+        assert _was_actionable() is True
+        # Simulate: recovery posted
+        _save_fingerprint(_CLEAR_SENTINEL)
+        assert _was_actionable() is False
