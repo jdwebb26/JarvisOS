@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from runtime.core.session_hygiene import pre_context_build_hygiene
 from runtime.gateway.source_owned_context_engine import build_context_packet
 
 
@@ -102,6 +103,14 @@ def main() -> int:
     model_id = str(_pick(payload, "model_id", "modelId", default="") or "")
     provider_id = str(_pick(payload, "provider_id", "providerId", default="") or "")
 
+    # ── Pre-flight session hygiene for orchestration sessions ──
+    # Fires before every context build; only acts on oversized main sessions
+    # for jarvis/hal/archimedes.  No-op for Discord-bound or other sessions.
+    hygiene_report = pre_context_build_hygiene(
+        session_key=session_key,
+        openclaw_root=root.parent.parent if root.name == "jarvis-v5" else None,
+    )
+
     result = build_context_packet(
         root=root,
         session_key=session_key,
@@ -121,6 +130,9 @@ def main() -> int:
         semantic_limit=int(_pick(payload, "semantic_limit", "semanticLimit", default=4) or 4),
         max_session_turns=int(_pick(payload, "max_session_turns", "maxSessionTurns", default=200) or 200),
     )
+
+    if hygiene_report:
+        result["sessionHygiene"] = hygiene_report
 
     _emit_hal_acp_telemetry(
         agent_id=agent_id,
