@@ -300,10 +300,10 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 ### 6.1 Review hierarchy (HAL → Archimedes → Anton)
 - **Source**: `docs/agent_roster.md`, `runtime/core/decision_router.py`
 - **Description**: HAL builds → Archimedes technical review → Anton supreme/high-stakes review. Wired via `decision_router.py` which posts completed work to reviewer channels.
-- **Repo evidence**: `REVIEW_HIERARCHY`, `DELEGATION_WIRING` in `agent_roster.py`; `decision_router.py` (15KB)
-- **Live evidence**: Policy backed. No confirmed end-to-end review cycle observed. Archimedes, Anton, Hermes have no live sessions yet.
-- **Status**: **PARTIAL** — routing logic exists, no confirmed live review cycles
-- **Next step**: Confirm a real HAL → Archimedes review cycle has completed at least once. Check if decision_router posts to Archimedes/Anton channels correctly.
+- **Repo evidence**: `REVIEW_HIERARCHY`, `DELEGATION_WIRING` in `agent_roster.py`; `decision_router.py`
+- **Live evidence (2026-03-17)**: `route_task_for_decision_explainable()` now writes `routing_decision` episodic memory entries when tasks are dispatched to review/approval. Proven: `code` task → `archimedes` review entry written correctly. Routing policy (code→archimedes, deploy→anton) is now durably captured in memory across sessions.
+- **Status**: **PARTIAL** — routing logic and memory live; no confirmed end-to-end Discord-triggered HAL→Archimedes cycle yet
+- **Next step**: Trigger a real HAL coding task from Discord, observe routing to Archimedes, confirm memory entry appears.
 
 ### 6.2 Approval store / resumable approvals
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/core/approval_store.py`

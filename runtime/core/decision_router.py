@@ -390,11 +390,81 @@ def route_task_for_decision_explainable(
         lane=lane,
         root=root,
     )
+
+    # Memory write — episodic record of routing decisions at dispatch points.
+    # Only fires for review_requested and approval_requested (the decisive dispatch moments).
+    # Skips waiting/blocked states (intermediate, not actionable for future routing).
+    _write_routing_memory(task=task, result=result, explanation=explanation, actor=actor, root=root)
+
     return {
         "result": result,
         "routing_decision_log_path": str(log_path),
         "routing_decision": explanation,
     }
+
+
+_ROUTING_DISPATCH_KINDS = {"review_requested", "approval_requested"}
+
+
+def _write_routing_memory(
+    *,
+    task: "TaskRecord",
+    result: dict[str, Any],
+    explanation: dict[str, Any],
+    actor: str,
+    root: Path,
+) -> None:
+    """Write an episodic memory entry when a task is dispatched into review or approval.
+
+    Captures: actor, task_class, destination (reviewer/approver), request summary.
+    Only fires for decisive dispatch moments — review_requested, approval_requested.
+    Never raises.
+    """
+    kind = result.get("kind", "")
+    if kind not in _ROUTING_DISPATCH_KINDS:
+        return
+
+    req = str(task.normalized_request or "").strip()
+    if not req or len(req) < 8:
+        return
+
+    task_class = str(explanation.get("task_class") or task.task_type or "general")
+    decision_reason = str(explanation.get("decision_reason") or "").strip()
+
+    if kind == "review_requested":
+        reviewer = str(result.get("reviewer_role") or "reviewer")
+        title = f"{actor} routed {task_class} to {reviewer} review: {req[:70]}"
+        summary = (
+            f"Routing: {actor} dispatched {task_class} task {task.task_id} "
+            f"to {reviewer} for review. Request: {req[:150]}."
+            + (f" Reason: {decision_reason[:80]}." if decision_reason else "")
+        )
+        confidence = 0.70
+    else:  # approval_requested
+        approver = str(result.get("requested_reviewer") or "operator")
+        title = f"{actor} routed {task_class} to {approver} approval: {req[:70]}"
+        summary = (
+            f"Routing: {actor} dispatched {task_class} task {task.task_id} "
+            f"to {approver} for approval. Request: {req[:150]}."
+            + (f" Reason: {decision_reason[:80]}." if decision_reason else "")
+        )
+        confidence = 0.75
+
+    try:
+        from runtime.memory.governance import write_session_memory_entry
+        write_session_memory_entry(
+            actor=actor,
+            lane="routing",
+            memory_type="routing_decision",
+            memory_class="decision_memory",
+            structural_type="episodic",
+            title=title[:160],
+            summary=summary[:400],
+            confidence_score=confidence,
+            root=root,
+        )
+    except Exception:
+        pass
 
 
 def route_task_for_decision(

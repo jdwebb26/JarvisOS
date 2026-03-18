@@ -112,6 +112,19 @@
 - **Status**: ✅ LIVE (gateway dispatches HAL turns through acpx; multiple concurrent ACP sessions confirmed)
 - **Remaining**: No explicit per-turn ACP telemetry in gateway journal (cosmetic, not a blocker)
 
+### M. Routing decision memory write point (2026-03-17)
+- **File**: `runtime/core/decision_router.py`
+- **Function**: `route_task_for_decision_explainable()` → new `_write_routing_memory()` helper
+- **Trigger**: fires at end of `route_task_for_decision_explainable()` for `review_requested` and `approval_requested` result kinds only
+- **Memory entry**: `decision_memory` episodic, `memory_type=routing_decision`, confidence 0.70/0.75
+- **Title format**: `"{actor} routed {task_class} to {reviewer} review: {req[:70]}"`
+- **Guards**: skips `waiting_review`, `blocked_by_review`, `waiting_approval`, `blocked_by_approval`, `no_action` (non-dispatch states); skips if `normalized_request < 8 chars`; dedup via `write_session_memory_entry()` title+class
+- **Proven live**:
+  - `jarvis routed code to archimedes review: Build walk-forward cross-validation module...` written ✅
+  - Second call (same task → `waiting_review`) → suppressed, count unchanged ✅
+- **Why high-value**: tells future Jarvis sessions "code tasks route to archimedes; deploy tasks route to anton" without an LLM turn to figure it out
+- **Status**: ✅ LIVE
+
 ### L. Memory write points for task/review/approval outcomes (2026-03-17)
 - **Files**: `runtime/core/task_runtime.py`, `runtime/core/review_store.py`, `runtime/core/approval_store.py`
 - **Write points added**:
