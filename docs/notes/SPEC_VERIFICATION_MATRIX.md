@@ -72,7 +72,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 5.2 | Profile ↔ gateway sync | extension | Sync script propagates active profile to openclaw.json | `sync_routing_policy_to_openclaw.py` reads active profile, applies changes, backs up | 5 changes applied when switching hybrid ↔ local_only. Gateway restart picks up new config. | **LIVE** | 369bf6f | — |
 | 5.3 | Realized model visibility | extension | Operator sees what model actually ran | `model-snapshot` in gateway session files. `show` reads last realized model per agent. | Jarvis `[ok]` when profile matches, `[stale]` when mismatched. Turn telemetry with profile name. | **LIVE** | d864e47 | — |
 | 5.4 | Qwen-first as policy | v5.1 §6, §35 | Qwen default, switchable to Kimi/Claude without code surgery | `local_only` profile uses all Qwen. `hybrid`/`cloud_*` switch to Kimi. Restore is clean. | Switched Jarvis to Kimi 2.5 and back without code changes. Profile switch + sync + restart. | **LIVE** | 4240dcf | — |
-| 5.5 | Token/cost budgets | v5.1 §15 | Per-task/cycle token limits, hard-stop auto-pause | `token_budget.py` module exists. TokenBudgetRecord defined. | Module importable. Not confirmed as wired into live model dispatch path. | **PARTIAL** | — | Module exists but not called during live model sends. |
+| 5.5 | Token/cost budgets | v5.1 §15 | Per-task/cycle token limits, hard-stop auto-pause | `token_budget.py` wired into `execution_contracts.py` (pre-check + post-usage). Ralph `_track_usage()` calls `apply_budget_usage()` after every HAL/Archimedes call. | Global budget created (`budget_f8f98e529db0`), 841 tokens tracked from live proof. Hard-stop blocks task + raises ValueError. | **LIVE** | see commit | Global budget enforced. USD cost tracking wired but local LLMs report $0. |
 
 ## 6. Discord & Operator Visibility
 
@@ -123,9 +123,9 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 
 | # | Feature | Spec | Expected Behavior | Repo Evidence | Live Evidence | Status | Proof | Gap |
 |---|---------|------|-------------------|---------------|---------------|--------|-------|-----|
-| 10.1 | Trace store | v5.2 §4 | Durable execution traces for replay | `runtime/evals/trace_store.py` | Module importable. | **PARTIAL** | — | No production traces confirmed. |
-| 10.2 | Replay runner | v5.2 §4 | Replay traces and compare expected vs actual | `runtime/evals/replay_runner.py` | Module importable. | **PARTIAL** | — | No production replays run. |
-| 10.3 | Regression scorers | v5.2 §4 | Score routing correctness, downgrade prevention, evidence completeness | `runtime/evals/scorers.py` | Module importable. | **PARTIAL** | — | Not integrated into CI/gate. |
+| 10.1 | Trace store | v5.2 §4 | Durable execution traces for replay | `runtime/evals/trace_store.py`. Ralph records traces via `_record_execution_trace()` after every HAL/Archimedes call. | 35+ traces in `state/run_traces/` (31 browser + 4 Ralph). | **LIVE** | see commit | — |
+| 10.2 | Replay runner | v5.2 §4 | Replay traces and compare expected vs actual | `runtime/evals/replay_runner.py` + `scripts/run_regression.py` — operator CLI. | `run_regression.py` scored 4 Ralph traces, detected model drift when expected-model changed. Eval runs saved to `state/eval_runs/`. | **LIVE** | see commit | — |
+| 10.3 | Regression scorers | v5.2 §4 | Score output completeness, model match, token efficiency, routing correctness | `runtime/evals/scorers.py` — 4 live scorers replacing stubs. | 4/4 scorers proven: completeness catches truncation, model_match catches drift, token_efficiency flags high usage, routing_correctness checks lane/backend. 15 unit tests pass. | **LIVE** | see commit | Not yet in CI/gate (manual CLI). |
 | 10.4 | Layered eval profiles | v5.1 §24 | EvalProfile with vetoes, quality metrics, promotion thresholds | Spec-defined. No EvalProfile implementation found in runtime. | Not implemented as runtime module. Strategy factory has its own eval gates. | **DOC-ONLY** | — | Spec-defined, not runtime-implemented. |
 
 ## 11. v5.2 Advanced Features
@@ -157,18 +157,16 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | Integrations | 4 | SearXNG, PinchTab, NVIDIA/Kimi, LM Studio |
 | Strategy | 2 | Factory pipeline, durable queues |
 
-### Partially Verified — 9 features
+### Partially Verified — 6 features
 
 | # | Feature | What Works | What's Missing |
 |---|---------|-----------|----------------|
 | 2.10 | Muse | Agent config + probe response | No Discord channel binding |
 | 2.11 | Cadence voice | Stack built, daemon running, transcript routing | Mic blocked (WSL2 RDPSource) |
 | 3.7 | Autonomy modes | Ralph uses bounded pattern | No formal mode field on tasks |
-| 5.5 | Token budgets | Module exists | Not wired into live dispatch |
 | 7.4 | Promotion provenance | Module exists, routing provenance saves | Not all artifacts carry full chain |
 | 8.6 | Autoresearch | Adapter + strategy factory exist | No lab experiment runs confirmed |
 | 9.3 | Strategy diversity | Factory scoring exists | No promoted strategies to verify |
-| 10.1–3 | Eval harness | Trace store, replay runner, scorers importable | No production traces or replays |
 
 ### Still Blocked — 2 features
 

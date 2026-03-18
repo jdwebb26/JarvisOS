@@ -67,6 +67,8 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Learnings ledger**: JSONL-backed (`state/learnings/`), writes from failures/rejections/operator corrections, filtered retrieval per agent
 - **Delegation compact mode**: HAL/Archimedes get abbreviated context for delegated tasks
 - **Session hygiene**: automatic rotation before context builds for stale sessions
+- **Token budget enforcement**: global budget in `state/token_budgets/`, applied after every Ralph HAL/Archimedes call. 841 tokens tracked from live proof runs. Hard stop blocks task at threshold
+- **Regression scoring**: `scripts/run_regression.py` scores execution traces for output completeness, model drift, token efficiency, routing correctness. Traces recorded from every Ralph HAL/Archimedes call in `state/run_traces/`
 
 ### Working (operator tooling)
 - **Runtime profiles**: 5 named profiles (local_only, hybrid, cloud_fast, cloud_smart, degraded). `set` → sync → gateway restart
@@ -79,6 +81,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Routing policy enforcement**: `runtime_routing_policy.json` is enforced via runtime profiles (4240dcf). `load_runtime_routing_policy()` applies active profile overrides. `sync_routing_policy_to_openclaw.py` propagates to `openclaw.json`. Gateway uses `openclaw.json` as its config surface, which the sync script keeps aligned with the policy
 - **A2A protocol**: doc-only, no implementation
 - **Adaptation lab / DSPy optimizer**: scaffold, never run live
+- **Token budget cost tracking**: token counts tracked, USD cost tracking wired but local LLMs report $0. Will matter when cloud providers are active
 - **ShadowBroker**: scaffold, external runtime not present
 - **TradingView adapter**: doc-only
 - **Mission control adapter**: doc-only
