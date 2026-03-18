@@ -362,6 +362,7 @@ def request_approval(
             "approval_requested", requested_by,
             task_id=task_id, detail=summary,
             reviewer_id=requested_reviewer, root=root,
+            extra={"approval_id": record.approval_id},
         )
     except Exception:
         pass

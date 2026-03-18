@@ -54,6 +54,35 @@ def post_webhook(url: str, content: "str | dict[str, Any]") -> dict[str, Any]:
         return {"ok": False, "reason": str(exc)}
 
 
+def send_bot_message(channel_id: str, content: str) -> dict[str, Any]:
+    """Send a message to a Discord channel using the bot token (REST API).
+
+    Use this when a webhook is unavailable or bound to the wrong channel.
+    """
+    bot_token = load_webhook_url("DISCORD_BOT_TOKEN", Path.home() / ".openclaw")
+    if not bot_token:
+        return {"ok": False, "reason": "DISCORD_BOT_TOKEN not found"}
+
+    payload = json.dumps({"content": str(content)[:1900]}).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://discord.com/api/v10/channels/{channel_id}/messages",
+        data=payload,
+        headers={
+            "Authorization": f"Bot {bot_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "OpenClaw/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return {"ok": True, "http_status": resp.status}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "http_status": e.code, "reason": e.reason}
+    except Exception as exc:
+        return {"ok": False, "reason": str(exc)}
+
+
 def load_webhook_url(env_var: str, root: Path) -> str:
     """Load webhook URL from env var, falling back to secrets.env / .env files.
 

@@ -287,10 +287,17 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
         return f"{line}\n> {clean}" if clean else line
 
     if kind == "approval_requested":
+        approval_id = payload.get("approval_id", "")
         line = f"{e} Approval needed for `{short_tid}`"
+        if approval_id:
+            line += f" (`{approval_id}`)"
         if clean:
             line += f"\n> {clean}"
-        line += f"\n\U0001f4cc React in #review to approve/reject"  # 📌
+        if approval_id:
+            line += f"\n\u2705 `approve {approval_id}`"
+            line += f"\n\u274c `reject {approval_id} [reason]`"
+        else:
+            line += f"\n\U0001f4cc React in #review to approve/reject"  # 📌
         return line
 
     if kind == "approval_completed":
@@ -375,6 +382,9 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
 # Routing logic
 # ---------------------------------------------------------------------------
 
+_REVIEW_EVENT_KINDS = {"approval_requested", "approval_completed", "review_requested", "review_completed"}
+
+
 def _resolve_owner_channel_id(
     kind: str,
     agent_id: str,
@@ -387,6 +397,12 @@ def _resolve_owner_channel_id(
     # Voice events always go to cadence
     if kind in voice_only_kinds:
         return agents.get("cadence", {}).get("channel_id")
+
+    # Approval/review events always go to #review (archimedes channel)
+    if kind in _REVIEW_EVENT_KINDS:
+        review_ch = agents.get("archimedes", {}).get("channel_id")
+        if review_ch:
+            return review_ch
 
     # For known agents, use their channel
     entry = agents.get(agent_id, {})
@@ -513,6 +529,18 @@ def emit_event(
 
     # Write outbox entries
     outbox_entries: list[dict[str, Any]] = []
+
+    # For review events, send directly via bot token to #review channel
+    # (the REVIEW_WEBHOOK_URL may be bound to a different channel)
+    if kind in _REVIEW_EVENT_KINDS and owner_ch:
+        try:
+            _scripts = resolved_root / "scripts"
+            if str(_scripts) not in sys.path:
+                sys.path.insert(0, str(_scripts))
+            from dispatch_utils import send_bot_message
+            send_bot_message(owner_ch, text)
+        except Exception:
+            pass
 
     if owner_ch and not cadence_blocked:
         outbox_entries.append(_write_outbox_entry(

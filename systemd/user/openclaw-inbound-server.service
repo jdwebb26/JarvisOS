@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenClaw Operator Gateway Inbound Server (port 18790)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_gateway_inbound_server.py --root /home/rollan/.openclaw/workspace/jarvis-v5 --port 18790 --token-file /home/rollan/.openclaw/.env
+Restart=always
+RestartSec=5
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+Environment=HOME=/home/rollan
+Environment=TMPDIR=/tmp
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=default.target

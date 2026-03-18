@@ -35,7 +35,7 @@ _SCRIPTS = ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from dispatch_utils import load_webhook_url, post_webhook
+from dispatch_utils import load_webhook_url, post_webhook, send_bot_message
 from runtime.core.models import new_id, now_iso
 
 

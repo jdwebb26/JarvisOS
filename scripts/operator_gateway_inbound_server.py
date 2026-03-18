@@ -15,7 +15,7 @@ Usage:
         --token-file ~/.openclaw/.env   # reads GATEWAY_TOKEN= line
         # or --token <raw-token>
 
-Endpoint:
+Endpoints:
     POST /operator/inbound
     Authorization: Bearer <token>
     Content-Type: application/json
@@ -34,6 +34,30 @@ Endpoint:
         "ok": true,
         "msg_id": "gwapi_<hex>",
         "path":   "/abs/path/to/file.json"
+    }
+
+    ---
+
+    POST /operator/approval
+    Authorization: Bearer <token>
+    Content-Type: application/json
+
+    Body:
+    {
+        "approval_id": "apr_xxx",         # required
+        "decision":    "approved",        # required: approved|rejected|cancelled
+        "actor":       "operator",        # default: "operator"
+        "lane":        "review",          # default: "review"
+        "reason":      ""                 # optional
+    }
+
+    Response 200:
+    {
+        "ok": true,
+        "approval_id": "apr_xxx",
+        "task_id": "task_yyy",
+        "decision": "approved",
+        "reason": ""
     }
 """
 from __future__ import annotations
@@ -112,22 +136,15 @@ class Handler(BaseHTTPRequestHandler):
             return secrets.compare_digest(auth[7:].strip(), self.server.token)
         return False
 
-    def do_POST(self) -> None:  # noqa: N802
-        if not self._auth_ok():
-            self._send_json(401, {"ok": False, "error": "unauthorized"})
-            return
-
-        if self.path.rstrip("/") != "/operator/inbound":
-            self._send_json(404, {"ok": False, "error": "not found"})
-            return
-
+    def _read_body(self) -> dict | None:
         length = int(self.headers.get("Content-Length", 0))
         try:
-            body = json.loads(self.rfile.read(length) if length else b"{}")
+            return json.loads(self.rfile.read(length) if length else b"{}")
         except json.JSONDecodeError:
             self._send_json(400, {"ok": False, "error": "invalid JSON"})
-            return
+            return None
 
+    def _handle_inbound(self, body: dict) -> None:
         raw_text = body.get("raw_text", "").strip()
         if not raw_text:
             self._send_json(400, {"ok": False, "error": "raw_text is required"})
@@ -152,6 +169,82 @@ class Handler(BaseHTTPRequestHandler):
 
         print(f"[{_now_iso()}] inbound {msg_id} raw_text={raw_text!r} -> {dest}", flush=True)
         self._send_json(200, {"ok": True, "msg_id": msg_id, "path": str(dest)})
+
+    def _handle_approval(self, body: dict) -> None:
+        """Direct approval/reject endpoint.
+
+        Body:
+            {
+                "approval_id": "apr_xxx",       # required
+                "decision":    "approved|rejected",  # required
+                "actor":       "operator",      # default: "operator"
+                "lane":        "review",        # default: "review"
+                "reason":      ""               # optional
+            }
+        """
+        approval_id = body.get("approval_id", "").strip()
+        decision = body.get("decision", "").strip().lower()
+        actor = body.get("actor", "operator").strip() or "operator"
+        lane = body.get("lane", "review").strip() or "review"
+        reason = body.get("reason", "").strip()
+
+        if not approval_id:
+            self._send_json(400, {"ok": False, "error": "approval_id is required"})
+            return
+        if decision not in ("approved", "rejected", "cancelled"):
+            self._send_json(400, {"ok": False, "error": f"decision must be approved|rejected|cancelled, got: {decision!r}"})
+            return
+
+        try:
+            # Import at call time to avoid circular imports at module load
+            _root = self.server.root
+            _scripts = _root / "scripts"
+            if str(_root) not in sys.path:
+                sys.path.insert(0, str(_root))
+            if str(_scripts) not in sys.path:
+                sys.path.insert(0, str(_scripts))
+
+            from runtime.core.approval_store import record_approval_decision
+
+            record = record_approval_decision(
+                approval_id=approval_id,
+                decision=decision,
+                actor=actor,
+                lane=lane,
+                reason=reason,
+                root=_root,
+            )
+            result = {
+                "ok": True,
+                "approval_id": record.approval_id,
+                "task_id": record.task_id,
+                "decision": record.status,
+                "reason": reason,
+            }
+            print(f"[{_now_iso()}] approval {approval_id} -> {decision} by {actor}", flush=True)
+            self._send_json(200, result)
+        except ValueError as exc:
+            self._send_json(400, {"ok": False, "error": str(exc)})
+        except Exception as exc:
+            print(f"[{_now_iso()}] approval error: {exc}", flush=True)
+            self._send_json(500, {"ok": False, "error": str(exc)})
+
+    def do_POST(self) -> None:  # noqa: N802
+        if not self._auth_ok():
+            self._send_json(401, {"ok": False, "error": "unauthorized"})
+            return
+
+        path = self.path.rstrip("/")
+        body = self._read_body()
+        if body is None:
+            return
+
+        if path == "/operator/inbound":
+            self._handle_inbound(body)
+        elif path == "/operator/approval":
+            self._handle_approval(body)
+        else:
+            self._send_json(404, {"ok": False, "error": "not found"})
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path.rstrip("/") == "/health":
