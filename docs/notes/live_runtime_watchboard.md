@@ -1,7 +1,13 @@
 # Live Runtime Watchboard — 2026-03-17
 
 **Purpose**: Detailed proof journal for each feature wired during 2026-03-17/18 sessions.
-**For current truth / backlog / what to do next**: see **[CURRENT_TRUTH.md](CURRENT_TRUTH.md)**
+
+| Doc | Use for |
+|-----|---------|
+| [CURRENT_TRUTH.md](CURRENT_TRUTH.md) | Status and backlog |
+| [SPEC_VERIFICATION_MATRIX.md](SPEC_VERIFICATION_MATRIX.md) | Does feature X work? |
+| [FEATURE_PROMPTS.md](FEATURE_PROMPTS.md) | Large feature intake |
+| **This file** | Proof evidence per feature |
 
 ---
 

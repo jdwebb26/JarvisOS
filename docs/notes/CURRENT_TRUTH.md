@@ -5,6 +5,14 @@ Updated by proven facts only. Supersedes narrative in older trackers.
 
 **Validate**: `python3 scripts/validate.py` — 395 pass, 0 fail (as of 2026-03-18)
 
+### Which file do I use?
+| File | Purpose |
+|------|---------|
+| **[CURRENT_TRUTH.md](CURRENT_TRUTH.md)** | Current status and backlog (this file) |
+| **[SPEC_VERIFICATION_MATRIX.md](SPEC_VERIFICATION_MATRIX.md)** | Spec-to-reality verification — does feature X actually work? |
+| **[FEATURE_PROMPTS.md](FEATURE_PROMPTS.md)** | Large feature request intake — ideas before they become tasks |
+| **[live_runtime_watchboard.md](live_runtime_watchboard.md)** | Proof journal — detailed evidence for each wired feature |
+
 ---
 
 ## 1. Live Services
@@ -107,8 +115,10 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 
 ## Reference
 
-- **Detailed feature inventory**: `docs/notes/spec_feature_inventory_live_gap_2026-03-17.md` (historical per-feature audit, 1300+ lines)
-- **Change log / proof journal**: `docs/notes/live_runtime_watchboard.md` (per-item proof records A through S)
-- **System architecture**: `SYSTEM.md`, `jarvis-v5/Jarvis_OS_v5_1_Master_Spec.md`
+- **Spec verification**: [SPEC_VERIFICATION_MATRIX.md](SPEC_VERIFICATION_MATRIX.md) — does feature X actually work?
+- **Feature intake**: [FEATURE_PROMPTS.md](FEATURE_PROMPTS.md) — large ideas before they become tasks
+- **Proof journal**: [live_runtime_watchboard.md](live_runtime_watchboard.md) — per-item evidence (A through S)
+- **Historical inventory**: `spec_feature_inventory_live_gap_2026-03-17.md` (1300+ line audit, superseded by this doc + matrix)
+- **System architecture**: `SYSTEM.md`, `Jarvis_OS_v5_1_Master_Spec.md`
 - **Strategy lifecycle**: `PROMOTION.md`, `RISK_POLICY.md`
 - **Agent roster**: `runtime/core/agent_roster.py`, `config/agent_channel_map.json`
