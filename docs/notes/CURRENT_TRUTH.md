@@ -28,6 +28,7 @@ Updated by proven facts only. Supersedes narrative in older trackers.
 | Operator inbound server | http://127.0.0.1:18790 (systemd) | **LIVE** |
 | Ralph timer | systemd timer, 10 min interval (600s) | **LIVE** |
 | Review poller | systemd timer, 30s interval | **LIVE** |
+| Todo poller | systemd timer, 2m interval | **LIVE** |
 | Strategy factory cron | daily 4AM data, Sunday batch | **LIVE** |
 
 ## 2. Discord Delivery
@@ -56,7 +57,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 |-------|--------|----------------|
 | **Hermes** | BLOCKED | Adapter hardened, but external Hermes daemon not running. Needs manual service activation |
 | **Cadence** | PARTIAL | Voice stack built (ingress, TTS, call routing). Mic blocked: RDPSource unavailable in WSL2. Parked until mic passthrough |
-| **Muse** | LIVE | Creative lane active. Gateway binding → channel 1483133844663304272, model lmstudio/qwen3.5-35b-a3b. Agent turns + bot delivery to Discord proven. Session + outbox + worklog mirror operational. Discord user-message ingress untested (requires operator to type in #muse) |
+| **Muse** | LIVE | Creative lane active. Gateway binding → channel 1483133844663304272, model lmstudio/qwen3.5-35b-a3b. Full round-trip proven: human Discord message → gateway session `agent:muse:discord:channel:1483133844663304272` → LLM response → Discord delivery. Session + outbox + worklog mirror operational |
 | **Claude** | BLOCKED | `ANTHROPIC_API_KEY=REPLACE_ME`. User must set real key |
 
 ## 5. Core Runtime Systems
@@ -72,13 +73,14 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Session hygiene**: automatic rotation before context builds for stale sessions
 - **Token budget enforcement**: global budget in `state/token_budgets/`, applied after every Ralph HAL/Archimedes call. 841 tokens tracked from live proof runs. Hard stop blocks task at threshold
 - **Regression scoring**: `scripts/run_regression.py` scores execution traces for output completeness, model drift, token efficiency, routing correctness. Traces recorded from every Ralph HAL/Archimedes call in `state/run_traces/`
-- **#todo intake (live Discord ingress)**: Discord #todo channel → gateway inbound server → bridge cycle detects `source_channel=todo` → `submit_todo()` → task created with `ralph_adapter` backend → Ralph picks up on next cycle → HAL → Archimedes auto-review → completed (if `approval_required=false`) or → operator approval → completed. No Jarvis turn. Low-risk tasks skip approval entirely. Proven end-to-end 2026-03-18 (`task_248303915d69` no-approval, `task_129e548cb242` with approval)
+- **#todo intake (live Discord ingress)**: `discord_todo_poller.py` (systemd timer, 2m) polls Discord `#✅todo` channel (1471188572932673549) → `submit_todo()` → task created with `ralph_adapter` backend → Ralph picks up → HAL → Archimedes auto-review → completed (if `approval_required=false`) or → operator approval → completed. No Jarvis turn. Programmatic submissions also work via gateway inbound server → bridge cycle. Proven end-to-end with real Discord message 2026-03-18 (`task_ddd67cb59a46` from Discord, `task_248303915d69` no-approval, `task_129e548cb242` with approval)
 - **#review approval lane**: `approval_requested` events post to #review with approve/reject instructions. Only emitted when `approval_required=true`. Operator approvals via gateway `/operator/approval` endpoint (or `discord_review_poller.py` for emoji/text commands). Proven end-to-end 2026-03-18 (`apr_a4ea9dfa2183`, `apr_903c0215a3b3`)
 
 ### Working (operator tooling)
 - **Runtime profiles**: 5 named profiles (local_only, hybrid, cloud_fast, cloud_smart, degraded). `set` → sync → gateway restart
 - **Model visibility**: `runtime_profiles status` (terminal) / `post` (Discord). Profile changes auto-post to #jarvis
 - **Operator cockpit**: `scripts/operator_cockpit.py` — service health, agent states, blockers. `--discord` posts live status to #jarvis
+- **Operator status**: `scripts/operator_status.py` — phone-friendly action summary: pending approvals, failed/blocked tasks, service health, outbox. `--discord` posts to #jarvis, `--if-needed` posts only when action required (safe for timer use)
 - **Validate**: `scripts/validate.py` — 395 checks, comprehensive
 
 ### Not working / scaffold only
