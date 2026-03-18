@@ -611,7 +611,17 @@ def call_scout_search(task: Any, *, root: Path) -> dict[str, Any]:
     t0 = time.time()
     try:
         from runtime.integrations.searxng_client import search
-        query = (task.normalized_request or task.raw_request or "").strip()
+        raw_query = (task.normalized_request or task.raw_request or "").strip()
+        # Extract a focused search query — strip common prefixes
+        query = raw_query
+        for prefix in ("search for ", "look up ", "find information about ",
+                       "find ", "what is ", "who is "):
+            if query.lower().startswith(prefix):
+                query = query[len(prefix):]
+                break
+        # Truncate to a reasonable search query length
+        if len(query) > 80:
+            query = query[:80]
         search_result = search(
             query_text=query,
             actor="scout",
@@ -621,7 +631,7 @@ def call_scout_search(task: Any, *, root: Path) -> dict[str, Any]:
         )
         elapsed = round(time.time() - t0, 2)
 
-        if not search_result.get("ok"):
+        if search_result.get("status") not in ("ok", "completed") and not search_result.get("ok"):
             return {"ok": False, "content": "", "error": search_result.get("error", "search failed"),
                     "elapsed": elapsed, "model": "searxng", "usage": {}}
 
