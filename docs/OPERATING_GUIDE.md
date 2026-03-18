@@ -111,6 +111,18 @@ python3 scripts/operator_status.py --discord
 | **#jarvis** | Operator status posts, task creation confirmations, escalation events. | Outbox sender delivers via webhook |
 | **#worklog** (`#ralph`) | Mirror of all task lifecycle events. Read-only audit trail. | Outbox sender delivers via webhook |
 
+### Output promotion
+
+When Ralph completes a task (via review-only or review+approval), the result is **auto-promoted**: candidate artifact → promoted artifact → published output. This is idempotent — rerunning the same completion path does not create duplicates.
+
+For tasks that were completed before auto-promotion was wired (or where auto-promotion was skipped), use the manual tool:
+
+```bash
+python3 scripts/promote_output.py --list              # see promotable tasks
+python3 scripts/promote_output.py --promote task_XXXX  # promote + publish
+python3 scripts/promote_output.py --inspect art_XXXX   # show provenance chain
+```
+
 ### Common problems
 
 **Stale approvals accumulating**
@@ -514,6 +526,8 @@ voice input is proposed intent plus bounded route logic, not immediate authority
 ## What Hermes is in v5.1
 
 Hermes is a bounded execution adapter for candidate-oriented generation tasks. It is not a freeform unconstrained agent inside the runtime.
+
+**Status**: LIVE (as of b70a8b4). Hermes transport calls LM Studio Qwen directly — no external daemon needed. Ralph includes `hermes_adapter` in ELIGIBLE_BACKENDS and will dispatch Hermes-routed tasks automatically. Requires LM Studio to be running.
 
 ## Hermes request contract expectations
 

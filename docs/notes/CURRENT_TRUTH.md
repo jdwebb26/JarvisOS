@@ -49,13 +49,13 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 | **Scout** | Qwen 3.5-35B | Web search via SearXNG |
 | **Kitt** | Kimi K2.5 (NVIDIA) | Quant briefs via `kitt_quant` dispatch: SearXNG → Bowser → Kimi synthesis → artifact |
 | **Bowser** | PinchTab browser | Navigate, snapshot, screenshot, text extraction |
-| **Ralph** | Qwen 3.5-35B | Full operator-usable loop: task claim → HAL dispatch → Archimedes auto-review → operator approval → completion. CLI: `--status`, `--approve`, `--reject`, `--retry`. Rejected reviews fail cleanly. Stale-running recovery. Idle clears error state. |
+| **Ralph** | Qwen 3.5-35B | Full operator-usable loop: task claim → HAL dispatch → Archimedes auto-review → operator approval → completion → **auto-promotion** (artifact + output published automatically). CLI: `--status`, `--approve`, `--reject`, `--retry`. Rejected reviews fail cleanly. Stale-running recovery. Idle clears error state. |
 
 ## 4. Agents — Partial or Blocked
 
 | Agent | Status | What's missing |
 |-------|--------|----------------|
-| **Hermes** | BLOCKED | Adapter hardened, but external Hermes daemon not running. Needs manual service activation |
+| **Hermes** | LIVE | Fully wired: `hermes_adapter` in backend_dispatch + Ralph ELIGIBLE_BACKENDS. Transport calls LM Studio Qwen 3.5-35B directly (no external daemon needed). Proven 2026-03-18: task `task_7b4905b3005f` → result `bres_7b10e9081a58` → artifact `art_bf1920942594` (3342 chars, 1284 tokens). Requires LM Studio to be running. |
 | **Cadence** | PARTIAL | Voice stack built (ingress, TTS, call routing). Mic blocked: RDPSource unavailable in WSL2. Parked until mic passthrough |
 | **Muse** | LIVE | Creative lane active. Gateway binding → channel 1483133844663304272, model lmstudio/qwen3.5-35b-a3b. Full round-trip proven: human Discord message → gateway session `agent:muse:discord:channel:1483133844663304272` → LLM response → Discord delivery. Session + outbox + worklog mirror operational |
 | **Claude** | BLOCKED | `ANTHROPIC_API_KEY=REPLACE_ME`. User must set real key |
@@ -65,7 +65,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 ### Working
 - **Task lifecycle**: create → queue → start → checkpoint → complete/fail. Events emitted at every transition
 - **Review/approval chain**: HAL → Archimedes review → Anton/operator approval. Resumable checkpoints
-- **Backend dispatch**: `nvidia_executor`, `browser_backend`, `kitt_quant` wired. `execute_once()` picks queued tasks
+- **Backend dispatch**: `nvidia_executor`, `browser_backend`, `kitt_quant`, `hermes_adapter` wired. `execute_once()` picks queued tasks
 - **Context engine**: bounded 6-turn working memory, budget guard (72%/82%), tool filtering, skill allowlists
 - **Memory system**: episodic + semantic writes from task outcomes, review verdicts, approval decisions, routing decisions
 - **Learnings ledger**: JSONL-backed (`state/learnings/`), writes from failures/rejections/operator corrections, filtered retrieval per agent
@@ -75,6 +75,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Regression scoring**: `scripts/run_regression.py` scores execution traces for output completeness, model drift, token efficiency, routing correctness. Traces recorded from every Ralph HAL/Archimedes call in `state/run_traces/`
 - **#todo intake (live Discord ingress)**: `discord_todo_poller.py` (systemd timer, 2m) polls Discord `#✅todo` channel (1471188572932673549) → `submit_todo()` → task created with `ralph_adapter` backend → Ralph picks up → HAL → Archimedes auto-review → completed (if `approval_required=false`) or → operator approval → completed. No Jarvis turn. Programmatic submissions also work via gateway inbound server → bridge cycle. Proven end-to-end with real Discord message 2026-03-18 (`task_ddd67cb59a46` from Discord, `task_248303915d69` no-approval, `task_129e548cb242` with approval)
 - **#review approval lane**: `approval_requested` events post to #review with approve/reject instructions. Only emitted when `approval_required=true`. Operator approvals via gateway `/operator/approval` endpoint (or `discord_review_poller.py` for emoji/text commands). Proven end-to-end 2026-03-18 (`apr_a4ea9dfa2183`, `apr_903c0215a3b3`)
+- **Auto-promotion**: When Ralph completes a task (either via review-only or review+approval path), auto-promotes the backend result into a candidate artifact → promoted artifact → published output. Idempotent (skips if already promoted or no result). Manual `promote_output.py` still works. Proven 2026-03-18: `task_3c9715eb0b8a` → `art_16a2cedf68f7` → `out_a18aa391c271`
 - **Flowstate distillation lane**: `runtime/flowstate/` — source_store, distill_store, promotion_store, index_builder. Operator CLI: `scripts/flowstate.py` (ingest, distill, status, inspect). Source records → extraction artifacts → distillation artifacts stored in `state/flowstate_sources/`. Promotion is explicit and approval-gated — no auto-promotion into memory or tasks. Proven with real input 2026-03-18 (`fsrc_468a022ffbd5` → `fdist_2847639a4cb2`)
 
 ### Working (operator tooling)
@@ -104,14 +105,14 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 ## 7. Known State Quirks
 
 - **Bowser realized model shows stale**: `qwen3.5-122b-a10b` instead of `qwen3.5-35b`. Cosmetic — Bowser's execution goes through PinchTab, not LLM
-- **Hermes realized model shows stale**: last session used 35B, policy says 122B. No real impact since Hermes daemon isn't running
+- **Hermes realized model shows stale**: last session used 35B, policy says 122B. No real impact — Hermes transport calls LM Studio directly, not via gateway session
 - **Cockpit snapshot in watchboard is stale**: auto-generated block from earlier run. Agent states may have changed since
 
 ## 8. What To Do Next (by user impact)
 
 ### Operator actions (unblock immediately)
 1. **Set ANTHROPIC_API_KEY** in `~/.openclaw/secrets.env` — unblocks Claude agent
-2. **Start Hermes daemon** — unblocks deep research pipeline
+2. ~~Start Hermes daemon~~ **DONE** — Hermes wired directly via LM Studio transport (b70a8b4). No external daemon needed. Requires LM Studio running.
 
 ### High-leverage improvements
 3. **First real strategy factory run with operator review** — prove the end-to-end IDEA → BACKTESTED → PROMOTED pipeline with a real NQ strategy candidate

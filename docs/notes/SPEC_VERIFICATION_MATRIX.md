@@ -36,7 +36,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 2.6 | Kitt quant specialist | v5.1 §4 | Quant research with Kimi 2.5 | `kitt_quant` in `BACKEND_ADAPTERS`. `kitt_quant_workflow.py` wires SearXNG → Bowser → Kimi → artifact. | Dispatch proven: brief artifact + backend result + agent status + Discord event. | **LIVE** | f026883 | — |
 | 2.7 | Bowser browser bridge | v5.1 §26 | Bounded browser automation via PinchTab | `bowser_adapter.py`, PinchTab at `127.0.0.1:9867` | Navigate, snapshot, screenshot, DOM text extraction (4000 char). Status file shows live actions. | **LIVE** | Watchboard §F | — |
 | 2.8 | Ralph task runner | v5.1 §20 | Task runner + memory consolidation | `runtime/ralph/agent_loop.py`, `scripts/run_ralph_v1.py` | Full operator-usable loop: claim → HAL → auto-review → approval → completion. CLI: `--status`, `--approve`, `--reject`, `--retry`. Rejected reviews fail cleanly. Stale recovery. Idle clears error state. E2E proven with real task. Systemd timer live (10 min). Gateway health gate has 1-retry backoff. | **LIVE** | f815910 | No memory consolidation. |
-| 2.9 | Hermes research daemon | v5.1 §21 | Long-form research, source gathering, synthesis | `hermes_adapter.py` (43KB). Contract hardened. | Adapter importable. Lane activation: `not_run`. External daemon not running. | **BLOCKED** | — | External Hermes service not configured. |
+| 2.9 | Hermes research daemon | v5.1 §21 | Long-form research, source gathering, synthesis | `hermes_adapter.py` (43KB). `hermes_transport.py` calls LM Studio directly. `hermes_adapter` in `backend_dispatch.py` BACKEND_ADAPTERS + Ralph ELIGIBLE_BACKENDS. | Real execution proven 2026-03-18: task `task_7b4905b3005f` → `bres_7b10e9081a58` (qwen3.5-35b-a3b, 1284 tokens) → artifact `art_bf1920942594` (3342 chars). 6 transport tests + 20 adapter tests pass. | **LIVE** | b70a8b4 | Requires LM Studio running. No external daemon needed — transport calls LM Studio API directly. |
 | 2.10 | Muse creative | v5.1 §4 | Creative specialist | Agent config + gateway binding (channel 1483133844663304272). Model: lmstudio/qwen3.5-35b-a3b. Webhook + bot delivery live. | Agent turns via gateway proven (3 turns). Bot delivers replies to #muse Discord channel. Session file created/updated. Event routing + outbox + worklog mirror working. No channel collisions (11 bindings). Config structurally identical to Jarvis (proven Discord ingress). | **LIVE** | 527ede7 | Discord user-message ingress untested (gateway `allowFrom` requires operator to type in #muse). Ralph muse_creative backend path untested under timer. |
 | 2.11 | Cadence voice | v5.1 §25 | Wake detection → VAD → STT → routing → TTS | Full voice stack in `runtime/voice/`. Daemon active. OWW + Silero + faster-whisper + Piper. | Daemon running. Transcript routing proven. TTS proven. Mic blocked: RDPSource unavailable in WSL2. | **PARTIAL** | Watchboard §7.3 | Mic blocked. No live end-to-end wake+command proof. |
 | 2.12 | Flowstate distillation | v5.1 §4 | Ingestion and distillation lane | `runtime/flowstate/` — source_store, distill_store, promotion_store, index_builder. Operator CLI: `scripts/flowstate.py`. State in `state/flowstate_sources/`. | Full ingest→extract→distill lifecycle proven with real input. Source records, extraction artifacts, distillation artifacts stored on disk with provenance. Promotion is explicit (approval-gated, not auto-promoted). 2 sources, 2 distillations in live state. | **LIVE** | This commit | No daemon. No Discord #flowstate channel wiring. No LLM-powered auto-distillation. |
@@ -47,7 +47,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 |---|---------|------|-------------------|---------------|---------------|--------|-------|-----|
 | 3.1 | Explicit task creation | v5.1 §3 | `task:` trigger, no implicit execution from chat | `task_runtime.py`, `intake.py` | Tasks created via `create_task_from_message()`. Status transitions emit events. | **LIVE** | — | — |
 | 3.2 | Task lifecycle events | v5.1 §12 | created → started → progress → completed/failed | `emit_event()` wired to all status transitions in `task_runtime.py` | Events route to Discord with emoji format. Outbox entries for each transition. | **LIVE** | Watchboard §I | — |
-| 3.3 | Backend dispatch | v5.2 §2 | Map tasks to legal backends | `backend_dispatch.py` with `BACKEND_ADAPTERS`: nvidia_executor, browser_backend, kitt_quant | `dispatch_to_backend()` dispatches to correct adapter. Backend execution request/result records written. | **LIVE** | f026883 | qwen_executor/planner handled by gateway, not Python dispatch |
+| 3.3 | Backend dispatch | v5.2 §2 | Map tasks to legal backends | `backend_dispatch.py` with `BACKEND_ADAPTERS`: nvidia_executor, browser_backend, kitt_quant, hermes_adapter | `dispatch_to_backend()` dispatches to correct adapter. Backend execution request/result records written. | **LIVE** | f026883, b70a8b4 | qwen_executor/planner handled by gateway, not Python dispatch |
 | 3.4 | Resumable approvals | v5.1 §13 | Checkpoint with approve/reject/rerun/escalate/defer | `approval_store.py` (27KB), `approval_sessions.py` (10KB) | Approval records in `state/approvals/`. Review/approval events emit to Discord. | **LIVE** | 011f733 (Ralph proof) | — |
 | 3.5 | Review hierarchy | v5.1 §4 | HAL → Archimedes → Anton | `review_store.py`, `decision_router.py` | Full chain proven: HAL code → Archimedes review → Anton/operator approval. 26 review records. | **LIVE** | bbe7132 | — |
 | 3.6 | Task envelopes | v5.1 §11 | Per-task autonomy constraints, allowed apps/sites/paths | TaskEnvelope fields defined in spec | No TaskEnvelope enforcement in live dispatch path. Tasks execute without per-task sandbox constraints. | **DOC-ONLY** | — | Not implemented as runtime enforcement. |
@@ -91,7 +91,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 |---|---------|------|-------------------|---------------|---------------|--------|-------|-----|
 | 7.1 | Emergency controls | v5.1 §14 | Global kill, per-subsystem breakers, rate governors | `runtime/controls/control_store.py`. `get_effective_control_state()` with emergency_flags. `assert_control_allows()`. | Returns structured state: `effective_status=active, safety_mode=normal`. All flags false (system healthy). Imported by `routing.py`. | **LIVE** | — | Kill switch testing not confirmed as regular practice. |
 | 7.2 | Degradation policy | v5.1 §16 | Fallback without security reduction, operator notification | `degradation_policy.py` (25KB). `list_active_degradation_modes()`, `can_fallback()`. | Module integrated into routing. No active degradation modes (system healthy). Operator event emission confirmed. | **LIVE** | — | — |
-| 7.3 | Candidate-first promotion | v5.1 §10 | Everything enters as candidate; promotion requires review | `promotion_governance.py`. Artifact states defined. | Strategy factory uses candidate pipeline. Review/approval gates exist. No auto-promotion path. | **LIVE** | — | — |
+| 7.3 | Candidate-first promotion | v5.1 §10 | Everything enters as candidate; promotion requires review | `promotion_governance.py`. Artifact states defined. `auto_promote.py` wired into Ralph completion. | Strategy factory uses candidate pipeline. Review/approval gates exist. Auto-promotion fires after task completion (review-only or review+approval path) — creates candidate → promotes → publishes. Idempotent. Manual `promote_output.py` still works. Proven 2026-03-18. | **LIVE** | 6d64953 | — |
 | 7.4 | Promotion provenance | v5.1 §17 | Promoted artifacts carry source_task_id, reviewer, model_lane | `provenance_store.py`. `save_routing_provenance()`. RoutingProvenanceRecord. | Routing provenance saved for task routing decisions. Module importable. | **PARTIAL** | — | Not all promoted artifacts carry full provenance chain. |
 | 7.5 | Schema versioning | v5.1 §12 | All durable records carry schema_version | `schema_version` field on TaskRecord and other models. | TaskRecord has schema_version parameter. Records in state/ carry versions. | **LIVE** | — | — |
 | 7.6 | Live trading restriction | v5.1 §3 | Live trading requires human approval; never auto-executed | RISK_POLICY.md, PROMOTION.md. Approval gate in promotion_governance. | No live trades executed. Paper trading gate requires Discord `#review` emoji. | **LIVE** | — | — |
@@ -143,12 +143,12 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 
 ## Summary
 
-### Fully Verified (LIVE) — 39 features
+### Fully Verified (LIVE) — 40 features
 
 | Area | Count | Features |
 |------|-------|----------|
 | Control plane | 8 | Discord bindings, context engine, budget guard, tool filtering, allowlists, lane routing, no-silent-switch, capability matrix |
-| Agents | 8 | Jarvis, HAL+ACP, Archimedes, Anton, Scout, Kitt, Bowser, Ralph |
+| Agents | 9 | Jarvis, HAL+ACP, Archimedes, Anton, Scout, Kitt, Bowser, Ralph, Hermes |
 | Task lifecycle | 5 | Explicit tasks, lifecycle events, backend dispatch, resumable approvals, review hierarchy |
 | Memory | 5 | Memory typing, write points, learnings ledger, rolling summary, session hygiene |
 | Provider mgmt | 4 | Runtime profiles, profile sync, realized visibility, Qwen-first policy |
@@ -168,11 +168,10 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 8.6 | Autoresearch | Adapter + strategy factory exist | No lab experiment runs confirmed |
 | 9.3 | Strategy diversity | Factory scoring exists | No promoted strategies to verify |
 
-### Still Blocked — 2 features
+### Still Blocked — 1 feature
 
 | Feature | Blocker |
 |---------|---------|
-| 2.9 Hermes research daemon | External service not configured |
 | 8.8 Anthropic/Claude provider | `ANTHROPIC_API_KEY=REPLACE_ME` |
 
 ### DOC-ONLY (spec-defined, not runtime-implemented) — 9 features
