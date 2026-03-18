@@ -693,10 +693,14 @@ def call_kitt_quant(task: Any, *, root: Path) -> dict[str, Any]:
             "elapsed": elapsed,
             "model": result.get("model", "kimi-k2.5"),
             "usage": result.get("usage", {}),
+            "transient": result.get("transient", False),
         }
     except Exception as exc:
-        return {"ok": False, "content": "", "error": str(exc),
-                "elapsed": round(time.time() - t0, 2), "model": "kitt_quant", "usage": {}}
+        err = str(exc)
+        is_transient = "timeout" in err.lower() or "connection" in err.lower()
+        return {"ok": False, "content": "", "error": err,
+                "elapsed": round(time.time() - t0, 2), "model": "kitt_quant", "usage": {},
+                "transient": is_transient}
 
 
 # ---------------------------------------------------------------------------
@@ -1387,22 +1391,25 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
                             result_id=result_id, root=root)
 
     if not result["ok"]:
+        is_transient = result.get("transient", False)
+        label = "TRANSIENT" if is_transient else "FAILED"
+        retry_hint = f"  Retry: python3 scripts/run_ralph_v1.py --retry {task.task_id}" if is_transient else ""
         fail_task(
             root=root,
             task_id=task.task_id,
             actor=ACTOR,
             lane=LANE,
-            reason=f"{backend} execution failed: {result['error']}",
+            reason=f"[{label}] {backend}: {result['error']}",
         )
         update_agent_status(
             ACTOR,
-            f"Task {task.task_id} failed ({backend})",
+            f"Task {task.task_id} {label.lower()} ({backend}){' — retryable' if is_transient else ''}",
             state="error",
             current_task_id=None,
-            last_result=result["error"][:200],
+            last_result=f"[{label}] {result['error'][:180]}{retry_hint}",
             root=root,
         )
-        log.error("[FAIL] task=%s  backend=%s  error=%s", task.task_id, backend, result["error"][:120])
+        log.error("[%s] task=%s  backend=%s  error=%s", label, task.task_id, backend, result["error"][:120])
         return f"failed:{backend}:{result['error'][:80]}"
 
     # --- Mark completed ---
@@ -1512,10 +1519,14 @@ def ralph_status(root: Path) -> dict[str, Any]:
                 })
 
         elif t.status == TaskStatus.FAILED.value:
-            info["error"] = t.last_error[:80] if t.last_error else ""
+            error_text = t.last_error or ""
+            is_transient = error_text.startswith("[TRANSIENT]")
+            info["error"] = error_text[:80]
+            info["transient"] = is_transient
             needs_action.append({
                 "action": "retry_or_dismiss",
                 "task_id": t.task_id,
+                "transient": is_transient,
                 "hint": f"python3 scripts/run_ralph_v1.py --retry {t.task_id}",
             })
 

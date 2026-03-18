@@ -252,10 +252,17 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
 
     if kind == "task_failed":
         err = _extract_error_summary(detail)
-        line = f"{e} **{agent}** failed `{short_tid}`"
-        if err:
-            line += f"\n> {err}"
-        line += f"\n\U0001f4cc Check logs or retry"  # 📌
+        is_transient = "[TRANSIENT]" in detail or "transient" in detail.lower()[:30]
+        if is_transient:
+            line = f"\u26a0\ufe0f **{agent}** `{short_tid}` transient failure"  # ⚠️
+            if err:
+                line += f"\n> {err}"
+            line += f"\n\U0001f504 Retryable \u2014 `--retry {task_id}`"  # 🔄
+        else:
+            line = f"{e} **{agent}** failed `{short_tid}`"
+            if err:
+                line += f"\n> {err}"
+            line += f"\n\U0001f4cc Check logs or retry"  # 📌
         return line
 
     if kind == "task_blocked":

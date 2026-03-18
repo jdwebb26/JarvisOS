@@ -106,7 +106,8 @@ def main() -> int:
                     print(f"    {a.get('summary', '')}")
                     print(f"    python3 scripts/run_ralph_v1.py --approve {a['task_id']}")
                 elif a['action'] == 'retry_or_dismiss':
-                    print(f"  RETRY: {a['task_id'][:16]}")
+                    tag = "RETRY (transient — safe to retry)" if a.get('transient') else "RETRY"
+                    print(f"  {tag}: {a['task_id'][:16]}")
                     print(f"    {a.get('hint', '')}")
                 elif a['action'] == 'run_ralph_cycle':
                     print(f"  RUN CYCLE: {a.get('reason', '')}")
