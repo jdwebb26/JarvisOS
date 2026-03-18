@@ -207,6 +207,19 @@ def set_active_profile(
         "description": PROFILES[profile_name]["description"],
     }
     path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+    # Emit Discord event so operator sees the change
+    try:
+        from runtime.core.discord_event_router import emit_event
+        desc = PROFILES[profile_name]["description"]
+        emit_event(
+            "profile_changed", "jarvis",
+            detail=f"{profile_name} — {desc}",
+            root=base,
+        )
+    except Exception:
+        pass
+
     return state
 
 
@@ -331,6 +344,67 @@ def show_realized_routing(
     }
 
 
+def format_discord_status(root: Optional[Path] = None) -> str:
+    """Produce an emoji-formatted model status block for Discord posting.
+
+    Returns a compact, phone-scannable message showing active profile
+    and per-agent model status with match indicators.
+    """
+    result = show_realized_routing(root=root)
+    profile = result["active_profile"]
+    desc = result.get("description", "")
+
+    lines = [
+        f"\U0001f504 **Profile**: `{profile}` \u2014 {desc}",  # 🔄
+        "",
+    ]
+
+    for agent_id, info in result["agents"].items():
+        prov = info.get("provider", "?")
+        model = info.get("model", "?")
+        realized = info.get("last_realized", {})
+
+        if realized:
+            r_prov = realized.get("provider", "")
+            r_model = realized.get("model", "")
+            match = _match_provider_model(prov, model, r_prov, r_model)
+            if match == "ok":
+                status = "\u2705"  # ✅
+            else:
+                status = "\u26a0\ufe0f"  # ⚠️
+            lines.append(f"{status} **{_AGENT_DISPLAY.get(agent_id, agent_id)}** \u2014 `{r_prov}/{r_model}`")
+        else:
+            lines.append(f"\u2796 **{_AGENT_DISPLAY.get(agent_id, agent_id)}** \u2014 `{prov}/{model}` (no turn yet)")  # ➖
+
+    return "\n".join(lines)
+
+
+_AGENT_DISPLAY: dict[str, str] = {
+    "jarvis": "Jarvis", "hal": "HAL", "scout": "Scout",
+    "anton": "Anton", "archimedes": "Archimedes", "hermes": "Hermes",
+    "kitt": "Kitt", "claude": "Claude", "qwen": "Qwen",
+    "bowser": "Bowser", "cadence": "Cadence", "muse": "Muse", "ralph": "Ralph",
+}
+
+
+def post_models_status_to_discord(root: Optional[Path] = None) -> dict:
+    """Post the current model status to the Jarvis Discord channel.
+
+    Returns the emit_event result dict.
+    """
+    base = Path(root or ROOT).resolve()
+    status_text = format_discord_status(root=base)
+    try:
+        from runtime.core.discord_event_router import emit_event
+        return emit_event(
+            "models_status", "jarvis",
+            detail=status_text,
+            root=base,
+        )
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ---------------------------------------------------------------------------
 # Model name matching (policy names vs gateway refs)
 # ---------------------------------------------------------------------------
@@ -391,6 +465,8 @@ def main() -> int:
 
     sub.add_parser("list", help="List available profiles")
     sub.add_parser("show", help="Show active profile and realized routing")
+    sub.add_parser("status", help="Show Discord-formatted model status")
+    sub.add_parser("post", help="Post model status to Discord #jarvis channel")
 
     p_set = sub.add_parser("set", help="Switch active profile")
     p_set.add_argument("profile", choices=PROFILE_NAMES)
@@ -425,6 +501,15 @@ def main() -> int:
         if "--json" in sys.argv:
             print()
             print(json.dumps(result, indent=2))
+        return 0
+
+    if args.cmd == "status":
+        print(format_discord_status())
+        return 0
+
+    if args.cmd == "post":
+        result = post_models_status_to_discord()
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
     if args.cmd == "set":

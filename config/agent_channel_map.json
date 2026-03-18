@@ -54,6 +54,8 @@
     "kitt_brief_completed",
     "kitt_brief_failed",
     "delegation_sent",
+    "profile_changed",
+    "models_status",
     "warning",
     "error"
   ]

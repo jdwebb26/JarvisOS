@@ -147,6 +147,26 @@ def test_agent_online():
     assert "online" in text
 
 
+def test_profile_changed():
+    text = _render_status_text("profile_changed", _payload(
+        agent_id="jarvis",
+        detail="hybrid — Orchestration on Kimi 2.5, coders local",
+    ))
+    assert "\U0001f504" in text  # 🔄
+    assert "Profile switched" in text
+    assert "hybrid" in text
+
+
+def test_models_status():
+    text = _render_status_text("models_status", _payload(
+        agent_id="jarvis",
+        detail="✅ **Jarvis** — `lmstudio/qwen3.5-35b`",
+    ))
+    assert "\U0001f4ca" in text  # 📊
+    assert "Model status" in text
+    assert "Jarvis" in text
+
+
 def test_fallback_unknown_kind():
     text = _render_status_text("some_unknown_kind", _payload(detail="test fallback"))
     assert "\u2139" in text  # ℹ️

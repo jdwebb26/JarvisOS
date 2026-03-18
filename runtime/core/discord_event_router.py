@@ -16,7 +16,8 @@ Event kinds supported:
     kitt_brief_completed, kitt_brief_failed,
     voice_session_started, voice_session_ended, tts_started, tts_completed,
     call_started, call_ended, agent_online, agent_offline, agent_status,
-    delegation_sent, delegation_received, warning, error
+    delegation_sent, delegation_received, profile_changed, models_status,
+    warning, error
 """
 from __future__ import annotations
 
@@ -121,6 +122,8 @@ _EMOJI: dict[str, str] = {
     "delegation_received": "\U0001f500",
     "warning": "\u26a0\ufe0f",         # ⚠️
     "error": "\U0001f534",             # 🔴
+    "profile_changed": "\U0001f504",   # 🔄
+    "models_status": "\U0001f4ca",     # 📊
 }
 
 
@@ -335,6 +338,15 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
         return f"{e} **{agent}** received `{short_tid}` \u2190 {target}"
 
     # --- Warning / Error ---
+
+    # --- Profile / Models status ---
+
+    if kind == "profile_changed":
+        return f"{e} Profile switched to **{clean}**" if clean else f"{e} Profile changed"
+
+    if kind == "models_status":
+        # detail carries the pre-formatted status block
+        return f"{e} **Model status**\n{detail}" if detail else f"{e} **Model status**"
 
     if kind == "warning":
         err = _extract_error_summary(detail) if len(detail) > 120 else clean

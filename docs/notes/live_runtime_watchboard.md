@@ -290,6 +290,25 @@
 - **After**: `show` displays per-agent profile, expected model, last realized model, and match status. All agents emit turn telemetry with profile name. Gateway session files contain `model-snapshot` records.
 - **Status**: ✅ LIVE
 
+### S. /models operator visibility — profile↔gateway bridge (2026-03-18)
+- **Context**: `/models` is a built-in gateway command (compiled JS) for per-session model switching. Runtime profiles (`runtime_profiles.py`) set system-wide defaults. These are complementary, not competing — but the operator had no way to see the system profile status from Discord.
+- **Changes**:
+  - `runtime_profiles.py`: added `format_discord_status()` (emoji-formatted per-agent model status) + `post_models_status_to_discord()` (posts to #jarvis via event router) + `status`/`post` CLI subcommands + `set_active_profile()` now emits `profile_changed` event
+  - `discord_event_router.py`: added `profile_changed` and `models_status` event kinds with emoji rendering
+  - `agent_channel_map.json`: added `profile_changed` + `models_status` to jarvis forward
+- **Operator flow**:
+  - `python3 -m runtime.core.runtime_profiles status` — see emoji-formatted model status in terminal
+  - `python3 -m runtime.core.runtime_profiles post` — post status to #jarvis Discord
+  - `python3 -m runtime.core.runtime_profiles set hybrid` — switch profile → auto-posts to Discord
+  - `/models` in Discord — per-session model picker (unchanged, gateway-native)
+- **Proven live** (2026-03-18):
+  - `format_discord_status()` → 10-agent table with ✅/⚠️/➖ indicators ✅
+  - `profile_changed` event rendered: `🔄 Profile switched to **hybrid — ...** ` ✅
+  - `models_status` event rendered: `📊 **Model status**` + per-agent block ✅
+  - Live webhook delivery to #jarvis → HTTP 200 ✅
+  - Tests: 21/21 pass, 395/395 validate pass ✅
+- **Status**: ✅ LIVE
+
 ---
 
 ## What Is Still Blocked / Partial
