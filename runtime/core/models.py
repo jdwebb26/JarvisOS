@@ -358,6 +358,7 @@ class TaskRecord:
     autonomy_mode: str = AutonomyMode.STEP_MODE.value
     task_envelope: dict[str, Any] = field(default_factory=dict)
     parent_task_id: Optional[str] = None
+    child_task_ids: list[str] = field(default_factory=list)
     speculative_downstream: bool = False
     related_artifact_ids: list[str] = field(default_factory=list)
     candidate_artifact_ids: list[str] = field(default_factory=list)
@@ -404,6 +405,7 @@ class TaskRecord:
         data.setdefault("autonomy_mode", AutonomyMode.STEP_MODE.value)
         data.setdefault("task_envelope", {})
         data.setdefault("parent_task_id", None)
+        data.setdefault("child_task_ids", [])
         data.setdefault("speculative_downstream", False)
         data.setdefault("related_artifact_ids", [])
         data.setdefault("candidate_artifact_ids", [])

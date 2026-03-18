@@ -62,11 +62,88 @@ LANE = "ralph"
 # unassigned = not yet routed; Ralph can take.
 ELIGIBLE_BACKENDS = frozenset({"ralph_adapter", "qwen_executor", "qwen_planner", "unassigned"})
 
-# Task types Ralph will not touch in v1 (belong to dedicated pipelines).
+# Task types Ralph will not touch (belong to dedicated pipelines).
 BLOCKED_TASK_TYPES = frozenset({"deploy"})
 
-# Risk levels Ralph will not touch in v1.
+# Risk levels Ralph will not touch.
 BLOCKED_RISK_LEVELS = frozenset({"high_stakes"})
+
+# ---------------------------------------------------------------------------
+# Backend selection — picks the right executor for a task
+# ---------------------------------------------------------------------------
+
+# Keywords / patterns that signal a specific backend.
+_BACKEND_KEYWORDS: dict[str, list[str]] = {
+    "kitt_quant": [
+        "nq", "futures", "e-mini", "regime", "market condition", "quant",
+        "trading signal", "backtest", "strategy", "price action", "volatility",
+        "momentum", "mean-revert", "drawdown", "profit factor",
+    ],
+    "browser_backend": [
+        "browse to", "navigate to", "screenshot", "scrape", "web page", "website",
+        "open url", "fetch page", "login to", "take a screenshot",
+    ],
+    "scout_search": [
+        "search for", "look up", "find information", "research",
+        "what is", "who is", "latest news", "current status of",
+    ],
+    "muse_creative": [
+        "write a story", "creative", "poem", "design", "brainstorm",
+        "generate ideas", "marketing copy", "tagline", "slogan",
+    ],
+}
+
+# Task type → default backend when keywords don't match.
+_TYPE_DEFAULTS: dict[str, str] = {
+    "quant": "kitt_quant",
+    "browser": "browser_backend",
+    "research": "scout_search",
+    "creative": "muse_creative",
+    "code": "hal",
+    "general": "hal",
+}
+
+
+def select_backend_for_task(task: Any) -> str:
+    """Pick the best execution backend for a task.
+
+    Priority:
+      1. If task already has a specific backend (not ralph_adapter/unassigned), keep it.
+      2. Keyword match against normalized_request.
+      3. Task type default.
+      4. Fallback to hal.
+
+    Returns a backend name: hal, kitt_quant, browser_backend, scout_search, muse_creative.
+    """
+    # If the task was explicitly routed to a real backend, respect it.
+    current = task.execution_backend or ""
+    if current and current not in {"ralph_adapter", "unassigned", "qwen_executor", "qwen_planner"}:
+        return current
+
+    request = (task.normalized_request or task.raw_request or "").lower()
+
+    # Keyword scoring — pick the backend with the most keyword hits.
+    scores: dict[str, int] = {}
+    for backend, keywords in _BACKEND_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw in request)
+        if score > 0:
+            scores[backend] = score
+
+    if scores:
+        best = max(scores, key=scores.get)  # type: ignore[arg-type]
+        log.info("Backend selected by keywords: %s (score=%d) for: %s",
+                 best, scores[best], request[:60])
+        return best
+
+    # Task type default.
+    task_type = (task.task_type or "").lower()
+    if task_type in _TYPE_DEFAULTS:
+        backend = _TYPE_DEFAULTS[task_type]
+        log.info("Backend selected by task_type=%s: %s", task_type, backend)
+        return backend
+
+    log.info("Backend defaulting to hal for: %s", request[:60])
+    return "hal"
 
 # Staleness before Ralph steals a qwen_executor/qwen_planner task (seconds).
 # ralph_adapter and unassigned tasks are picked up immediately.
@@ -475,6 +552,223 @@ def retry_task(task_id: str, *, root: Path) -> dict[str, Any]:
         "previous_status": previous_status,
         "new_status": "queued",
     }
+
+
+# ---------------------------------------------------------------------------
+# Unified backend dispatch
+# ---------------------------------------------------------------------------
+
+def dispatch_task(task: Any, backend: str, *, root: Path) -> dict[str, Any]:
+    """Execute a task through the selected backend.
+
+    Returns {ok, content, error, elapsed, model, backend, agent, usage}.
+    All backends normalize to this shape.
+    """
+    if backend == "hal":
+        result = call_hal_via_qwen(task)
+        result["backend"] = "hal"
+        result["agent"] = "hal"
+        return result
+
+    if backend == "kitt_quant":
+        result = call_kitt_quant(task, root=root)
+        result["backend"] = "kitt_quant"
+        result["agent"] = "kitt"
+        return result
+
+    if backend == "scout_search":
+        result = call_scout_search(task, root=root)
+        result["backend"] = "scout_search"
+        result["agent"] = "scout"
+        return result
+
+    if backend == "browser_backend":
+        result = call_browser(task, root=root)
+        result["backend"] = "browser_backend"
+        result["agent"] = "bowser"
+        return result
+
+    if backend == "muse_creative":
+        result = call_muse_via_qwen(task)
+        result["backend"] = "muse_creative"
+        result["agent"] = "muse"
+        return result
+
+    # Fallback: treat as HAL
+    log.warning("Unknown backend '%s', falling back to hal", backend)
+    result = call_hal_via_qwen(task)
+    result["backend"] = "hal"
+    result["agent"] = "hal"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Scout — SearXNG web search
+# ---------------------------------------------------------------------------
+
+def call_scout_search(task: Any, *, root: Path) -> dict[str, Any]:
+    """Execute task via SearXNG web search. Returns unified result dict."""
+    t0 = time.time()
+    try:
+        from runtime.integrations.searxng_client import search
+        query = (task.normalized_request or task.raw_request or "").strip()
+        search_result = search(
+            query_text=query,
+            actor="scout",
+            lane="ralph",
+            max_results=5,
+            root=root,
+        )
+        elapsed = round(time.time() - t0, 2)
+
+        if not search_result.get("ok"):
+            return {"ok": False, "content": "", "error": search_result.get("error", "search failed"),
+                    "elapsed": elapsed, "model": "searxng", "usage": {}}
+
+        results = search_result.get("results", [])
+        if not results:
+            return {"ok": False, "content": "", "error": "no search results",
+                    "elapsed": elapsed, "model": "searxng", "usage": {}}
+
+        lines = [f"## Search Results for: {query}", ""]
+        for i, r in enumerate(results[:5], 1):
+            title = r.get("title", "")
+            url = r.get("url", "")
+            snippet = r.get("content", r.get("snippet", ""))[:200]
+            lines.append(f"### {i}. {title}")
+            lines.append(f"URL: {url}")
+            lines.append(f"{snippet}")
+            lines.append("")
+
+        content = "\n".join(lines)
+        return {"ok": True, "content": content, "error": "", "elapsed": elapsed,
+                "model": "searxng", "usage": {}}
+    except Exception as exc:
+        return {"ok": False, "content": "", "error": str(exc),
+                "elapsed": round(time.time() - t0, 2), "model": "searxng", "usage": {}}
+
+
+# ---------------------------------------------------------------------------
+# Kitt quant — delegates to backend_dispatch
+# ---------------------------------------------------------------------------
+
+def call_kitt_quant(task: Any, *, root: Path) -> dict[str, Any]:
+    """Execute task via the Kitt quant workflow (SearXNG → Bowser → Kimi K2.5)."""
+    t0 = time.time()
+    try:
+        from runtime.executor.backend_dispatch import dispatch_to_backend
+        messages = [{"role": "user", "content": task.normalized_request or task.raw_request or ""}]
+        result = dispatch_to_backend(
+            execution_backend="kitt_quant",
+            task_id=task.task_id,
+            actor=ACTOR,
+            lane=LANE,
+            messages=messages,
+            root=root,
+        )
+        elapsed = round(time.time() - t0, 2)
+        content = result.get("content", result.get("brief_preview", ""))
+        if not content and result.get("brief_artifact"):
+            content = f"Brief artifact: {result['brief_artifact']}"
+        return {
+            "ok": result.get("status") in ("completed", "ok"),
+            "content": str(content)[:4000],
+            "error": result.get("error", ""),
+            "elapsed": elapsed,
+            "model": result.get("model", "kimi-k2.5"),
+            "usage": result.get("usage", {}),
+        }
+    except Exception as exc:
+        return {"ok": False, "content": "", "error": str(exc),
+                "elapsed": round(time.time() - t0, 2), "model": "kitt_quant", "usage": {}}
+
+
+# ---------------------------------------------------------------------------
+# Browser — delegates to backend_dispatch
+# ---------------------------------------------------------------------------
+
+def call_browser(task: Any, *, root: Path) -> dict[str, Any]:
+    """Execute task via the Bowser browser backend (PinchTab)."""
+    t0 = time.time()
+    try:
+        from runtime.executor.backend_dispatch import dispatch_to_backend
+        messages = [{"role": "user", "content": task.normalized_request or task.raw_request or ""}]
+        result = dispatch_to_backend(
+            execution_backend="browser_backend",
+            task_id=task.task_id,
+            actor=ACTOR,
+            lane=LANE,
+            messages=messages,
+            root=root,
+        )
+        elapsed = round(time.time() - t0, 2)
+        content = result.get("content", result.get("text", ""))
+        return {
+            "ok": result.get("status") in ("completed", "ok"),
+            "content": str(content)[:4000],
+            "error": result.get("error", ""),
+            "elapsed": elapsed,
+            "model": "pinchtab",
+            "usage": {},
+        }
+    except Exception as exc:
+        return {"ok": False, "content": "", "error": str(exc),
+                "elapsed": round(time.time() - t0, 2), "model": "pinchtab", "usage": {}}
+
+
+# ---------------------------------------------------------------------------
+# Muse creative — Qwen with creative persona
+# ---------------------------------------------------------------------------
+
+def call_muse_via_qwen(task: Any) -> dict[str, Any]:
+    """Execute task via Qwen with Muse creative persona."""
+    import requests as _req
+
+    base = os.getenv("QWEN_AGENT_MODEL_SERVER", "http://100.70.114.34:1234/v1").rstrip("/")
+    model = os.getenv("QWEN_AGENT_MODEL", "qwen3.5-35b-a3b")
+    api_key = os.getenv("QWEN_AGENT_API_KEY", "lm-studio")
+
+    system_prompt = (
+        "You are Muse, the creative specialist in the OpenClaw system. "
+        "Your strength is imaginative, well-crafted output: writing, design concepts, "
+        "brainstorming, marketing copy, and creative problem-solving. "
+        "Be original, clear, and concise. "
+        "Format: ## Creative Output\n<your work>\n## Notes\n<brief process notes>. "
+        "/no_think"
+    )
+    user_prompt = (task.normalized_request or task.raw_request or "").strip()
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.7,
+        "max_tokens": 4096,
+        "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    t0 = time.time()
+    try:
+        r = _req.post(f"{base}/chat/completions", headers=headers, json=payload, timeout=(8, 120))
+        elapsed = round(time.time() - t0, 2)
+        if not r.ok:
+            return {"ok": False, "content": "", "error": f"http {r.status_code}: {r.text[:200]}",
+                    "elapsed": elapsed, "model": model, "usage": {}}
+        data = r.json()
+        choice = (data.get("choices") or [{}])[0]
+        content = str((choice.get("message") or {}).get("content") or "").strip()
+        usage = data.get("usage") or {}
+        if not content:
+            return {"ok": False, "content": "", "error": "empty response from model",
+                    "elapsed": elapsed, "model": model, "usage": usage}
+        return {"ok": True, "content": content, "error": "", "elapsed": elapsed,
+                "model": model, "usage": usage}
+    except Exception as exc:
+        return {"ok": False, "content": "", "error": str(exc),
+                "elapsed": round(time.time() - t0, 2), "model": model, "usage": {}}
 
 
 # ---------------------------------------------------------------------------
@@ -962,8 +1256,13 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
     from runtime.core.task_runtime import block_task, complete_task, fail_task, start_task
     from runtime.core.task_store import load_task, save_task
 
-    log.info("[STAGE] dispatch_and_review  task=%s  backend=%s  req=%s",
-             task.task_id, task.execution_backend, task.normalized_request[:60])
+    # --- Select backend ---
+    backend = select_backend_for_task(task)
+    agent = {"hal": "hal", "kitt_quant": "kitt", "scout_search": "scout",
+             "browser_backend": "bowser", "muse_creative": "muse"}.get(backend, backend)
+
+    log.info("[STAGE] dispatch_and_review  task=%s  selected_backend=%s  req=%s",
+             task.task_id, backend, task.normalized_request[:60])
 
     # Take ownership: reassign backend to ralph_adapter.
     fresh = load_task(task.task_id, root=root)
@@ -972,6 +1271,32 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
     fresh.execution_backend = "ralph_adapter"
     save_task(fresh, root=root)
 
+    # --- Chunking: split large tasks into children ---
+    from runtime.core.task_chunking import should_chunk, chunk_task
+    if should_chunk(fresh):
+        log.info("[CHUNK] Task %s qualifies for chunking — decomposing", task.task_id)
+        child_ids = chunk_task(fresh, root=root)
+        if child_ids:
+            try:
+                complete_task(
+                    root=root,
+                    task_id=task.task_id,
+                    actor=ACTOR,
+                    lane=LANE,
+                    final_outcome=f"Chunked into {len(child_ids)} subtasks: {', '.join(child_ids)}",
+                )
+            except Exception:
+                pass
+            update_agent_status(
+                ACTOR,
+                f"Chunked {task.task_id} into {len(child_ids)} subtasks",
+                state="idle",
+                current_task_id=None,
+                root=root,
+            )
+            log.info("[CHUNK] %d children created — parent marked completed", len(child_ids))
+            return f"chunked:{len(child_ids)}:{','.join(child_ids)}"
+
     # --- Mark running ---
     try:
         start_task(
@@ -979,7 +1304,7 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
             task_id=task.task_id,
             actor=ACTOR,
             lane=LANE,
-            reason="Ralph v1: dispatching to HAL via Qwen proxy",
+            reason=f"Ralph: dispatching to {backend}",
         )
     except Exception as exc:
         log.error("start_task failed: %s", exc)
@@ -987,22 +1312,23 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
 
     update_agent_status(
         ACTOR,
-        f"Running task {task.task_id}: {task.normalized_request[:60]}",
+        f"Running task {task.task_id} via {backend}: {task.normalized_request[:50]}",
         state="running",
         current_task_id=task.task_id,
         root=root,
     )
 
-    # --- Call HAL (Qwen proxy) ---
-    log.info("[HAL] Calling Qwen for task %s ...", task.task_id)
-    result = call_hal_via_qwen(task)
-    log.info("[HAL] Done  elapsed=%.1fs  ok=%s", result["elapsed"], result["ok"])
+    # --- Dispatch to selected backend ---
+    log.info("[DISPATCH] Calling %s for task %s ...", backend, task.task_id)
+    result = dispatch_task(task, backend, root=root)
+    log.info("[DISPATCH] %s done  elapsed=%.1fs  ok=%s", backend, result["elapsed"], result["ok"])
 
     result_id = _record_hal_result(task, result, root=root)
 
     # --- Token budget tracking + trace recording ---
-    _track_usage(task, result, agent="hal", root=root)
-    _record_execution_trace(task, result, agent="hal", result_id=result_id, root=root)
+    _track_usage(task, result, agent=result.get("agent", agent), root=root)
+    _record_execution_trace(task, result, agent=result.get("agent", agent),
+                            result_id=result_id, root=root)
 
     if not result["ok"]:
         fail_task(
@@ -1010,18 +1336,18 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
             task_id=task.task_id,
             actor=ACTOR,
             lane=LANE,
-            reason=f"HAL execution failed: {result['error']}",
+            reason=f"{backend} execution failed: {result['error']}",
         )
         update_agent_status(
             ACTOR,
-            f"Task {task.task_id} failed",
+            f"Task {task.task_id} failed ({backend})",
             state="error",
             current_task_id=None,
             last_result=result["error"][:200],
             root=root,
         )
-        log.error("[FAIL] task=%s  error=%s", task.task_id, result["error"][:120])
-        return f"failed:hal:{result['error'][:80]}"
+        log.error("[FAIL] task=%s  backend=%s  error=%s", task.task_id, backend, result["error"][:120])
+        return f"failed:{backend}:{result['error'][:80]}"
 
     # --- Mark completed ---
     try:
@@ -1031,7 +1357,7 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
             actor=ACTOR,
             lane=LANE,
             final_outcome=(
-                f"HAL executed via Qwen in {result['elapsed']}s. "
+                f"{backend} executed in {result['elapsed']}s. "
                 f"Model: {result['model']}. Result id: {result_id}"
             ),
         )
@@ -1046,25 +1372,23 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
             reviewer_role="archimedes",
             requested_by=ACTOR,
             lane=LANE,
-            summary=f"Ralph v1: HAL execution complete. Requesting Archimedes review.",
+            summary=f"Ralph: {backend} execution complete. Requesting Archimedes review.",
             details=(
                 f"Task: {task.normalized_request}\n\n"
-                f"Model: {result['model']}  Elapsed: {result['elapsed']}s\n"
+                f"Backend: {backend}  Model: {result['model']}  Elapsed: {result['elapsed']}s\n"
                 f"Backend result: {result_id}\n\n"
-                f"=== HAL Output ===\n{result['content'][:4000]}"
+                f"=== Output ===\n{result['content'][:4000]}"
             ),
             root=root,
         )
     except Exception as exc:
-        # Review request failed — task is completed but stuck without review.
-        # Block it so the operator can see it.
         try:
             block_task(
                 root=root,
                 task_id=task.task_id,
                 actor=ACTOR,
                 lane=LANE,
-                reason=f"HAL completed but review request failed: {exc}",
+                reason=f"{backend} completed but review request failed: {exc}",
             )
         except Exception:
             pass
@@ -1073,13 +1397,13 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
 
     update_agent_status(
         ACTOR,
-        f"Waiting archimedes review for {task.task_id}",
+        f"Waiting review for {task.task_id} ({backend})",
         state="waiting",
         current_task_id=task.task_id,
-        last_result=f"HAL done in {result['elapsed']}s. Review: {review.review_id}",
+        last_result=f"{backend} done in {result['elapsed']}s. Review: {review.review_id}",
         root=root,
     )
-    log.info("[OK] Review requested: %s  task=%s", review.review_id, task.task_id)
+    log.info("[OK] Review requested: %s  task=%s  backend=%s", review.review_id, task.task_id, backend)
     return f"review_requested:{review.review_id}"
 
 
@@ -1249,6 +1573,17 @@ def run_cycle(root: Path) -> dict[str, Any]:
     recovered = recover_stale_running(root)
     if recovered:
         log.info("[CYCLE] Recovered stale task %s — will be eligible for retry", recovered)
+
+    # ------------------------------------------------------------------
+    # 0c. Parent rollup — check if any chunked parent's children are all done
+    # ------------------------------------------------------------------
+    from runtime.core.task_chunking import rollup_parent
+    from runtime.core.task_store import list_tasks as _list_tasks
+    for _t in _list_tasks(root=root, limit=200):
+        if _t.child_task_ids and _t.status == "completed" and "Chunked into" in (_t.final_outcome or ""):
+            status_check = rollup_parent(_t.task_id, root=root)
+            if status_check.get("action") == "completed":
+                log.info("[ROLLUP] Parent %s rolled up: all children done", _t.task_id)
 
     # ------------------------------------------------------------------
     # 1a. Stage: approval granted → finalize task
