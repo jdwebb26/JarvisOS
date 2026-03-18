@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "updated": "2026-03-17",
+  "version": "1.1",
+  "updated": "2026-03-18",
   "agents": {
     "jarvis":     { "channel_id": "1478178050133987400", "purpose": "orchestration",   "voice_only": false },
     "hal":        { "channel_id": "1483133691969671289", "purpose": "building",         "voice_only": false },
@@ -8,7 +8,8 @@
     "anton":      { "channel_id": "1478178150268670212", "purpose": "supreme_review",   "voice_only": false },
     "archimedes": { "channel_id": "1483132981177618482", "purpose": "technical_review", "voice_only": false },
     "hermes":     { "channel_id": "1483131437292191945", "purpose": "research",         "voice_only": false },
-    "kitt":       { "channel_id": "1483320979185733722", "purpose": "quant",            "voice_only": false },
+    "kitt":       { "channel_id": "1483320979185733722", "purpose": "quant_lead",       "voice_only": false },
+    "sigma":      { "channel_id": "1483916191046041811", "purpose": "quant_validation", "voice_only": false },
     "claude":     { "channel_id": null,                  "purpose": "general",          "voice_only": false },
     "qwen":       { "channel_id": "1483131473543303208", "purpose": "qwen_agent",       "voice_only": false },
     "bowser":     { "channel_id": "1483539080271761408", "purpose": "browser",          "voice_only": false },
@@ -43,6 +44,13 @@
     "kitt_brief_failed",
     "delegation_sent",
     "delegation_received",
+    "quant_strategy_promoted",
+    "quant_strategy_rejected",
+    "quant_papertrade_request",
+    "quant_execution_status",
+    "quant_execution_rejected",
+    "quant_paper_review",
+    "quant_alert",
     "warning",
     "error"
   ],
@@ -57,6 +65,11 @@
     "profile_changed",
     "models_status",
     "cockpit_status",
+    "quant_strategy_promoted",
+    "quant_papertrade_request",
+    "quant_execution_status",
+    "quant_execution_rejected",
+    "quant_alert",
     "warning",
     "error"
   ]

@@ -125,6 +125,21 @@ _EMOJI: dict[str, str] = {
     "profile_changed": "\U0001f504",   # 🔄
     "models_status": "\U0001f4ca",     # 📊
     "cockpit_status": "\U0001f4ca",    # 📊
+    # Quant lane events
+    "quant_strategy_promoted": "\U0001f4c8",   # 📈
+    "quant_strategy_rejected": "\U0001f4c9",   # 📉
+    "quant_validation_completed": "\U0001f50d", # 🔍
+    "quant_papertrade_candidate": "\U0001f4cb", # 📋
+    "quant_papertrade_request": "\U0001f4dd",  # 📝
+    "quant_paper_review": "\U0001f4ca",        # 📊
+    "quant_execution_intent": "\u23f3",        # ⏳
+    "quant_execution_status": "\U0001f4b9",    # 💹
+    "quant_execution_rejected": "\U0001f6d1",  # 🛑
+    "quant_fill": "\U0001f4b0",               # 💰
+    "quant_candidate_submitted": "\U0001f9ea", # 🧪
+    "quant_alert": "\U0001f6a8",              # 🚨
+    "quant_setup": "\U0001f3af",              # 🎯
+    "quant_health": "\U0001f3e5",             # 🏥
 }
 
 
@@ -379,6 +394,45 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
             line += f"\n> {err}"
         line += f"\n\U0001f4cc Investigate immediately"  # 📌
         return line
+
+    # --- Quant lane events ---
+
+    if kind.startswith("quant_"):
+        strategy = payload.get("strategy_id", "")
+        pkt_type = payload.get("packet_type", "")
+        strat_tag = f" `{strategy}`" if strategy else ""
+
+        if kind == "quant_strategy_promoted":
+            line = f"{e} **Sigma** promoted{strat_tag}"
+            return f"{line}\n> {clean}" if clean else line
+        if kind == "quant_strategy_rejected":
+            line = f"{e} **Sigma** rejected{strat_tag}"
+            return f"{line}\n> {clean}" if clean else line
+        if kind == "quant_papertrade_candidate":
+            line = f"{e} **Sigma** paper-trade candidate{strat_tag}"
+            return f"{line}\n> {clean}" if clean else line
+        if kind == "quant_papertrade_request":
+            line = f"{e} **Kitt** requesting paper-trade approval{strat_tag}"
+            if clean:
+                line += f"\n> {clean}"
+            line += f"\n\U0001f4cc Approve in #review"
+            return line
+        if kind == "quant_execution_status":
+            line = f"{e} **Executor** fill{strat_tag}"
+            return f"{line}\n> {clean}" if clean else line
+        if kind == "quant_execution_rejected":
+            line = f"{e} **Executor** rejected{strat_tag}"
+            return f"{line}\n> {clean}" if clean else line
+        if kind == "quant_paper_review":
+            line = f"{e} **Sigma** paper review{strat_tag}"
+            return f"{line}\n> {clean}" if clean else line
+        if kind == "quant_alert":
+            line = f"{e} **Kitt** ALERT{strat_tag}"
+            return f"{line}\n> {clean}" if clean else line
+        # Generic quant event
+        label = kind.replace("quant_", "").replace("_", " ")
+        line = f"{e} **{agent}** {label}{strat_tag}"
+        return f"{line}\n> {clean}" if clean else line
 
     # --- Fallback ---
     line = f"\u2139\ufe0f **{agent}** {kind}"

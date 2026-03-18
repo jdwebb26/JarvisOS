@@ -2,13 +2,17 @@
 """Quant Lanes — Operator CLI.
 
 Commands:
-    python3 scripts/quant_lanes.py status          — show strategy pipeline and lane health
-    python3 scripts/quant_lanes.py strategies       — list all strategies with lifecycle state
-    python3 scripts/quant_lanes.py strategy <id>    — show detailed strategy state
-    python3 scripts/quant_lanes.py approvals        — list all approvals
-    python3 scripts/quant_lanes.py latest           — show all latest packets
-    python3 scripts/quant_lanes.py brief            — produce and display a Kitt brief
-    python3 scripts/quant_lanes.py phase0           — run Phase 0 vertical slice proof
+    python3 scripts/quant_lanes.py status                  — show strategy pipeline and lane health
+    python3 scripts/quant_lanes.py strategies               — list all strategies with lifecycle state
+    python3 scripts/quant_lanes.py strategy <id>            — show detailed strategy state
+    python3 scripts/quant_lanes.py approvals                — list all approvals
+    python3 scripts/quant_lanes.py latest                   — show all latest packets
+    python3 scripts/quant_lanes.py brief                    — produce and display a Kitt brief
+    python3 scripts/quant_lanes.py request-paper <id>       — request paper trade approval (posts to #review)
+    python3 scripts/quant_lanes.py approve-paper <id>       — approve paper trade for strategy
+    python3 scripts/quant_lanes.py execute <id>             — execute paper trade for approved strategy
+    python3 scripts/quant_lanes.py live-proof               — run end-to-end live runtime proof
+    python3 scripts/quant_lanes.py phase0                   — run Phase 0 vertical slice proof
 """
 from __future__ import annotations
 
@@ -135,6 +139,86 @@ def cmd_brief(args):
     print(brief.notes or brief.thesis)
 
 
+def cmd_request_paper(args):
+    """Request paper trade approval — posts to #review in Discord."""
+    from workspace.quant.shared.approval_bridge import request_paper_trade_approval
+    symbols = args.symbols.split(",") if args.symbols else ["NQ"]
+    result = request_paper_trade_approval(
+        ROOT, args.strategy_id, symbols=symbols,
+        max_position_size=args.max_pos,
+        valid_days=args.valid_days,
+    )
+    if result["error"]:
+        print(f"ERROR: {result['error']}")
+        return
+    print(f"Approval requested: {result['approval_ref']}")
+    print(f"Strategy: {result['strategy_id']}")
+    if result["discord_event"]:
+        evt = result["discord_event"]
+        ch = evt.get("owner_channel_id", "unknown")
+        print(f"Discord event: {evt.get('event_id', 'N/A')} -> channel {ch}")
+        if evt.get("outbox_entries"):
+            print(f"Outbox entries: {len(evt['outbox_entries'])} (pending delivery)")
+
+
+def cmd_approve_paper(args):
+    """Approve paper trade for a strategy."""
+    from workspace.quant.shared.approval_bridge import approve_paper_trade
+    result = approve_paper_trade(ROOT, args.strategy_id, approval_ref=args.approval_ref)
+    if result["error"]:
+        print(f"ERROR: {result['error']}")
+        return
+    print(f"Approved: {result['approval_ref']}")
+    print(f"Strategy state: {result['strategy_state']}")
+
+
+def cmd_execute(args):
+    """Execute paper trade for an approved strategy."""
+    from workspace.quant.shared.approval_bridge import execute_approved_paper_trade
+    from workspace.quant.shared.registries.approval_registry import load_all_approvals
+    from workspace.quant.shared.discord_bridge import emit_quant_event
+    from workspace.quant.shared.schemas.packets import QuantPacket
+
+    # Find approval
+    approval_ref = args.approval_ref
+    if not approval_ref:
+        approvals = [a for a in load_all_approvals(ROOT)
+                     if a.strategy_id == args.strategy_id and not a.revoked]
+        if not approvals:
+            print(f"ERROR: No approval found for {args.strategy_id}")
+            return
+        approval_ref = approvals[-1].approval_ref
+
+    result = execute_approved_paper_trade(
+        ROOT, args.strategy_id, approval_ref,
+        symbol=args.symbol, side=args.side,
+        quantity=args.quantity, simulated_price=args.price,
+    )
+
+    if result["success"]:
+        print(f"Paper trade executed successfully")
+        print(f"  Fill: {result['fill']['fill_price']} (slippage: {result['fill']['slippage']})")
+        # Emit Discord event for the execution status
+        for pkt_dict in result["packets"]:
+            pkt = QuantPacket.from_dict(pkt_dict)
+            emit_quant_event(pkt, root=ROOT)
+    else:
+        print(f"Execution rejected: {result['rejection_reason']}")
+        for pkt_dict in result["packets"]:
+            pkt = QuantPacket.from_dict(pkt_dict)
+            emit_quant_event(pkt, root=ROOT)
+
+
+def cmd_live_proof(args):
+    """Run end-to-end live runtime proof."""
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "workspace" / "quant" / "live_runtime_proof.py")],
+        cwd=str(ROOT),
+    )
+    sys.exit(result.returncode)
+
+
 def cmd_phase0(args):
     """Run Phase 0 vertical slice proof."""
     import subprocess
@@ -161,6 +245,25 @@ def main():
     p_brief = sub.add_parser("brief", help="Produce Kitt brief")
     p_brief.add_argument("--market", help="Market read text", default=None)
 
+    p_req = sub.add_parser("request-paper", help="Request paper trade approval")
+    p_req.add_argument("strategy_id")
+    p_req.add_argument("--symbols", default="NQ", help="Comma-separated symbols")
+    p_req.add_argument("--max-pos", type=int, default=2)
+    p_req.add_argument("--valid-days", type=int, default=14)
+
+    p_appr = sub.add_parser("approve-paper", help="Approve paper trade")
+    p_appr.add_argument("strategy_id")
+    p_appr.add_argument("--approval-ref", default=None)
+
+    p_exec = sub.add_parser("execute", help="Execute paper trade")
+    p_exec.add_argument("strategy_id")
+    p_exec.add_argument("--approval-ref", default=None)
+    p_exec.add_argument("--symbol", default="NQ")
+    p_exec.add_argument("--side", default="long")
+    p_exec.add_argument("--quantity", type=int, default=1)
+    p_exec.add_argument("--price", type=float, default=18250.0)
+
+    sub.add_parser("live-proof", help="Run live runtime proof")
     sub.add_parser("phase0", help="Run Phase 0 proof")
 
     args = parser.parse_args()
@@ -175,6 +278,10 @@ def main():
         "approvals": cmd_approvals,
         "latest": cmd_latest,
         "brief": cmd_brief,
+        "request-paper": cmd_request_paper,
+        "approve-paper": cmd_approve_paper,
+        "execute": cmd_execute,
+        "live-proof": cmd_live_proof,
         "phase0": cmd_phase0,
     }
     commands[args.command](args)
