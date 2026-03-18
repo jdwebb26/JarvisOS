@@ -153,8 +153,31 @@ def _hermes_adapter(
     }
 
 
+def _openai_adapter(
+    *,
+    task_id: str,
+    actor: str,
+    lane: str,
+    messages: list[dict[str, str]],
+    routing_decision_id: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Dispatch to the OpenAI executor adapter."""
+    from runtime.integrations.openai_executor import execute_openai_chat
+
+    return execute_openai_chat(
+        task_id=task_id,
+        actor=actor,
+        lane=lane,
+        messages=messages,
+        routing_decision_id=routing_decision_id,
+        root=root,
+    )
+
+
 BACKEND_ADAPTERS: dict[str, Callable[..., dict[str, Any]]] = {
     "nvidia_executor": _nvidia_adapter,
+    "openai_executor": _openai_adapter,
     "browser_backend": _bowser_adapter,
     "kitt_quant": _kitt_adapter,
     "hermes_adapter": _hermes_adapter,

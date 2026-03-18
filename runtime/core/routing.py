@@ -123,6 +123,24 @@ ACTIVE_QWEN_MODELS = [
         "workload_tags": ["general", "research", "quant"],
         "policy_tags": ["nvidia_approved"],
     },
+    # OpenAI GPT — disabled by default (requires OPENAI_API_KEY).
+    # A ChatGPT subscription does NOT fund API usage.
+    # See https://platform.openai.com/account/billing for API billing.
+    {
+        "model_registry_entry_id": "model_gpt_4_1_mini_openai",
+        "provider_id": "openai",
+        "provider_kind": "remote_openai_compatible",
+        "model_family": "gpt",
+        "model_name": "gpt-4.1-mini",
+        "display_name": "GPT-4.1 Mini (OpenAI)",
+        "priority_rank": 12,
+        "default_execution_backend": "openai_executor",
+        "capability_profile_ids": ["cap_general_gpt"],
+        "host_role": NodeRole.PRIMARY.value,
+        "host_name": None,  # Remote API provider
+        "workload_tags": ["general", "research", "code"],
+        "policy_tags": ["openai_approved"],
+    },
 ]
 
 CAPABILITY_PROFILES = [
@@ -197,6 +215,22 @@ CAPABILITY_PROFILES = [
         "supported_task_types": ["general", "docs", "code", "research", "review", "approval", "flowstate", "output", "deploy", "quant"],
         "supported_risk_levels": [TaskRiskLevel.NORMAL.value, TaskRiskLevel.RISKY.value, TaskRiskLevel.HIGH_STAKES.value],
         "preferred_execution_backend": "nvidia_executor",
+    },
+    # OpenAI GPT capability profile — general-purpose reasoning + code.
+    {
+        "capability_profile_id": "cap_general_gpt",
+        "profile_name": "gpt_general",
+        "provider_id": "openai",
+        "model_family": "gpt",
+        "capabilities": [
+            "general_reasoning",
+            "code_generation",
+            "research_synthesis",
+            "reviewable_candidate",
+        ],
+        "supported_task_types": ["general", "docs", "code", "research", "review", "flowstate", "output"],
+        "supported_risk_levels": [TaskRiskLevel.NORMAL.value, TaskRiskLevel.RISKY.value],
+        "preferred_execution_backend": "openai_executor",
     },
 ]
 

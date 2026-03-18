@@ -235,6 +235,7 @@ class BackendRuntime(StrEnum):
     VOICE_GATEWAY = "voice_gateway"
     EVALUATION_SPINE = "evaluation_spine"
     NVIDIA_EXECUTOR = "nvidia_executor"
+    OPENAI_EXECUTOR = "openai_executor"
     OPERATOR = "operator"
 
 
