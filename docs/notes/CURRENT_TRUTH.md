@@ -56,7 +56,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 |-------|--------|----------------|
 | **Hermes** | BLOCKED | Adapter hardened, but external Hermes daemon not running. Needs manual service activation |
 | **Cadence** | PARTIAL | Voice stack built (ingress, TTS, call routing). Mic blocked: RDPSource unavailable in WSL2. Parked until mic passthrough |
-| **Muse** | LIVE | Creative lane active. Gateway binding → channel 1483133844663304272, model lmstudio/qwen3.5-35b-a3b, webhook delivery verified. Session + outbox operational |
+| **Muse** | LIVE | Creative lane active. Gateway binding → channel 1483133844663304272, model lmstudio/qwen3.5-35b-a3b. Agent turns + bot delivery to Discord proven. Session + outbox + worklog mirror operational. Discord user-message ingress untested (requires operator to type in #muse) |
 | **Claude** | BLOCKED | `ANTHROPIC_API_KEY=REPLACE_ME`. User must set real key |
 
 ## 5. Core Runtime Systems
