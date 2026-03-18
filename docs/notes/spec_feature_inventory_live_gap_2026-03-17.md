@@ -880,3 +880,377 @@ and the proven Bowser/PinchTab execution path.
 
 **Prerequisite**: RDPSource mic passthrough must be active for end-to-end voice→browser proof.
 The code side can be added and tested with synthetic input even while mic is blocked.
+
+---
+
+## Kitt Quant Cockpit — 2026-03-18 (fifth pass)
+
+### Scope
+
+Make Kitt a genuinely useful quant/NQ research agent, not just a model binding.
+Goals: prove provider/model, add bounded workflow, prove live research end-to-end.
+
+---
+
+### Kitt runtime status
+
+| Component | Status | Evidence |
+|---|---|---|
+| **NVIDIA API key** | LIVE | Present in env (`~/.openclaw/.env`), len=70 |
+| **NVIDIA API connectivity** | LIVE | `GET /v1/models` reachable, `moonshotai/kimi-k2.5` confirmed in model list |
+| **Kimi K2.5 chat completion** | LIVE | Direct call returns structured response with `content` + `reasoning` fields |
+| **nvidia_executor registered** | LIVE | `backend_dispatch.BACKEND_ADAPTERS["nvidia_executor"]` present |
+| **Kitt routing tests** | LIVE | 6/6 pass — routes to Kimi/NVIDIA primary, Qwen3.5-35B fallback |
+| **SearXNG** | LIVE | `http://localhost:8888/healthz` → 200, 89 engines enabled |
+| **SearXNG search results** | LIVE (slow) | 3s timeout caused timeouts; 12s returns 5+ results |
+| **Bowser / PinchTab** | LIVE | v0.8.3, inst_8f99302b running — used for page text extraction |
+
+**Critical finding**: Kimi K2.5 is a thinking model. Its reasoning tokens count against `max_tokens`. At 1024 max tokens, all tokens are consumed by internal reasoning, leaving 0 for content (empty output). Fixed to 4096.
+
+---
+
+### Kitt quant workflow — new module
+
+**File created**: `runtime/integrations/kitt_quant_workflow.py`
+
+Architecture:
+1. SearXNG search (if `--query` given) → up to 5 results as evidence  
+2. Bowser page fetch (if `--target-url` given) → DOM text via `text` action
+3. Kimi K2.5 via `execute_nvidia_chat` → structured brief with Kitt persona
+4. Artifact written to `state/kitt_briefs/<id>.json` + `workspace/research/<id>.md`
+5. `update_agent_status("kitt", ...)` after every run
+
+CLI: `python3 runtime/integrations/kitt_quant_workflow.py --query "..." --target-url "..." [--brief-only]`
+
+Health probe: `python3 runtime/integrations/kitt_quant_workflow.py --probe`
+```json
+{
+  "nvidia": {"reachable": true},
+  "searxng": {"reachable": true, "status": "healthy"},
+  "bowser":  {"reachable": true, "version": "0.8.3"},
+  "kitt_ready": true
+}
+```
+
+**Tests created**: `tests/test_kitt_quant_workflow.py` — 8 tests, all pass.
+
+---
+
+### Bounded fixes in this pass
+
+| File | Change |
+|---|---|
+| `runtime/integrations/kitt_quant_workflow.py` | **NEW** — Kitt quant workflow module |
+| `tests/test_kitt_quant_workflow.py` | **NEW** — 8 unit tests |
+| `runtime/integrations/searxng_client.py` | Default timeout 3s → 12s (was causing timeouts); added `_extract_infoboxes()` fallback |
+| `runtime/browser/backends/pinchtab.py` | `text` action: extract up to 4000 chars, include `full_text` in snapshot_refs |
+
+---
+
+### Live proof results
+
+#### Proof 1 — Kitt runtime probe
+
+```
+python3 runtime/integrations/kitt_quant_workflow.py --probe
+→ nvidia: reachable, searxng: healthy, bowser: reachable, kitt_ready: true
+```
+**PASSED** ✅
+
+#### Proof 2 — Kimi K2.5 direct call
+
+```
+execute_nvidia_chat([system: "quant analyst", user: "Say: KIMI_OK"])
+→ content: " KIMI_OK" (reasoning: 83 tokens thinking, then output)
+→ status: completed, usage: {total_tokens: 115}
+```
+**PASSED** ✅
+
+#### Proof 3 — SearXNG live search for NQ
+
+```
+searxng_client.search("NQ E-mini futures current market price regime momentum 2026")
+→ status: ok, 5 results
+→ Titles: TradingView, Barchart, Google Finance, MarketWatch...
+```
+**PASSED** ✅
+
+#### Proof 4 — Full Kitt quant brief: SearXNG + Bowser NQ=F + Kimi K2.5
+
+```
+python3 runtime/integrations/kitt_quant_workflow.py \
+  --task-id proof_kitt_live_002 \
+  --query "NQ E-mini futures current market price regime momentum 2026" \
+  --target-url "https://finance.yahoo.com/quote/NQ=F" \
+  --brief-only
+```
+
+Kitt returned a complete structured brief (350 words) including:
+- MARKET STATE: NQ 25,165 (+0.6%), consolidation in lower Q1 range 24,400–25,500
+- KEY OBSERVATIONS: Technical levels, resistance 25,025–25,200, 200MA support ~24,800
+- HYPOTHESIS / RISK: Mean-reversion edge, short into 25,400–25,500 until volume breakout
+- CONFIDENCE / CAVEATS: Medium confidence, suspect volume data, single-session snapshot
+- RECOMMENDED NEXT STEP: Backtest 200MA touch scenarios, 2018/2022 analog year comparison
+
+Artifacts:
+- `state/kitt_briefs/kitt_brief_ed65bb7358a6.json` (9.2 KB)
+- `workspace/research/kitt_brief_ed65bb7358a6.md` (2.7 KB)
+- `state/agent_status/kitt.json` updated: state=idle, headline="Kitt brief ready: NQ E-mini..."
+
+**PASSED** ✅ — Full stack: SearXNG search + Bowser browser fetch + Kimi K2.5 synthesis + artifact persistence + agent status.
+
+#### Proof 5 — Full test suite
+
+```
+pytest tests/test_kitt_quant_workflow.py tests/test_kitt_routing.py \
+       tests/test_bowser_adapter.py tests/test_browser_gateway.py -v
+→ 28 passed in 4.92s
+```
+**PASSED** ✅
+
+---
+
+### Updated Kitt status
+
+| Item | Prior status | Current status |
+|---|---|---|
+| Kitt identity/role | Configured (model binding only) | **LIVE** — Kimi K2.5, proven with real output |
+| Kitt NQ research workflow | NOT LIVE — no workflow module | **LIVE** — `kitt_quant_workflow.py` |
+| Kitt SearXNG integration | NOT LIVE | **LIVE** — via workflow, 5 results per query |
+| Kitt Bowser integration | NOT LIVE | **LIVE** — workflow fetches page text via Bowser |
+| Kitt brief artifact path | NOT LIVE | **LIVE** — `state/kitt_briefs/` + `workspace/research/` |
+| Kitt agent_status updates | NOT LIVE | **LIVE** — after every workflow run |
+| Kitt routing tests | 6/6 passing | **6/6 passing** |
+| Kitt quant workflow tests | none | **8/8 passing** |
+
+---
+
+### Remaining gaps
+
+1. **Kitt not hooked to task routing yet** — `run_kitt_quant_brief()` is only invocable via CLI or
+   Python import. It is not wired to Jarvis task dispatch (no `backend_dispatch` entry or task
+   class handler). Next step: add a `kitt_backend` entry to `backend_dispatch.py` or a task
+   class router that calls `run_kitt_quant_brief()` when lane=quant and actor=jarvis.
+
+2. **SearXNG web engines returning sparse results** — Bing/Google/DuckDuckGo engines return
+   limited results without API keys. Wikipedia infobox fallback added. For better web coverage,
+   configure engine API keys in SearXNG settings.
+
+3. **Cadence → Kitt voice delegation** — `browse to finance.yahoo.com` voice route is blocked
+   by: (a) RDPSource mic unavailable in WSLg, (b) no `kitt_quant` intent pattern in
+   `cadence_ingress` for research queries. Kitt workflow can be triggered with synthetic input
+   via CLI without resolving the mic issue.
+
+4. **Kitt does not produce Discord notifications** — workflow result is not routed through
+   `discord_event_router.emit_event()`. Add a `research_result` event after the brief is saved.
+
+---
+
+### Exact next steps
+
+1. Wire `kitt_backend` into `backend_dispatch.py` so Jarvis task turns can call
+   `run_kitt_quant_brief()` automatically when `execution_backend="kitt_backend"`.
+2. Add `emit_event("research_result", "kitt", ...)` at end of `run_kitt_quant_brief()`.
+3. Add `kitt_quant` intent pattern to `cadence_ingress.py` (can be tested with synthetic input
+   while mic is blocked).
+
+---
+
+## Operator Cockpit / Mission Control Polish — 2026-03-18 (sixth pass)
+
+### Scope
+
+Build a single-command live operator view that surfaces real system state instead of requiring
+manual inspection across 10+ state files and scripts.
+
+---
+
+### What existed before this pass
+
+- 60+ `scripts/operator_*.py` tools — useful but fragmented, no single entry point
+- `docs/notes/live_runtime_watchboard.md` — manually maintained, drifts between sessions
+- `runtime/core/agent_status_store.py` — per-agent JSON state files (proven in earlier passes)
+- `runtime/core/backend_result_store.py` — backend result summaries (proven in earlier passes)
+- `runtime/dashboard/operator_snapshot.py` — heavy JSON snapshot (full state export)
+- No single fast CLI that shows: services + agents + blockers + quick actions in one view
+
+---
+
+### What was built
+
+**File created**: `scripts/operator_cockpit.py`
+
+Single command:
+```
+python3 scripts/operator_cockpit.py [--json] [--no-color] [--update-watchboard]
+```
+
+Sections rendered:
+1. **SERVICES** — parallel health checks: Gateway, PinchTab, SearXNG, NVIDIA/Kimi, LM Studio
+2. **AGENTS** — all 11 agents: live state, model/provider (from routing policy), last action, time-since
+3. **KITT LATEST BRIEF** — preview of most recent Kitt quant brief from `state/kitt_briefs/`
+4. **BLOCKERS** — actual delivery failures from `state/discord_delivery/`, ANTHROPIC_API_KEY, Cadence mic
+5. **QUICK ACTIONS** — copy-paste CLI commands for the most useful live actions
+6. **FOOTER** — snapshot path, refresh instruction
+
+Writes: `state/logs/cockpit_snapshot.json` — machine-readable equivalent of the terminal output.
+
+`--update-watchboard` appends an auto-generated agent/service table to `live_runtime_watchboard.md`.
+
+---
+
+### Live proof
+
+```
+python3 scripts/operator_cockpit.py --no-color
+
+SERVICES
+  ✓ LIVE  Gateway       live
+  ✓ LIVE  PinchTab      v0.8.3  1 instance
+  ✓ LIVE  SearXNG       http 200
+  ✓ LIVE  NVIDIA/Kimi   kimi-k2.5 reachable
+  ✓ LIVE  LM Studio     11 models loaded
+
+AGENTS
+  Hal         IDLE    Q3-Coder-30B / qwen     7h ago   Hal task completed: task_d754b7e44e30.
+  Bowser      IDLE    pinchtab / browser      5h ago   Bowser completed browser action on https://example.com.
+  Kitt        IDLE    kimi-k2.5 / nvidia      5h ago   Kitt brief ready: NQ E-mini futures...
+  Ralph       WAITING Q3.5-35B / qwen         6h ago   Waiting archimedes review for task_6303c93da2e0
+  (7 agents showing — not yet run —)
+
+BLOCKERS
+  ⚠ Discord webhooks: 13 delivery failures (HTTP 403 — webhooks expired)
+  ⚠ ANTHROPIC_API_KEY: Not set — Claude/Anthropic provider offline
+  ⚠ Cadence mic (parked): RDPSource unavailable in WSLg
+
+KITT LATEST BRIEF (preview)
+  MARKET STATE NQ Mar 2026 last 25,165 (+0.6%). Price regime: consolidation in lower half of Q1 range...
+```
+
+All 31 tests pass (kitt_quant_workflow + kitt_routing + bowser_adapter + browser_gateway).
+
+---
+
+### Updated cockpit status
+
+| Item | Prior status | Current status |
+|---|---|---|
+| Single-command live view | NOT LIVE | **LIVE** — `scripts/operator_cockpit.py` |
+| Services health summary | Manual scripts | **LIVE** — parallel checks, 5 services |
+| Agent status table | Manual file reads | **LIVE** — routing policy + agent_status JSON |
+| Kitt brief preview | Not surfaced | **LIVE** — last brief shown in cockpit |
+| Blocker detection | Manual watchboard | **LIVE** — reads delivery failures from state |
+| JSON machine snapshot | Partial (heavy state export) | **LIVE** — `state/logs/cockpit_snapshot.json` |
+| Watchboard auto-update | Manual | **LIVE** — `--update-watchboard` flag |
+
+---
+
+### Remaining gaps (unchanged from prior passes)
+
+1. **Discord webhook URLs all expired (HTTP 403)** — 13 confirmed delivery failures in
+   `state/discord_delivery/`. User action required: recreate webhooks in Discord Server Settings
+   and set `JARVIS_DISCORD_WEBHOOK_*` env vars in `~/.openclaw/secrets.env`.
+
+2. **ANTHROPIC_API_KEY not set** — Claude/Anthropic provider offline.
+
+3. **Cadence voice stack parked** — RDPSource mic unavailable in WSLg. Voice daemon retries
+   every 15s; no code change needed. Unblocks when Windows audio input passthrough is active.
+
+4. **Kitt not in backend_dispatch** — `run_kitt_quant_brief()` callable via CLI but not wired
+   to task routing. Add `kitt_backend` entry to `backend_dispatch.py`.
+
+5. **Kitt no Discord emit** — brief results not routed via `discord_event_router.emit_event()`.
+
+6. **7 agents have no status files yet** — Jarvis, Archimedes, Anton, Scout, Hermes, Cadence, Muse
+   show "not yet run" in cockpit. They will populate on first live task.
+
+---
+
+### Exact next steps
+
+1. **Set webhook URLs** (user action, 5 min) → unblocks live Discord delivery for all agents
+2. **Wire Kitt to backend_dispatch** → Jarvis can auto-delegate NQ research tasks
+3. **Add emit_event to kitt_quant_workflow** → Kitt briefs appear in #kitt channel
+
+---
+
+## Pass 4 — Current Reality Snapshot (2026-03-18)
+
+> Consolidated status across all four passes. Source of truth for what is actually live,
+> what is blocked, and what still needs work.
+
+---
+
+### Live systems (proven end-to-end)
+
+| System | Status | Evidence |
+|---|---|---|
+| Gateway API | **LIVE** | Port 18789, token-auth, all sessions ok |
+| PinchTab browser | **LIVE** | v0.8.3, `inst_8f99302b`, `http://127.0.0.1:9867` |
+| Bowser adapter | **LIVE** | `run_bowser_browser_action()` → PinchTab → DOM text. Full-text extraction fixed (was truncating to 200 chars; now 4000 chars + `snapshot_refs.full_text`). |
+| SearXNG | **LIVE** | `http://localhost:8888`, 5+ results for NQ queries. Timeout fixed (3s→12s). Infobox fallback added. |
+| LM Studio | **LIVE** | `http://100.70.114.34:1234`, 11 models loaded. Models: `qwen3.5-35b-a3b`, `qwen/qwen3-coder-next`, `qwen3.5-122b-a10b`, `qwen/qwen3-coder-30b`, etc. |
+| NVIDIA/Kimi K2.5 | **LIVE** | `moonshotai/kimi-k2.5` via `integrate.api.nvidia.com/v1`. `max_tokens=4096` required (thinking model). |
+| Kitt quant workflow | **LIVE** | `kitt_quant_workflow.py` — SearXNG → Bowser → Kimi K2.5 → brief artifact. 8 unit tests pass. Brief artifacts in `state/kitt_briefs/` + `workspace/research/`. |
+| Operator cockpit | **LIVE** | `scripts/operator_cockpit.py` — parallel service health, agent table, Kitt brief preview, blocker detection, JSON snapshot. |
+| Hal builder | **LIVE** | Status file confirms last task completed. `Qwen3-Coder-30B`. |
+| Ralph bounded loop | **LIVE** | Status file `waiting` state. Bounded autonomy via `task_runtime`. |
+
+---
+
+### Blocked systems
+
+| System | Status | Blocker | User action? |
+|---|---|---|---|
+| Discord webhooks | **BLOCKED** | 13 delivery failures, all HTTP 403. Webhooks expired. | Yes — recreate in Discord Server Settings, update `~/.openclaw/.env` |
+| Cadence voice | **BLOCKED (parked)** | RDPSource mic unavailable in WSLg. Daemon retries every 15s. No `cadence_ingress.py` module exists yet. | When Windows audio input passthrough is active |
+| Anthropic/Claude provider | **OFFLINE** | `ANTHROPIC_API_KEY` not set in env. | Set in `~/.openclaw/.env` if needed |
+| Hermes adapter | **BLOCKED** | `hermes_adapter.py` exists but depends on external runtime infra (approval_store, artifact_store, execution_contracts). Status: `implemented_but_blocked_by_external_runtime`. | No — internal |
+| Kitt → backend_dispatch | **NOT WIRED** | `run_kitt_quant_brief()` callable via CLI only. Not registered in `backend_dispatch.py`. | No — internal |
+| Kitt Discord emit | **NOT WIRED** | `kitt_quant_workflow.py` does not call `emit_event()` to push briefs to Discord. | No — internal |
+
+---
+
+### Agent status hydration (as of Pass 4 start)
+
+Status files exist for: `bowser`, `hal`, `kitt`, `operator`, `ralph`.
+
+**Not yet hydrated** (no status file, show "not yet run" in cockpit):
+`jarvis`, `archimedes`, `anton`, `scout`, `hermes`, `muse`, `cadence`
+
+Target for this pass: hydrate all 7 via live probes.
+
+---
+
+### Routing policy (as built)
+
+| Agent | Provider | Model (LM Studio ID) |
+|---|---|---|
+| jarvis | qwen | `qwen3.5-35b-a3b` |
+| hal | qwen | `qwen/qwen3-coder-30b` |
+| archimedes | qwen | `qwen/qwen3-coder-next` |
+| anton | qwen | `qwen3.5-122b-a10b` |
+| hermes | qwen | `qwen3.5-122b-a10b` |
+| scout | qwen | `qwen3.5-35b-a3b` |
+| muse | qwen | `qwen3.5-35b-a3b` |
+| ralph | qwen | `qwen3.5-35b-a3b` |
+| kitt | nvidia | `moonshotai/kimi-k2.5` |
+| bowser | qwen (routing) | PinchTab for execution |
+| cadence | — | No model needed (voice stack, parked) |
+
+---
+
+### Exact next steps (prioritized)
+
+**User actions required (external unblocks):**
+1. Discord webhooks — recreate + set `JARVIS_DISCORD_WEBHOOK_*` env vars in `~/.openclaw/.env` → unblocks all agent-to-operator comms
+2. Cadence mic — enable Windows audio input passthrough in WSLg → voice daemon self-starts
+
+**Internal wiring (no external dependency):**
+3. Wire Kitt to `backend_dispatch.py` → Jarvis can auto-delegate NQ research tasks without CLI
+4. Add `emit_event("kitt", ...)` to `kitt_quant_workflow.py` → Kitt briefs appear in Discord `#kitt`
+5. Hydrate specialist agent status files via live probes (this pass) → cockpit shows full roster
+
+**Stretch:**
+6. Hermes external runtime unblock — depends on broader infra decisions
+7. Cadence `cadence_ingress.py` module — classify synthetic audio without mic for offline testing
