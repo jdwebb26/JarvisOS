@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenClaw Operator Status — post to Discord if action needed
+
+[Service]
+Type=oneshot
+ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/operator_status.py --if-needed
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+Environment=HOME=/home/rollan
+Environment=TMPDIR=/tmp
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=default.target

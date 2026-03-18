@@ -15,6 +15,9 @@ from scripts.operator_status import (
     _pending_approvals,
     _actionable_tasks,
     _outbox_health,
+    _fingerprint,
+    _is_duplicate,
+    _save_fingerprint,
     collect,
     needs_attention,
     render_discord,
@@ -226,3 +229,70 @@ def test_render_discord_nothing_needed():
     }
     text = render_discord(data)
     assert "Nothing needs attention" in text
+
+
+# ---------------------------------------------------------------------------
+# Fingerprint / duplicate suppression
+# ---------------------------------------------------------------------------
+
+def test_fingerprint_stable():
+    """Same data → same fingerprint."""
+    data = {
+        "approvals": [{"approval_id": "apr_001", "task_id": "t1", "request": "x"}],
+        "failed": [{"task_id": "t2", "request": "y", "error": "timeout"}],
+        "blocked": [],
+        "timers": [{"unit": "x.timer", "label": "Ralph", "active": True}],
+        "outbox": {"pending": 0, "failed": 0},
+    }
+    assert _fingerprint(data) == _fingerprint(data)
+
+
+def test_fingerprint_changes_with_new_approval():
+    data1 = {
+        "approvals": [{"approval_id": "apr_001", "task_id": "t1", "request": "x"}],
+        "failed": [], "blocked": [],
+        "timers": [{"active": True, "unit": "x"}],
+        "outbox": {"failed": 0},
+    }
+    data2 = {
+        "approvals": [
+            {"approval_id": "apr_001", "task_id": "t1", "request": "x"},
+            {"approval_id": "apr_002", "task_id": "t2", "request": "y"},
+        ],
+        "failed": [], "blocked": [],
+        "timers": [{"active": True, "unit": "x"}],
+        "outbox": {"failed": 0},
+    }
+    assert _fingerprint(data1) != _fingerprint(data2)
+
+
+def test_fingerprint_ignores_queue_changes():
+    """Queue depth changes should NOT change the fingerprint — prevents spam."""
+    data1 = {
+        "approvals": [{"approval_id": "apr_001", "task_id": "t1", "request": "x"}],
+        "queued": [{"task_id": "q1", "request": "a", "error": ""}],
+        "failed": [], "blocked": [],
+        "timers": [{"active": True, "unit": "x"}],
+        "outbox": {"failed": 0},
+    }
+    data2 = {
+        "approvals": [{"approval_id": "apr_001", "task_id": "t1", "request": "x"}],
+        "queued": [
+            {"task_id": "q1", "request": "a", "error": ""},
+            {"task_id": "q2", "request": "b", "error": ""},
+        ],
+        "failed": [], "blocked": [],
+        "timers": [{"active": True, "unit": "x"}],
+        "outbox": {"failed": 0},
+    }
+    assert _fingerprint(data1) == _fingerprint(data2)
+
+
+def test_duplicate_suppression_round_trip(tmp_path):
+    """Save fingerprint, then verify is_duplicate detects it."""
+    with patch("scripts.operator_status._state_dir", return_value=tmp_path):
+        fp = "abc123"
+        assert _is_duplicate(fp) is False
+        _save_fingerprint(fp)
+        assert _is_duplicate(fp) is True
+        assert _is_duplicate("different") is False

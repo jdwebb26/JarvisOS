@@ -353,6 +353,50 @@ def needs_attention(data: dict[str, Any]) -> bool:
     return False
 
 
+def _fingerprint(data: dict[str, Any]) -> str:
+    """Stable hash of the actionable content — used to suppress duplicate posts.
+
+    Only hashes the items that matter for operator action: approval IDs,
+    failed task IDs, down service names, and outbox failure count.
+    Changes to queue depth alone do NOT change the fingerprint.
+    """
+    import hashlib
+    parts: list[str] = []
+    for a in data.get("approvals", []):
+        parts.append(f"apr:{a['approval_id']}")
+    for t in data.get("failed", []):
+        parts.append(f"fail:{t['task_id']}")
+    for t in data.get("blocked", []):
+        parts.append(f"block:{t['task_id']}")
+    for s in data.get("timers", []):
+        if not s["active"]:
+            parts.append(f"down:{s['unit']}")
+    if data.get("outbox", {}).get("failed", 0) > 0:
+        parts.append(f"outbox_fail:{data['outbox']['failed']}")
+    return hashlib.sha256("|".join(sorted(parts)).encode()).hexdigest()[:16]
+
+
+def _state_dir() -> Path:
+    d = ROOT / "state" / "operator_status"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _is_duplicate(fp: str) -> bool:
+    """True if the last posted fingerprint matches."""
+    path = _state_dir() / "last_fingerprint.txt"
+    if path.exists():
+        try:
+            return path.read_text(encoding="utf-8").strip() == fp
+        except Exception:
+            pass
+    return False
+
+
+def _save_fingerprint(fp: str) -> None:
+    (_state_dir() / "last_fingerprint.txt").write_text(fp + "\n", encoding="utf-8")
+
+
 def _post_discord(data: dict[str, Any]) -> str:
     """Post status to #jarvis. Returns event_id or raises."""
     text = render_discord(data)
@@ -382,11 +426,15 @@ def main() -> int:
 
     if args.if_needed:
         if not needs_attention(data):
-            print("Nothing needs attention — skipping Discord post.")
+            print("Nothing needs attention — skipping.")
             return 0
-        # Action needed — post to Discord
+        fp = _fingerprint(data)
+        if _is_duplicate(fp):
+            print(f"Duplicate ({fp}) — skipping repeat post.")
+            return 0
         try:
             eid = _post_discord(data)
+            _save_fingerprint(fp)
             print(render_terminal(data))
             print(f"Posted to Discord ({eid})")
         except Exception as exc:
