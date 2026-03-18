@@ -23,6 +23,144 @@ This guide is the practical operator manual for the live v5.1 repo state. It is 
 
 ---
 
+---
+
+## Live Operator Loop
+
+Everything below describes what is **actually running right now** and how to operate it. For architecture details, see sections further down.
+
+### What is live
+
+| Component | Unit / Script | Interval | What it does |
+|-----------|--------------|----------|--------------|
+| Gateway | `openclaw-gateway.service` | persistent | Node.js bot, Discord WebSocket, agent session routing |
+| Inbound server | `openclaw-inbound-server.service` | persistent | HTTP API on :18790 for operator replies and approvals |
+| Ralph | `openclaw-ralph.timer` | 10 min | Picks one queued task, dispatches to HAL, requests review |
+| Review poller | `openclaw-review-poller.timer` | 30s | Polls Discord #review for `approve apr_xxx` / `reject apr_xxx` |
+| Todo poller | `lobster-todo-intake.timer` | 2 min | Polls Discord #todo, calls `submit_todo()` for each human message |
+| Outbox sender | `openclaw-discord-outbox.timer` | 60s | Delivers pending Discord outbox entries via webhooks |
+| Operator status | `openclaw-operator-status.timer` | 5 min | Posts action summary to #jarvis when approvals/failures exist |
+
+### Daily operator commands
+
+Check what needs attention:
+
+```bash
+python3 scripts/operator_status.py
+```
+
+Verify the runtime is healthy:
+
+```bash
+python3 scripts/runtime_doctor.py
+```
+
+See Ralph's owned tasks and what's pending:
+
+```bash
+python3 scripts/run_ralph_v1.py --status
+```
+
+Approve a pending task:
+
+```bash
+python3 scripts/run_ralph_v1.py --approve task_XXXX
+# or in Discord #review: type "approve apr_XXXX"
+```
+
+Reject a pending task:
+
+```bash
+python3 scripts/run_ralph_v1.py --reject task_XXXX --reason "needs rework"
+# or in Discord #review: type "reject apr_XXXX needs rework"
+```
+
+Retry a failed task:
+
+```bash
+python3 scripts/run_ralph_v1.py --retry task_XXXX
+```
+
+Clean up stale/orphaned approvals:
+
+```bash
+python3 scripts/reconcile_approvals.py          # dry-run report
+python3 scripts/reconcile_approvals.py --apply   # fix them
+```
+
+Post status summary to Discord:
+
+```bash
+python3 scripts/operator_status.py --discord
+```
+
+### Discord lanes
+
+| Channel | What happens | Ingress mechanism |
+|---------|-------------|-------------------|
+| **#todo** (`#✅todo`) | Human messages become tasks. Low-risk tasks go straight to Ralph. | `discord_todo_poller.py` polls via REST API every 2 min |
+| **#review** (`#archimedes`) | Approval requests appear here. Operator types `approve apr_xxx` or adds ✅ emoji. | `discord_review_poller.py` polls via REST API every 30s |
+| **#muse** | Creative agent. Human messages create a Muse session, LLM responds in-channel. | Gateway WebSocket binding → `agent:muse:discord:channel:1483133844663304272` |
+| **#jarvis** | Operator status posts, task creation confirmations, escalation events. | Outbox sender delivers via webhook |
+| **#worklog** (`#ralph`) | Mirror of all task lifecycle events. Read-only audit trail. | Outbox sender delivers via webhook |
+
+### Common problems
+
+**Stale approvals accumulating**
+
+Approvals can become stale when tasks complete, fail, or regress to an earlier state after the approval was requested.
+
+```bash
+python3 scripts/reconcile_approvals.py          # see what's stale
+python3 scripts/reconcile_approvals.py --apply   # cancel stale ones
+```
+
+**Transient failures (NVIDIA timeout, browser tab_open_failed)**
+
+These are retryable. Ralph will not auto-retry — operator must:
+
+```bash
+python3 scripts/run_ralph_v1.py --retry task_XXXX
+```
+
+**Queue backlog growing**
+
+Ralph processes one task per 10-minute cycle. If the queue grows faster:
+
+```bash
+# Run Ralph manually to burn through the queue
+python3 scripts/run_ralph_v1.py      # processes one task
+python3 scripts/run_ralph_v1.py      # repeat as needed
+```
+
+**Systemd drift (repo units changed, live not updated)**
+
+```bash
+python3 scripts/sync_systemd_units.py --status     # check for drift
+python3 scripts/sync_systemd_units.py              # install + enable
+```
+
+**Gateway keeps reconnecting**
+
+The health-monitor restarts the Discord connection every ~10 minutes if it detects a disconnect. This is normal for the Node.js gateway under WSL2. Messages are not lost — the WebSocket reconnects and resumes.
+
+### One-command recovery checks
+
+After a reboot or suspected breakage:
+
+```bash
+# 1. Sync systemd units from repo and start core services
+python3 scripts/sync_systemd_units.py
+
+# 2. Verify everything is healthy
+python3 scripts/runtime_doctor.py
+
+# 3. Check what needs operator action
+python3 scripts/operator_status.py
+```
+
+---
+
 ## Current v5.1 state
 
 The repo has reached required bounded v5.1 runtime closure for the audited master-spec scope.
