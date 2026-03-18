@@ -201,13 +201,36 @@
 - **After**: Kitt is a first-class wired backend (`kitt_quant`) in `BACKEND_ADAPTERS`; any task with `execution_backend="kitt_quant"` dispatches through the full pipeline with operator-visible completion
 - **Status**: ✅ LIVE
 
+### P. Discord message formatting cleanup (2026-03-18)
+- **File**: `runtime/core/discord_event_router.py`
+- **Problem fixed**: All Discord messages were flat one-liners that mashed purpose, status, results, and internal IDs (tab hashes, cycle IDs, raw exceptions) into unreadable blobs. No visual separation between status updates, results, warnings, and action-required messages.
+- **Changes**:
+  - Rewrote `_render_status_text()` — messages now use Discord markdown with purpose labels (`[STATUS]`, `[RESULT]`, `[ALERT]`, `[ACTION REQUIRED]`, `[WARNING]`, `[ERROR]`), blockquote details, and separate sections for "What changed", "Error", "Needs attention", "Next step"
+  - Added `_clean_detail()` — strips internal noise (PinchTab tab hashes, snapshot counts, Ralph cycle IDs, artifact IDs, urllib exception wrappers, empty parens)
+  - Added `_extract_error_summary()` — pulls human-readable error from long exception strings
+  - Added `_short_task_id()` — shortens `task_abc123def456` to `abc123` for readability
+  - Added `_PURPOSE` label map for all 28+ event kinds
+- **Before**: `Bowser completed browser action on https://example.com. Navigated to https://example.com; tab ECBD52325D568DBD385B6764C81AC804; snapshot nodes=8`
+- **After**:
+  ```
+  **[RESULT]** Bowser browser action on `https://example.com`
+  > Navigated to https://example.com
+  ```
+- **Proven live** (2026-03-18):
+  - `emit_event("browser_result", ...)` → clean outbox text, no tab hashes ✅
+  - `emit_event("approval_requested", ...)` → purpose-separated with "Needs attention" section ✅
+  - `emit_event("warning", ...)` → error summary extracted, no raw exception stack ✅
+  - Live webhook delivery to #jarvis channel → HTTP 200, formatted message visible in Discord ✅
+  - Validate: 395/395 pass ✅
+- **Status**: ✅ LIVE
+
 ---
 
 ## What Is Still Blocked / Partial
 
 | Item | Why Blocked | Fix |
 |------|-------------|-----|
-| **Discord webhooks expired** | All 4 existing webhook URLs (JARVIS, CREW, REVIEW, COUNCIL) return HTTP 403. New webhooks for bowser/cadence/worklog/hal/scout etc. never created. | User: Discord Server Settings → Integrations → Webhooks → create one per channel → set `JARVIS_DISCORD_WEBHOOK_*` in `~/.openclaw/secrets.env` |
+| **Discord webhooks (partial)** | JARVIS_WEBHOOK_URL ✅ (HTTP 200). REVIEW_WEBHOOK_URL ✅ (HTTP 200). COUNCIL_WEBHOOK_URL ❌ (HTTP 404 — deleted). New per-agent webhooks (BOWSER, WORKLOG, HAL, SCOUT, etc.) set to REPLACE_ME. | User: create webhooks in Discord Server Settings → Integrations → set real URLs in `~/.openclaw/secrets.env` |
 | Claude agent live calls | `ANTHROPIC_API_KEY=REPLACE_ME` | User sets real key |
 | Hermes external daemon | External service not running | Activate external Hermes service |
 | Ralph autonomy loop | Needs ACP or external runtime | — |
@@ -217,10 +240,9 @@
 
 ## Exact Next Highest-Leverage Tasks
 
-1. **Recreate Discord webhooks** — single user action; unblocks all live Discord delivery. Create one webhook per channel in Discord Server Settings, set env vars in `~/.openclaw/secrets.env`.
+1. **Create per-agent Discord webhooks** — JARVIS and REVIEW webhooks are live. Create webhooks for BOWSER, WORKLOG, HAL, SCOUT, HERMES, KITT, MUSE, QWEN channels. Recreate COUNCIL (deleted/404). Set env vars in `~/.openclaw/secrets.env`.
 2. **Set ANTHROPIC_API_KEY** — user action; unblocks Claude agent.
-3. **Verify first real live delivery** — after webhooks set, trigger a test browser action and confirm #bowser and #worklog receive the message.
-4. **Hermes daemon activation** — external service prerequisite.
+3. **Hermes daemon activation** — external service prerequisite.
 
 ---
 

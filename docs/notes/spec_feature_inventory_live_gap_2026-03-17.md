@@ -1202,12 +1202,12 @@ All 31 tests pass (kitt_quant_workflow + kitt_routing + bowser_adapter + browser
 
 | System | Status | Blocker | User action? |
 |---|---|---|---|
-| Discord webhooks | **BLOCKED** | 13 delivery failures, all HTTP 403. Webhooks expired. | Yes — recreate in Discord Server Settings, update `~/.openclaw/.env` |
+| Discord webhooks | **PARTIAL** | JARVIS ✅ (200), REVIEW ✅ (200), COUNCIL ❌ (404). Per-agent webhooks not yet created. | Yes — create in Discord Server Settings, update `~/.openclaw/secrets.env` |
 | Cadence voice | **BLOCKED (parked)** | RDPSource mic unavailable in WSLg. Daemon retries every 15s. No `cadence_ingress.py` module exists yet. | When Windows audio input passthrough is active |
 | Anthropic/Claude provider | **OFFLINE** | `ANTHROPIC_API_KEY` not set in env. | Set in `~/.openclaw/.env` if needed |
 | Hermes adapter | **BLOCKED** | `hermes_adapter.py` exists but depends on external runtime infra (approval_store, artifact_store, execution_contracts). Status: `implemented_but_blocked_by_external_runtime`. | No — internal |
-| Kitt → backend_dispatch | **NOT WIRED** | `run_kitt_quant_brief()` callable via CLI only. Not registered in `backend_dispatch.py`. | No — internal |
-| Kitt Discord emit | **NOT WIRED** | `kitt_quant_workflow.py` does not call `emit_event()` to push briefs to Discord. | No — internal |
+| Kitt → backend_dispatch | **LIVE** | Wired in Pass 4 (section O). `kitt_quant` in `BACKEND_ADAPTERS`. | — |
+| Kitt Discord emit | **LIVE** | Wired in Pass 4 (section O). `kitt_brief_completed`/`kitt_brief_failed` events emitted. | — |
 
 ---
 
@@ -1314,10 +1314,9 @@ Full 11-agent roster visible. 9 agents with status files (was 5 before this pass
 
 ### Remaining open items
 
-1. **Discord webhooks expired** (user action) — 13 HTTP 403 delivery failures
-2. **ANTHROPIC_API_KEY not set** (user action if needed)
-3. **Cadence mic** (user action when Windows audio passthrough available)
-4. **Kitt → backend_dispatch** (internal) — wire `run_kitt_quant_brief` to task routing
-5. **Kitt Discord emit** (internal) — push briefs to `#kitt`
-6. **Archimedes/Anton preferred model load** — investigate LM Studio VRAM config; preferred models (`qwen/qwen3-coder-next`, `qwen3.5-122b-a10b`) return "Operation canceled" on load
-7. **Hermes** — blocked on external runtime infra; no short-term path
+1. **Discord webhooks (partial)** (user action) — JARVIS ✅ (HTTP 200), REVIEW ✅ (HTTP 200), COUNCIL ❌ (HTTP 404 — deleted). Per-agent webhooks (BOWSER, WORKLOG, HAL, etc.) set to REPLACE_ME. Create in Discord Server Settings and update `~/.openclaw/secrets.env`.
+2. **Discord message formatting** ✅ DONE (2026-03-18) — `_render_status_text()` rewritten for purpose-separated messages. Live proof delivered to #jarvis.
+3. **ANTHROPIC_API_KEY not set** (user action if needed)
+4. **Cadence mic** (user action when Windows audio passthrough available)
+5. **Archimedes/Anton preferred model load** — investigate LM Studio VRAM config; preferred models (`qwen/qwen3-coder-next`, `qwen3.5-122b-a10b`) return "Operation canceled" on load
+6. **Hermes** — blocked on external runtime infra; no short-term path
