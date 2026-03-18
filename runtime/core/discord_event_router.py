@@ -7,11 +7,13 @@ Design rules:
   - Cadence channel is VOICE-ONLY. Non-voice events are rejected/rerouted.
   - Every event writes a dispatch_event record.
   - Outbox entries written to state/discord_outbox/ for delivery.
+  - Messages are purpose-separated: status / result / warning / action-required.
 
 Event kinds supported:
     task_created, task_started, task_progress, task_completed, task_failed,
     task_blocked, review_requested, review_completed, approval_requested,
     approval_completed, artifact_promoted, browser_action, browser_result,
+    kitt_brief_completed, kitt_brief_failed,
     voice_session_started, voice_session_ended, tts_started, tts_completed,
     call_started, call_ended, agent_online, agent_offline, agent_status,
     delegation_sent, delegation_received, warning, error
@@ -19,6 +21,7 @@ Event kinds supported:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
@@ -62,7 +65,7 @@ def _outbox_dir(root: Optional[Path] = None) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Deterministic status text templates
+# Deterministic message formatting
 # ---------------------------------------------------------------------------
 
 _AGENT_DISPLAY: dict[str, str] = {
@@ -72,51 +75,307 @@ _AGENT_DISPLAY: dict[str, str] = {
     "bowser": "Bowser", "cadence": "Cadence", "muse": "Muse", "ralph": "Ralph",
 }
 
+# Patterns to strip from detail text — internal IDs, noise, raw exceptions
+_NOISE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\btab [A-F0-9]{16,}\b"),              # PinchTab tab hashes
+    re.compile(r"\bsnapshot nodes=\d+"),                # snapshot counts
+    re.compile(r"\bcycle r?cycle_[a-f0-9]+"),           # Ralph cycle IDs
+    re.compile(r"\(cycle r?cycle_[a-f0-9]+\)"),         # parenthesized cycle IDs
+    re.compile(r"\bart_[a-f0-9]{10,}\b"),               # artifact IDs in prose
+    re.compile(r"\[artifact:\s*\]"),                    # empty artifact references
+    re.compile(r"\[artifact:\s*art_[a-f0-9]+\]"),       # full artifact references in prose
+    re.compile(r"HTTPConnectionPool\(.*?\):\s*"),       # urllib connection pool noise
+    re.compile(r"Max retries exceeded with url:\s*\S+"), # retry noise
+    re.compile(r"\(Caused by \w+Error\(<[^>]*>\s*,\s*"), # nested exception wrappers
+    re.compile(r"'\)\)$"),                              # trailing quote-paren from exceptions
+    re.compile(r"\(\)"),                                # empty parens left by removals
+]
+
+# Purpose labels for event categories
+_PURPOSE: dict[str, str] = {
+    "task_created": "STATUS",
+    "task_started": "STATUS",
+    "task_progress": "STATUS",
+    "task_completed": "RESULT",
+    "task_failed": "ALERT",
+    "task_blocked": "ALERT",
+    "review_requested": "ACTION REQUIRED",
+    "review_completed": "RESULT",
+    "approval_requested": "ACTION REQUIRED",
+    "approval_completed": "RESULT",
+    "artifact_promoted": "RESULT",
+    "browser_action": "STATUS",
+    "browser_result": "RESULT",
+    "kitt_brief_completed": "RESULT",
+    "kitt_brief_failed": "ALERT",
+    "voice_session_started": "STATUS",
+    "voice_session_ended": "STATUS",
+    "tts_started": "STATUS",
+    "tts_completed": "STATUS",
+    "call_started": "STATUS",
+    "call_ended": "STATUS",
+    "agent_online": "STATUS",
+    "agent_offline": "ALERT",
+    "agent_status": "STATUS",
+    "delegation_sent": "STATUS",
+    "delegation_received": "STATUS",
+    "warning": "WARNING",
+    "error": "ERROR",
+}
+
 
 def _display(agent_id: str) -> str:
     return _AGENT_DISPLAY.get(agent_id, agent_id.capitalize())
 
 
+def _short_task_id(task_id: str) -> str:
+    """Shorten task_abc123def456 → abc123."""
+    if task_id.startswith("task_") and len(task_id) > 11:
+        return task_id[5:11]
+    return task_id
+
+
+def _clean_detail(detail: str) -> str:
+    """Strip internal noise from detail text, truncate to readable length."""
+    if not detail:
+        return ""
+    text = detail
+    for pat in _NOISE_PATTERNS:
+        text = pat.sub("", text)
+    # Collapse whitespace left by removals
+    text = re.sub(r"  +", " ", text).strip()
+    # Strip trailing punctuation clutter from removals
+    text = re.sub(r"[;,.\s]+$", "", text).strip()
+    # Truncate at 200 chars for readability
+    if len(text) > 200:
+        text = text[:197] + "..."
+    return text
+
+
+def _extract_error_summary(detail: str) -> str:
+    """Pull the human-readable error from a possibly long exception string."""
+    if not detail:
+        return ""
+    # Common pattern: "Connection to X timed out" / "SomeError: message"
+    # Try to find the innermost meaningful error
+    for pat in [
+        re.compile(r"Connection to \S+ timed out[^)]*", re.IGNORECASE),
+        re.compile(r"(\w+Error):\s*(.{5,80})", re.IGNORECASE),
+        re.compile(r"(timed out|connection refused|not found|failed|denied|rejected)\b[^)]{0,80}", re.IGNORECASE),
+    ]:
+        match = pat.search(detail)
+        if match:
+            summary = match.group(0).strip().rstrip("',)> ")
+            # Balance parens
+            while summary.count(")") > summary.count("(") and summary.endswith(")"):
+                summary = summary[:-1]
+            while summary.count("(") > summary.count(")"):
+                idx = summary.rfind("(")
+                if idx > 0:
+                    summary = summary[:idx].rstrip()
+                else:
+                    break
+            summary = summary.rstrip(" .")
+            if len(summary) > 120:
+                summary = summary[:117] + "..."
+            return summary
+    return _clean_detail(detail)
+
+
 def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
-    """Produce a deterministic plain-English status line for a runtime event."""
+    """Produce a structured, purpose-separated Discord message for a runtime event.
+
+    Format:
+        **[LABEL] Header**
+        > detail line (cleaned)
+
+    Action-required and alert messages include explicit next-step lines.
+    Simple status messages stay compact (2-3 lines max).
+    """
     agent = _display(payload.get("agent_id", "unknown"))
     task_id = payload.get("task_id", "")
-    task_label = f" {task_id}:" if task_id else ""
+    short_tid = _short_task_id(task_id) if task_id else ""
     detail = payload.get("detail", "")
     target = payload.get("target", "")
     reviewer = _display(payload.get("reviewer_id", ""))
     artifact = payload.get("artifact_id", "")
+    purpose = _PURPOSE.get(kind, "INFO")
 
-    templates: dict[str, str] = {
-        "task_created":        f"{agent} created task{task_label} {detail}",
-        "task_started":        f"{agent} started task{task_label} {detail}",
-        "task_progress":       f"{agent} task{task_label} in progress. {detail}",
-        "task_completed":      f"{agent} completed task{task_label} {detail}",
-        "task_failed":         f"{agent} FAILED task{task_label} {detail}",
-        "task_blocked":        f"{agent} task{task_label} BLOCKED. {detail}",
-        "review_requested":    f"{agent} requested review for task{task_label} {detail}",
-        "review_completed":    f"{reviewer or agent} completed review for task{task_label} {detail}",
-        "approval_requested":  f"{agent} requires approval for task{task_label} {detail}",
-        "approval_completed":  f"Approval completed for task{task_label} {detail}",
-        "artifact_promoted":   f"{agent} promoted artifact {artifact}. {detail}",
-        "browser_action":      f"{agent} executing browser action on {target}.",
-        "browser_result":      f"{agent} completed browser action on {target}. {detail}",
-        "voice_session_started": "Cadence voice session started.",
-        "voice_session_ended":   "Cadence voice session ended.",
-        "tts_started":           "Cadence TTS started.",
-        "tts_completed":         "Cadence TTS completed.",
-        "call_started":          "Cadence call started.",
-        "call_ended":            "Cadence call ended.",
-        "agent_online":        f"{agent} is online.",
-        "agent_offline":       f"{agent} went offline.",
-        "agent_status":        f"{agent}: {detail}",
-        "delegation_sent":     f"{agent} delegated task{task_label} to {target}.",
-        "delegation_received": f"{agent} received delegation{task_label} from {target}.",
-        "warning":             f"WARNING [{agent}]: {detail}",
-        "error":               f"ERROR [{agent}]: {detail}",
-    }
-    text = templates.get(kind, f"{agent}: [{kind}] {detail}")
-    return text.strip()
+    clean = _clean_detail(detail)
+
+    # --- Simple status events (compact, 1-2 lines) ---
+
+    if kind in ("voice_session_started", "voice_session_ended",
+                "tts_started", "tts_completed", "call_started", "call_ended"):
+        label_map = {
+            "voice_session_started": "Voice session started",
+            "voice_session_ended": "Voice session ended",
+            "tts_started": "TTS started",
+            "tts_completed": "TTS completed",
+            "call_started": "Call started",
+            "call_ended": "Call ended",
+        }
+        return f"**[{purpose}]** Cadence \u2014 {label_map[kind]}"
+
+    if kind in ("agent_online", "agent_offline"):
+        status = "online" if kind == "agent_online" else "offline"
+        return f"**[{purpose}]** {agent} is {status}"
+
+    if kind == "agent_status":
+        return f"**[{purpose}]** {agent}\n> {clean}" if clean else f"**[{purpose}]** {agent}"
+
+    # --- Task lifecycle ---
+
+    if kind == "task_created":
+        lines = [f"**[{purpose}]** {agent} created task `{short_tid}`"]
+        if clean:
+            lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    if kind == "task_started":
+        lines = [f"**[{purpose}]** {agent} started task `{short_tid}`"]
+        if clean:
+            lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    if kind == "task_progress":
+        lines = [f"**[{purpose}]** {agent} task `{short_tid}` in progress"]
+        if clean:
+            lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    if kind == "task_completed":
+        lines = [f"**[{purpose}]** {agent} completed task `{short_tid}`"]
+        if clean:
+            lines.append(f"\n**What changed**\n> {clean}")
+        return "\n".join(lines)
+
+    if kind == "task_failed":
+        err = _extract_error_summary(detail)
+        lines = [f"**[{purpose}]** {agent} FAILED task `{short_tid}`"]
+        if err:
+            lines.append(f"\n**Error**\n> {err}")
+        lines.append(f"\n**Next step**\n> Check logs or retry")
+        return "\n".join(lines)
+
+    if kind == "task_blocked":
+        lines = [f"**[{purpose}]** {agent} task `{short_tid}` BLOCKED"]
+        if clean:
+            lines.append(f"\n**Reason**\n> {clean}")
+        lines.append(f"\n**Needs attention**\n> Unblock or reassign")
+        return "\n".join(lines)
+
+    # --- Review / Approval (action-required messages) ---
+
+    if kind == "review_requested":
+        lines = [f"**[{purpose}]** {agent} requests review for `{short_tid}`"]
+        if clean:
+            lines.append(f"> {clean}")
+        lines.append(f"\n**Needs attention**\n> Review in #review")
+        return "\n".join(lines)
+
+    if kind == "review_completed":
+        who = reviewer or agent
+        # Parse verdict from detail if present
+        verdict_match = re.match(r"verdict:\s*(\w+)[.\s]*(.*)", detail, re.IGNORECASE)
+        if verdict_match:
+            verdict = verdict_match.group(1).upper()
+            reason = _clean_detail(verdict_match.group(2))
+            lines = [f"**[{purpose}]** {who} reviewed `{short_tid}` \u2014 **{verdict}**"]
+            if reason:
+                lines.append(f"> {reason}")
+        else:
+            lines = [f"**[{purpose}]** {who} completed review for `{short_tid}`"]
+            if clean:
+                lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    if kind == "approval_requested":
+        lines = [f"**[{purpose}]** Approval needed for `{short_tid}`"]
+        if clean:
+            lines.append(f"\n**Details**\n> {clean}")
+        lines.append(f"\n**Needs attention**\n> React in #review to approve/reject")
+        return "\n".join(lines)
+
+    if kind == "approval_completed":
+        # Parse decision from detail
+        decision_match = re.match(r"decision:\s*(\w+)[.\s]*(.*)", detail, re.IGNORECASE)
+        if decision_match:
+            decision = decision_match.group(1).upper()
+            reason = _clean_detail(decision_match.group(2))
+            lines = [f"**[{purpose}]** Approval for `{short_tid}` \u2014 **{decision}**"]
+            if reason:
+                lines.append(f"> {reason}")
+        else:
+            lines = [f"**[{purpose}]** Approval completed for `{short_tid}`"]
+            if clean:
+                lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    # --- Artifacts ---
+
+    if kind == "artifact_promoted":
+        short_art = artifact[4:10] if artifact.startswith("art_") and len(artifact) > 10 else artifact
+        lines = [f"**[{purpose}]** {agent} promoted artifact `{short_art}`"]
+        if clean:
+            lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    # --- Browser ---
+
+    if kind == "browser_action":
+        return f"**[{purpose}]** {agent} executing browser action on `{target}`"
+
+    if kind == "browser_result":
+        lines = [f"**[{purpose}]** {agent} browser action on `{target}`"]
+        if clean:
+            lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    # --- Kitt brief ---
+
+    if kind == "kitt_brief_completed":
+        lines = [f"**[{purpose}]** Kitt brief ready"]
+        if clean:
+            lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    if kind == "kitt_brief_failed":
+        lines = [f"**[{purpose}]** Kitt brief FAILED"]
+        if clean:
+            lines.append(f"> {clean}")
+        return "\n".join(lines)
+
+    # --- Delegation ---
+
+    if kind == "delegation_sent":
+        return f"**[{purpose}]** {agent} delegated `{short_tid}` to {target}"
+
+    if kind == "delegation_received":
+        return f"**[{purpose}]** {agent} received delegation `{short_tid}` from {target}"
+
+    # --- Warning / Error ---
+
+    if kind == "warning":
+        err = _extract_error_summary(detail) if len(detail) > 120 else clean
+        lines = [f"**[{purpose}]** {agent}"]
+        if err:
+            lines.append(f"> {err}")
+        return "\n".join(lines)
+
+    if kind == "error":
+        err = _extract_error_summary(detail) if len(detail) > 120 else clean
+        lines = [f"**[{purpose}]** {agent}"]
+        if err:
+            lines.append(f"> {err}")
+        lines.append(f"\n**Needs attention**\n> Investigate immediately")
+        return "\n".join(lines)
+
+    # --- Fallback ---
+    lines = [f"**[INFO]** {agent} \u2014 {kind}"]
+    if clean:
+        lines.append(f"> {clean}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

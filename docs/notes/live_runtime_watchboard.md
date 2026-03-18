@@ -87,6 +87,10 @@
 | non-voice event blocked from cadence | `task_completed` from `cadence` → `cadence_blocked: True` |
 | voice event passes to cadence | `voice_session_started` → `1483537502152425625` |
 | gateway resolves all 12 channels | `+6` after hermes in gateway log |
+| Kitt dispatch via `kitt_quant` backend | `dispatch_to_backend(execution_backend="kitt_quant")` → status=completed, brief artifact written |
+| Kitt brief creates backend_result | `get_latest_result("kitt")` → `bkres_f05a287997d6` (status=ok) |
+| kitt_brief_completed routes to kitt channel | `emit_event` → `owner_channel_id: 1483320979185733722` |
+| kitt_brief_completed mirrors to worklog + jarvis | `worklog_mirrored: True`, `jarvis_forwarded: True`, 3 outbox entries |
 
 ---
 
@@ -172,6 +176,29 @@
 - **Memory cleanup**: Deleted 3 garbage `state/memory_entries/ment_*.json`. Cleared stale Jarvis vault `active_constraints`.
 - **SearXNG lane activation**: `state/lane_activation/searxng.json` written — `status=completed, healthy=true, endpoint=http://localhost:8888`
 - **Tests**: 17/17 source_owned_context_engine tests pass; 393/393 validate checks pass
+- **Status**: ✅ LIVE
+
+### O. Kitt first-class dispatch backend (2026-03-18)
+- **Files modified**:
+  - `runtime/executor/backend_dispatch.py` — `kitt_quant` adapter registered in `BACKEND_ADAPTERS`
+  - `runtime/executor/execute_once.py` — Kitt-specific completion surfacing (brief_id, preview, artifact path, model)
+  - `runtime/integrations/kitt_quant_workflow.py` — emits `kitt_brief_completed`/`kitt_brief_failed` events + `save_backend_result()` after each brief
+  - `runtime/core/discord_event_router.py` — `kitt_brief_completed`/`kitt_brief_failed` event templates + `_PURPOSE` labels
+  - `config/agent_channel_map.json` — Kitt events added to `worklog_mirror_event_kinds` + `jarvis_forward_event_kinds`
+- **Dispatch path**: `execute_once()` → `dispatch_to_backend(execution_backend="kitt_quant")` → `_kitt_adapter()` → `run_kitt_quant_brief()` → SearXNG + Bowser + Kimi K2.5 → artifact + event + result store
+- **Proven live** (2026-03-18):
+  - `dispatch_to_backend(execution_backend="kitt_quant", messages=[{...NQ regime...}])` → status=completed ✅
+  - SearXNG: 5 results fetched ✅
+  - Kimi K2.5: synthesis completed (moonshotai/kimi-k2.5) ✅
+  - Brief artifact: `state/kitt_briefs/kitt_brief_277a05fe30b6.json` + `workspace/research/kitt_brief_277a05fe30b6.md` ✅
+  - Backend result: `bkres_f05a287997d6` (agent=kitt, backend=kitt_quant, status=ok) ✅
+  - Agent status: `state/agent_status/kitt.json` updated (state=idle, headline=brief ready) ✅
+  - Discord event: `kitt_brief_completed` → owner ch `1483320979185733722` + worklog mirror + jarvis forward ✅
+  - Outbox: 3 entries written (owner, worklog, jarvis_fwd) ✅
+  - Tests: 29/29 pass (10 Kitt workflow + 5 Kitt dispatch + 14 existing) ✅
+  - Validate: 395/395 pass ✅
+- **Before**: Kitt was a standalone workflow invocable only via CLI or direct Python import — not reachable from the task executor
+- **After**: Kitt is a first-class wired backend (`kitt_quant`) in `BACKEND_ADAPTERS`; any task with `execution_backend="kitt_quant"` dispatches through the full pipeline with operator-visible completion
 - **Status**: ✅ LIVE
 
 ---

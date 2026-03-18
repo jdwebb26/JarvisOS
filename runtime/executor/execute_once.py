@@ -200,6 +200,18 @@ def execute_once(
                 final_outcome = f"Browser result: {outcome_summary}"
                 if artifact_result:
                     final_outcome += f" [artifact: {artifact_result['artifact_id']}]"
+            elif execution_backend == "kitt_quant":
+                brief_text = dispatch_result.get("brief_text", "")
+                brief_id = dispatch_result.get("brief_id", "")
+                artifact_path = dispatch_result.get("artifact_path", "")
+                model_used = dispatch_result.get("model_used", "")
+                # Concise operator-visible summary
+                preview = brief_text[:120].replace("\n", " ") if brief_text else "no content"
+                final_outcome = f"Kitt brief {brief_id}: {preview}"
+                if artifact_path:
+                    final_outcome += f" [artifact: {artifact_path}]"
+                if model_used:
+                    final_outcome += f" [model: {model_used}]"
             else:
                 final_outcome = f"Backend {execution_backend} completed: {content[:200]}"
 

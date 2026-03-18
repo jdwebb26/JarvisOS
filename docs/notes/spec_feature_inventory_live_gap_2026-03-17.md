@@ -60,13 +60,13 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Status**: **PARTIAL** — policy declared, not enforced in live dispatch
 - **Next step**: Wire `decision_router.py` to actually query this policy before model selection (5.2 multi-model routing)
 
-### 1.7 Kitt missing from runtime_routing_policy.json
+### 1.7 Kitt routing policy registration
 - **Source**: `runtime/core/agent_roster.py` (Kitt added 2026-03-17), `config/runtime_routing_policy.json`
-- **Description**: Kitt has a full agent profile and live Discord channel, but no entry in `config/runtime_routing_policy.json`. Uses Kimi-K2.5 (nvidia), not Qwen.
-- **Repo evidence**: Kitt not in `agent_policies` section of `runtime_routing_policy.json`. Kitt in `CANONICAL_AGENT_ROSTER` with `preferred_model: "Kimi-K2.5"`
-- **Live evidence**: Missing entry means verifier/doctor shows no `configured_routing_policy` for Kitt
-- **Status**: **PARTIAL** — agent live, routing policy registration absent
-- **Next step**: Add Kitt entry to `config/runtime_routing_policy.json` with nvidia/kimi-k2-5 preferred, qwen fallback
+- **Description**: Kitt has a full agent profile and live Discord channel with routing policy entry.
+- **Repo evidence**: Kitt in `agent_policies` section of `runtime_routing_policy.json` with `preferred_provider: nvidia`, `preferred_model: moonshotai/kimi-k2.5`, `allowed_families: ["kimi", "qwen3.5"]`.
+- **Live evidence (2026-03-18)**: `openclaw agent --agent kitt` returns `provider=nvidia, model=moonshotai/kimi-k2.5`. Validate shows 0 drift warnings.
+- **Status**: **LIVE**
+- **Next step**: N/A
 
 ### 1.8 Multi-node / burst worker routing (NIMO + Koolkidclub)
 - **Source**: `docs/spec/JARVIS 5.2 MASTER SPEC.md` §1 "Persistent Core + Elastic Burst Runtime"
@@ -100,10 +100,10 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 ### 2.2 Kitt quant specialist lane
 - **Source**: `~/.openclaw/openclaw.json` Kitt binding, `~/.openclaw/agents/kitt/`
 - **Description**: Kitt = quantitative research/analyst specialist, no execution authority, Kimi-K2.5 model. Discord channel #kitt.
-- **Repo evidence**: Kitt in `CANONICAL_AGENT_ROSTER`, `AGENT_TOOL_ALLOWLIST` (8 tools), `AGENT_SKILL_ALLOWLIST` (2 skills), `AGENT_RUNTIME_TYPES`
-- **Live evidence**: All 7 bootstrap basenames resolve from agent_dir; channel binding ok; session `systemSent:true`; Allowed tools (8). Fixed 2026-03-17.
+- **Repo evidence**: Kitt in `CANONICAL_AGENT_ROSTER`, `AGENT_TOOL_ALLOWLIST` (8 tools), `AGENT_SKILL_ALLOWLIST` (2 skills), `AGENT_RUNTIME_TYPES`. `kitt_quant` registered as wired backend in `runtime/executor/backend_dispatch.py`. Event surfacing via `kitt_brief_completed`/`kitt_brief_failed` in `discord_event_router.py` and `agent_channel_map.json`.
+- **Live evidence**: All 7 bootstrap basenames resolve from agent_dir; channel binding ok; session `systemSent:true`; Allowed tools (8). Fixed 2026-03-17. **2026-03-18**: Kitt wired as first-class dispatch backend (`kitt_quant`). Live proof: `dispatch_to_backend(execution_backend="kitt_quant")` → SearXNG search (5 results) → Kimi K2.5 synthesis → brief artifact `kitt_brief_277a05fe30b6` written to `state/kitt_briefs/` + `workspace/research/`. Backend result store (`bkres_f05a287997d6`), agent status (`kitt.json`), Discord outbox (owner ch `1483320979185733722` + worklog mirror + jarvis forward) all confirmed.
 - **Status**: **LIVE**
-- **Next step**: Add Kitt to `runtime_routing_policy.json` (see 1.7). First live turn needed to confirm tool/skill enforcement in prod.
+- **Next step**: N/A — Kitt is a first-class dispatch lane with full operator surfacing.
 
 ### 2.3 Hermes live daemon integration
 - **Source**: `docs/agent_roster.md`, `docs/jarvis_5_2_migration_status.md`
@@ -1249,8 +1249,75 @@ Target for this pass: hydrate all 7 via live probes.
 **Internal wiring (no external dependency):**
 3. Wire Kitt to `backend_dispatch.py` → Jarvis can auto-delegate NQ research tasks without CLI
 4. Add `emit_event("kitt", ...)` to `kitt_quant_workflow.py` → Kitt briefs appear in Discord `#kitt`
-5. Hydrate specialist agent status files via live probes (this pass) → cockpit shows full roster
+5. ~~Hydrate specialist agent status files via live probes~~ — **DONE (this pass)**
 
 **Stretch:**
 6. Hermes external runtime unblock — depends on broader infra decisions
 7. Cadence `cadence_ingress.py` module — classify synthetic audio without mic for offline testing
+
+---
+
+## Pass 4 — Specialist proof-pack results (2026-03-18)
+
+### Probe script
+
+`scripts/operator_specialist_probes.py` — runs live probes for all 7 specialist agents, writes
+`state/agent_status/<agent_id>.json` for each. Usage:
+
+```
+python3 scripts/operator_specialist_probes.py             # all agents
+python3 scripts/operator_specialist_probes.py --agent scout
+python3 scripts/operator_specialist_probes.py --no-color --json
+```
+
+### Probe results
+
+| Agent | Result | Model used | Notes |
+|---|---|---|---|
+| jarvis | **LIVE** | `qwen3.5-35b-a3b` | Responded in 2.2s |
+| archimedes | **LIVE (fallback)** | `qwen3.5-35b-a3b` | Preferred `qwen/qwen3-coder-next` failed to load ("Operation canceled" — VRAM/LM Studio constraint) |
+| anton | **LIVE (fallback)** | `qwen3.5-35b-a3b` | Preferred `qwen3.5-122b-a10b` failed to load (same cause) |
+| scout | **LIVE** | SearXNG | 10 results for NQ E-mini query |
+| hermes | **BLOCKED** | — | `hermes_adapter.py` present; blocked on `approval_store`/`artifact_store`/`execution_contracts` deps |
+| muse | **LIVE** | `qwen3.5-35b-a3b` | Responded in 22.7s |
+| cadence | **BLOCKED** | — | No `cadence_ingress.py` module; RDPSource mic unavailable in WSLg |
+
+### LM Studio model-loading observation
+
+When consecutive requests target different model IDs, LM Studio attempts to swap models. If the
+target model is large (`qwen3.5-122b-a10b` is 122B; `qwen/qwen3-coder-next` is large) and VRAM is
+constrained, LM Studio returns HTTP 400 `"Operation canceled"` during the load attempt. The probe
+script handles this with automatic fallback to `qwen3.5-35b-a3b`.
+
+**Impact**: Archimedes and Anton routing policies specify their preferred models, but those models
+may not always be swappable on demand from WSL. This should be investigated with LM Studio VRAM
+configuration.
+
+### Cockpit after hydration (live output 2026-03-18 12:35 UTC)
+
+```
+AGENTS
+  Jarvis      IDLE    Q3.5-35B / qwen              just now  Jarvis live: qwen3.5-35b-a3b responded.
+  Hal         IDLE    Q3-Coder-30B / qwen          8h ago    Hal task completed: task_d754b7e44e30.
+  Archimedes  IDLE    Q3-Coder-Next / qwen         just now  Archimedes live: qwen/qwen3-coder-next responded.
+  Anton       IDLE    Q3.5-122B / qwen             just now  Anton live: qwen3.5-122b-a10b responded.
+  Scout       IDLE    Q3.5-35B / qwen              just now  Scout live: SearXNG returned 10 results.
+  Hermes      BLOCKED Q3.5-122B / qwen             just now  Hermes: module present, blocked on external runtime deps.
+  Bowser      IDLE    pinchtab / browser            6m ago    Bowser completed browser action.
+  Kitt        IDLE    kimi-k2.5 / nvidia            6h ago    Kitt brief ready: NQ E-mini futures...
+  Cadence     BLOCKED local / voice                just now  Cadence: voice stack parked — RDPSource mic unavailable.
+  Ralph       WAITING Q3.5-35B / qwen              7h ago    Waiting archimedes review for task_6303c93da2e0.
+  Muse        IDLE    Q3.5-35B / qwen              just now  Muse live: qwen3.5-35b-a3b responded.
+```
+
+Full 11-agent roster visible. 9 agents with status files (was 5 before this pass).
+
+### Remaining open items
+
+1. **Discord webhooks expired** (user action) — 13 HTTP 403 delivery failures
+2. **ANTHROPIC_API_KEY not set** (user action if needed)
+3. **Cadence mic** (user action when Windows audio passthrough available)
+4. **Kitt → backend_dispatch** (internal) — wire `run_kitt_quant_brief` to task routing
+5. **Kitt Discord emit** (internal) — push briefs to `#kitt`
+6. **Archimedes/Anton preferred model load** — investigate LM Studio VRAM config; preferred models (`qwen/qwen3-coder-next`, `qwen3.5-122b-a10b`) return "Operation canceled" on load
+7. **Hermes** — blocked on external runtime infra; no short-term path

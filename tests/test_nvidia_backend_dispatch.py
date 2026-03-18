@@ -344,5 +344,153 @@ def test_execute_once_nvidia_failure_fails_task():
     assert failed_task["status"] == "failed"
 
 
+# ---------------------------------------------------------------------------
+# Kitt backend dispatch tests
+# ---------------------------------------------------------------------------
+
+def test_kitt_quant_is_registered():
+    assert has_backend_adapter("kitt_quant")
+    assert is_known_backend("kitt_quant")
+
+
+def test_kitt_quant_in_list_registered():
+    summary = list_registered_backends()
+    assert "kitt_quant" in summary["wired"]
+
+
+def test_dispatch_kitt_quant_calls_workflow():
+    """Dispatch to kitt_quant invokes run_kitt_quant_brief."""
+    mock_result = {
+        "status": "completed",
+        "brief_id": "kitt_brief_test123",
+        "brief_text": "MARKET STATE\nNQ bullish regime.",
+        "artifact_path": "/tmp/test/kitt_brief_test123.json",
+        "search_results": [],
+        "browser_result": {},
+        "nvidia_result": {},
+        "model_used": "moonshotai/kimi-k2.5",
+        "error": "",
+    }
+
+    with patch("runtime.integrations.kitt_quant_workflow.run_kitt_quant_brief", return_value=mock_result) as mock_call:
+        result = dispatch_to_backend(
+            task_id="task_kitt_q1",
+            actor="kitt",
+            lane="quant",
+            execution_backend="kitt_quant",
+            messages=[{"role": "user", "content": "NQ futures regime analysis"}],
+            root=Path(tempfile.mkdtemp()),
+        )
+
+    assert result["status"] == "completed"
+    assert result["dispatched"] is True
+    assert result["execution_backend"] == "kitt_quant"
+    assert result["brief_text"] == "MARKET STATE\nNQ bullish regime."
+    mock_call.assert_called_once()
+    call_kwargs = mock_call.call_args[1]
+    assert call_kwargs["task_id"] == "task_kitt_q1"
+    assert call_kwargs["query"] == "NQ futures regime analysis"
+
+
+def test_dispatch_kitt_quant_url_message():
+    """Kitt adapter treats URL-like messages as target_url."""
+    mock_result = {
+        "status": "completed",
+        "brief_id": "kitt_brief_url1",
+        "brief_text": "Brief from URL",
+        "artifact_path": "",
+        "search_results": [],
+        "browser_result": {},
+        "nvidia_result": {},
+        "model_used": "moonshotai/kimi-k2.5",
+        "error": "",
+    }
+
+    with patch("runtime.integrations.kitt_quant_workflow.run_kitt_quant_brief", return_value=mock_result) as mock_call:
+        dispatch_to_backend(
+            task_id="task_kitt_url",
+            actor="kitt",
+            lane="quant",
+            execution_backend="kitt_quant",
+            messages=[{"role": "user", "content": "https://finance.yahoo.com/quote/NQ=F"}],
+            root=Path(tempfile.mkdtemp()),
+        )
+
+    call_kwargs = mock_call.call_args[1]
+    assert call_kwargs["target_url"] == "https://finance.yahoo.com/quote/NQ=F"
+    assert call_kwargs["query"] == ""
+
+
+def _make_kitt_task(task_id: str = "task_kitt_q_exec") -> dict:
+    """Create a minimal task record with kitt_quant backend."""
+    return {
+        "task_id": task_id,
+        "created_at": "2026-03-18T10:00:00Z",
+        "updated_at": "2026-03-18T10:00:00Z",
+        "source_lane": "kitt",
+        "source_channel": "",
+        "source_message_id": "",
+        "source_user": "operator",
+        "trigger_type": "direct",
+        "raw_request": "NQ regime analysis",
+        "normalized_request": "NQ regime analysis using recent data",
+        "task_type": "quant",
+        "priority": "normal",
+        "risk_level": "normal",
+        "status": "queued",
+        "assigned_role": "executor",
+        "assigned_model": "moonshotai/kimi-k2.5",
+        "execution_backend": "kitt_quant",
+        "backend_assignment_id": "ba_kitt_1",
+        "backend_metadata": {
+            "routing": {
+                "routing_decision_id": "rdec_kitt_q1",
+                "provider_id": "nvidia",
+                "model_name": "moonshotai/kimi-k2.5",
+            }
+        },
+        "summary": "NQ regime analysis",
+        "review_required": False,
+        "approval_required": False,
+        "lifecycle_state": "active",
+        "error_count": 0,
+    }
+
+
+def test_execute_once_dispatches_kitt_task():
+    """execute_once picks a kitt_quant task and dispatches via backend_dispatch."""
+    from runtime.executor.execute_once import execute_once
+
+    tmp = Path(tempfile.mkdtemp())
+    task = _make_kitt_task()
+    _make_task_dir(tmp, task)
+
+    mock_result = {
+        "status": "completed",
+        "brief_id": "kitt_brief_exec1",
+        "brief_text": "MARKET STATE\nNQ at 20100, bullish regime.",
+        "artifact_path": str(tmp / "state" / "kitt_briefs" / "kitt_brief_exec1.json"),
+        "search_results": [],
+        "browser_result": {},
+        "nvidia_result": {},
+        "model_used": "moonshotai/kimi-k2.5",
+        "error": "",
+    }
+
+    with patch.dict("runtime.executor.backend_dispatch.BACKEND_ADAPTERS", {"kitt_quant": lambda **kw: mock_result}):
+        with patch("runtime.controls.control_store.assert_control_allows"):
+            result = execute_once(root=tmp, actor="kitt", lane="quant", allow_parallel=True)
+
+    assert result["kind"] == "backend_dispatch"
+    assert result["dispatch_result"]["status"] == "completed"
+    assert result["dispatch_result"]["dispatched"] is True
+    # Task should have been completed
+    completed_task = json.loads((tmp / "state" / "tasks" / f"{task['task_id']}.json").read_text())
+    assert completed_task["status"] == "completed"
+    # Final outcome should include brief_id and model info
+    assert "kitt_brief_exec1" in completed_task.get("final_outcome", "")
+    assert "kimi-k2.5" in completed_task.get("final_outcome", "")
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

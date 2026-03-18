@@ -77,6 +77,46 @@ def _bowser_adapter(
     )
 
 
+def _kitt_adapter(
+    *,
+    task_id: str,
+    actor: str,
+    lane: str,
+    messages: list[dict[str, str]],
+    routing_decision_id: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Dispatch to the Kitt quant workflow — research brief generation."""
+    from runtime.integrations.kitt_quant_workflow import run_kitt_quant_brief
+
+    # Extract query and target_url from the first user message.
+    query = ""
+    target_url = ""
+    context = ""
+    for msg in messages:
+        if msg.get("role") == "user":
+            content = msg.get("content", "")
+            # Simple heuristic: if the content starts with http, treat as URL.
+            # Otherwise treat as query.  Both can be overridden by structured
+            # fields if the task system evolves to carry them.
+            if content.strip().startswith(("http://", "https://")):
+                target_url = content.strip()
+            else:
+                query = content.strip()
+            break
+
+    result = run_kitt_quant_brief(
+        task_id=task_id,
+        query=query,
+        target_url=target_url,
+        context=context,
+        actor=actor or "kitt",
+        lane=lane or "quant",
+        root=root,
+    )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Backend registry — add new adapters here.
 # ---------------------------------------------------------------------------
@@ -84,6 +124,7 @@ def _bowser_adapter(
 BACKEND_ADAPTERS: dict[str, Callable[..., dict[str, Any]]] = {
     "nvidia_executor": _nvidia_adapter,
     "browser_backend": _bowser_adapter,
+    "kitt_quant": _kitt_adapter,
 }
 
 # Backends that are known but not yet wired to an adapter.
