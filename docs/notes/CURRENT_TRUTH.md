@@ -68,7 +68,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 
 ### Not working / scaffold only
 - **Multi-node burst routing** (NIMO/Koolkidclub): scaffolded, `burst_allowed=false` everywhere. Not live
-- **Routing policy enforcement**: `runtime_routing_policy.json` is read for reporting but NOT enforced in the gateway model selection path. Gateway uses `openclaw.json` directly
+- **Routing policy enforcement**: `runtime_routing_policy.json` is enforced via runtime profiles (4240dcf). `load_runtime_routing_policy()` applies active profile overrides. `sync_routing_policy_to_openclaw.py` propagates to `openclaw.json`. Gateway uses `openclaw.json` as its config surface, which the sync script keeps aligned with the policy
 - **A2A protocol**: doc-only, no implementation
 - **Adaptation lab / DSPy optimizer**: scaffold, never run live
 - **ShadowBroker**: scaffold, external runtime not present
@@ -100,9 +100,8 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 5. **Activate Muse** — send first message to Muse Discord channel to create session
 
 ### Medium-leverage
-6. **Routing policy enforcement** — make `runtime_routing_policy.json` authoritative for gateway model selection (currently just advisory)
-7. **Session monitoring dashboard** — surface session sizes, turn counts, stale sessions for operator visibility
-8. **Cadence mic passthrough** — blocked on WSL2 RDPSource. Investigate PulseAudio/pipewire WSL passthrough
+6. **Session monitoring dashboard** — surface session sizes, turn counts, stale sessions for operator visibility
+7. **Cadence mic passthrough** — blocked on WSL2 RDPSource. Investigate PulseAudio/pipewire WSL passthrough
 
 ---
 

@@ -1203,16 +1203,19 @@ All 31 tests pass (kitt_quant_workflow + kitt_routing + bowser_adapter + browser
 
 ---
 
-### Blocked systems
+### Blocked systems — reconciled 2026-03-18
 
 | System | Status | Blocker | User action? |
 |---|---|---|---|
-| Discord webhooks | **LIVE** | All 12 webhooks HTTP 200 (2026-03-18). Path bug in `load_webhook_url` fixed; Council duplicate in secrets.env resolved. | — |
-| Cadence voice | **BLOCKED (parked)** | RDPSource mic unavailable in WSLg. Daemon retries every 15s. No `cadence_ingress.py` module exists yet. | When Windows audio input passthrough is active |
-| Anthropic/Claude provider | **OFFLINE** | `ANTHROPIC_API_KEY` not set in env. | Set in `~/.openclaw/.env` if needed |
-| Hermes adapter | **BLOCKED** | `hermes_adapter.py` exists but depends on external runtime infra (approval_store, artifact_store, execution_contracts). Status: `implemented_but_blocked_by_external_runtime`. | No — internal |
-| Kitt → backend_dispatch | **LIVE** | Wired in Pass 4 (section O). `kitt_quant` in `BACKEND_ADAPTERS`. | — |
-| Kitt Discord emit | **LIVE** | Wired in Pass 4 (section O). `kitt_brief_completed`/`kitt_brief_failed` events emitted. | — |
+| ~~Discord webhooks~~ | **LIVE** | All 12 webhooks HTTP 200. Fixed (369bf6f). | — |
+| Cadence voice | **BLOCKED (parked)** | RDPSource mic unavailable in WSLg. Daemon retries every 15s. | When Windows audio input passthrough is active |
+| Anthropic/Claude provider | **OFFLINE** | `ANTHROPIC_API_KEY` not set. | User sets real key |
+| Hermes adapter | **BLOCKED** | External runtime not configured. Adapter code live. | No — internal infra |
+| Muse Discord binding | **PARTIAL** | Agent config present, no Discord channel binding. Webhook live. | Add binding if needed |
+| ~~Kitt dispatch~~ | **LIVE** | Wired as first-class backend (f026883). | — |
+| ~~Routing policy~~ | **LIVE** | Profiles system enforces policy in live dispatch (4240dcf). | — |
+| ~~HAL ACP~~ | **LIVE** | Production path with acpx + concurrent sessions. | — |
+| ~~Bowser browser~~ | **LIVE** | Full PinchTab bridge, DOM extraction, event routing. | — |
 
 ---
 
