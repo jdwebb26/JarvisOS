@@ -13,6 +13,7 @@ from runtime.core.agent_roster import (
     infer_agent_id,
     summarize_visible_tools,
 )
+from runtime.core.learnings_store import get_learnings_for_agent
 from runtime.core.models import now_iso
 from runtime.memory.brief_builder import build_session_context_brief_payload
 from runtime.memory.governance import retrieve_memory_for_context, write_session_memory_entry
@@ -36,6 +37,15 @@ DELEGATION_RAW_USER_TURN_WINDOW = 2
 DELEGATION_EPISODIC_LIMIT = 1
 DELEGATION_SEMANTIC_LIMIT = 2
 DELEGATION_RETRIEVAL_BUDGET_TOKENS = 600
+
+# ── Learnings injection ──────────────────────────────────────────────────────
+# Agents that receive a learnings digest in their context packet.
+LEARNINGS_AGENTS = frozenset({"jarvis", "hal", "archimedes"})
+# Max learnings items per agent role.
+LEARNINGS_MAX_ORCHESTRATOR = 6
+LEARNINGS_MAX_DELEGATION = 3
+# Hard character cap on the entire digest text to prevent prompt bloat.
+LEARNINGS_DIGEST_CHAR_CAP = 800
 # Hard ceiling on total user turns per session before the packet is blocked.
 # Callers must reset the session (new session_key) once this fires.
 # Setting max_session_turns=0 disables the ceiling (not recommended in production).
@@ -136,6 +146,52 @@ def _rotate_session_key(session_key: str) -> str:
     """Increment the :gen:N suffix on a session key."""
     base, gen = _parse_session_generation(session_key)
     return f"{base}:gen:{gen + 1}"
+
+
+def _build_learnings_digest(
+    agent_id: str,
+    *,
+    delegation_compact: bool,
+    root: Path,
+) -> dict[str, Any]:
+    """Build a compact learnings digest for injection into a context packet.
+
+    Returns a dict with keys: text, itemCount, charCount, capped.
+    Empty text when no learnings match or agent is not in LEARNINGS_AGENTS.
+    """
+    if agent_id not in LEARNINGS_AGENTS:
+        return {"text": "", "itemCount": 0, "charCount": 0, "capped": False}
+
+    max_items = LEARNINGS_MAX_DELEGATION if delegation_compact else LEARNINGS_MAX_ORCHESTRATOR
+    learnings = get_learnings_for_agent(agent_id, max_results=max_items, root=root)
+    if not learnings:
+        return {"text": "", "itemCount": 0, "charCount": 0, "capped": False}
+
+    lines: list[str] = []
+    for rec in learnings:
+        lesson = str(rec.get("lesson") or "").strip()
+        if not lesson:
+            continue
+        # Truncate individual lessons to keep digest compact.
+        if len(lesson) > 150:
+            lesson = lesson[:147] + "..."
+        lines.append(f"- {lesson}")
+
+    if not lines:
+        return {"text": "", "itemCount": 0, "charCount": 0, "capped": False}
+
+    text = "\n".join(lines)
+    capped = False
+    if len(text) > LEARNINGS_DIGEST_CHAR_CAP:
+        text = text[:LEARNINGS_DIGEST_CHAR_CAP].rsplit("\n", 1)[0]
+        capped = True
+
+    return {
+        "text": text,
+        "itemCount": len(text.strip().splitlines()),
+        "charCount": len(text),
+        "capped": capped,
+    }
 
 
 def _select_tool_exposure(prompt: str, tools: list[dict[str, Any]], *, channel: str, agent_id: str) -> dict[str, Any]:
@@ -325,6 +381,7 @@ def _build_prompt_budget(
     total_user_turns: int,
     distillation: dict[str, int],
     tool_exposure: dict[str, Any],
+    learnings_digest_text: str = "",
 ) -> dict[str, Any]:
     recent_chars = 0
     metadata_chars = 0
@@ -352,6 +409,7 @@ def _build_prompt_budget(
         "rawToolOutputs": {"tokens": max(0, (tool_output_chars + 3) // 4), "chars": tool_output_chars},
         "metadataWrappers": {"tokens": max(0, (metadata_chars + 3) // 4), "chars": metadata_chars},
         "rollingSessionSummary": {"tokens": estimate_tokens(summary_text), "chars": len(summary_text)},
+        "learningsDigest": {"tokens": estimate_tokens(learnings_digest_text), "chars": len(learnings_digest_text)},
     }
     estimated_total_tokens = sum(int(entry["tokens"]) for entry in categories.values())
     safe_threshold_tokens = max(1, int(context_window_tokens * SAFE_BUDGET_RATIO))
@@ -506,6 +564,11 @@ def build_context_packet(
     # memory — that is the orchestrator's (Jarvis's) job.
     if not delegation_compact:
         _flush_session_memory_entries(rolling_summary=rolling_summary, actor=resolved_agent_id, lane=channel or "main", root=root)
+    # ── Learnings digest ──
+    learnings_digest = _build_learnings_digest(
+        resolved_agent_id, delegation_compact=delegation_compact, root=root,
+    )
+
     tool_exposure = _select_tool_exposure(current_prompt, tools, channel=channel, agent_id=resolved_agent_id)
     visible_tools = list(tool_exposure.get("tools") or [])
     loaded_tools = summarize_visible_tools(visible_tools, agent_id=resolved_agent_id)
@@ -517,6 +580,7 @@ def build_context_packet(
         model_id=model_id,
         root=root,
     )
+    learnings_text = learnings_digest.get("text") or ""
     budget = _build_prompt_budget(
         system_prompt=system_prompt,
         recent_messages=recent_messages,
@@ -530,6 +594,7 @@ def build_context_packet(
         total_user_turns=total_user_turns,
         distillation=distillation,
         tool_exposure=tool_exposure,
+        learnings_digest_text=learnings_text,
     )
     compaction = {"requested": False, "reason": "none", "compacted": False}
     if budget["overSafeThreshold"] or total_user_turns > raw_user_turn_window:
@@ -548,6 +613,7 @@ def build_context_packet(
             total_user_turns=total_user_turns,
             distillation=distillation,
             tool_exposure=tool_exposure,
+            learnings_digest_text=learnings_text,
         )
         recent_messages = compacted_messages
         compaction = {
@@ -575,6 +641,7 @@ def build_context_packet(
                 total_user_turns=total_user_turns,
                 distillation=distillation,
                 tool_exposure=tool_exposure,
+                learnings_digest_text=learnings_text,
             )
             if not emergency_budget["overHardThreshold"]:
                 recent_messages = emergency_messages
@@ -664,6 +731,7 @@ def build_context_packet(
         "sessionKey": session_key,
         "generatedAt": now_iso(),
         "delegationCompact": delegation_compact_meta,
+        "learningsDigest": learnings_digest,
         "workingMemoryMessages": recent_messages,
         "rollingSummary": rolling_summary,
         "retrievedMemory": {
