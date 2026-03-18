@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenClaw Ralph v1 — one bounded autonomy cycle
+After=network-online.target openclaw-gateway.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+ExecStart=/usr/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/run_ralph_v1.py --log-level INFO
+EnvironmentFile=/home/rollan/.openclaw/secrets.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-ralph
+TimeoutStartSec=180
