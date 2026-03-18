@@ -6,6 +6,7 @@ One command answers: what needs my attention right now?
 Usage:
     python3 scripts/operator_status.py              # terminal (narrow-friendly)
     python3 scripts/operator_status.py --discord     # post summary to #jarvis
+    python3 scripts/operator_status.py --if-needed   # post only when action needed
     python3 scripts/operator_status.py --json        # machine-readable
 """
 from __future__ import annotations
@@ -69,8 +70,8 @@ def _pending_approvals() -> list[dict[str, Any]]:
         if task_path.exists():
             try:
                 t = json.loads(task_path.read_text(encoding="utf-8"))
-                # skip if task already completed/failed — stale approval
-                if t.get("status") in ("completed", "failed"):
+                # skip if task is no longer waiting for approval — stale
+                if t.get("status") not in ("waiting_approval",):
                     continue
                 request = t.get("normalized_request", "")
             except Exception:
@@ -117,8 +118,9 @@ def _actionable_tasks() -> dict[str, list[dict[str, Any]]]:
 def _timer_health() -> list[dict[str, Any]]:
     """Check systemd user timers and key services."""
     units = [
-        ("openclaw-ralph.timer", "Ralph timer"),
+        ("openclaw-ralph.timer", "Ralph"),
         ("openclaw-review-poller.timer", "Review poller"),
+        ("lobster-todo-intake.timer", "Todo poller"),
         ("openclaw-discord-outbox.timer", "Outbox sender"),
         ("openclaw-gateway.service", "Gateway"),
         ("openclaw-inbound-server.service", "Inbound server"),
@@ -339,10 +341,36 @@ def render_discord(data: dict[str, Any]) -> str:
 # CLI
 # ---------------------------------------------------------------------------
 
+def needs_attention(data: dict[str, Any]) -> bool:
+    """Return True if there are actionable items or service problems."""
+    if data["approvals"] or data["failed"]:
+        return True
+    down = [t for t in data["timers"] if not t["active"]]
+    if down:
+        return True
+    if data["outbox"]["failed"] > 0:
+        return True
+    return False
+
+
+def _post_discord(data: dict[str, Any]) -> str:
+    """Post status to #jarvis. Returns event_id or raises."""
+    text = render_discord(data)
+    from runtime.core.discord_event_router import emit_event
+    result = emit_event(
+        "cockpit_status", "jarvis",
+        detail=text,
+        root=ROOT,
+    )
+    return result.get("event_id", "")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Phone-friendly operator status")
     parser.add_argument("--json", action="store_true", help="Machine-readable JSON")
     parser.add_argument("--discord", action="store_true", help="Post to #jarvis Discord")
+    parser.add_argument("--if-needed", action="store_true",
+                        help="Post to Discord only when action needed (for timer use)")
     args = parser.parse_args()
 
     _load_env()
@@ -352,18 +380,25 @@ def main() -> int:
         print(json.dumps(data, indent=2))
         return 0
 
+    if args.if_needed:
+        if not needs_attention(data):
+            print("Nothing needs attention — skipping Discord post.")
+            return 0
+        # Action needed — post to Discord
+        try:
+            eid = _post_discord(data)
+            print(render_terminal(data))
+            print(f"Posted to Discord ({eid})")
+        except Exception as exc:
+            print(f"Discord post failed: {exc}", file=sys.stderr)
+            return 1
+        return 0
+
     print(render_terminal(data))
 
     if args.discord:
-        text = render_discord(data)
         try:
-            from runtime.core.discord_event_router import emit_event
-            result = emit_event(
-                "cockpit_status", "jarvis",
-                detail=text,
-                root=ROOT,
-            )
-            eid = result.get("event_id", "")
+            eid = _post_discord(data)
             print(f"Posted to Discord ({eid})")
         except Exception as exc:
             print(f"Discord post failed: {exc}", file=sys.stderr)
