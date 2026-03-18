@@ -86,6 +86,7 @@ import json
 import os
 import re
 import signal as _signal
+import subprocess
 import sys
 import time
 import threading
@@ -105,7 +106,7 @@ from runtime.voice.wakeword import validate_wake_phrase
 # Constants / env defaults
 # ---------------------------------------------------------------------------
 
-WAKE_PHRASES = ("Jarvis", "Hey Cadence", "Cadence")
+WAKE_PHRASES = ("Hey Jarvis", "Jarvis", "Hey Cadence", "Cadence")
 
 DEFAULT_PASSIVE_CHUNK_SEC  = float(os.environ.get("CADENCE_PASSIVE_CHUNK_SEC",      "4.0"))
 DEFAULT_COMMAND_WINDOW_SEC = float(os.environ.get("CADENCE_COMMAND_WINDOW_SECONDS", "8.0"))
@@ -410,6 +411,202 @@ def run_turn(
 # Continuous loop  (production path — single sequential capture)
 # ---------------------------------------------------------------------------
 
+def run_live_loop(
+    *,
+    device: Optional[str] = None,
+    command_window_sec: float = DEFAULT_COMMAND_WINDOW_SEC,
+    execute: bool = False,
+    actor: str = "cadence",
+    lane: str = "voice",
+    root: Optional[Path] = None,
+) -> None:
+    """Live listener loop using openWakeWord + Silero VAD + faster-whisper subprocess.
+
+    Spawns live_listener.py inside .venv-voice and reads JSON events from its
+    stdout.  Routes transcripts exactly the same as the legacy loop.
+    Single capture process — no concurrent parecord.
+    """
+    from runtime.core.models import new_id
+    from runtime.voice.voice_config import VENV_VOICE, FASTER_WHISPER_MODEL, OWW_THRESHOLD
+
+    resolved_root = Path(root or ROOT).resolve()
+    voice_session_id = new_id("vsession")
+
+    py = VENV_VOICE / "bin" / "python"
+    script = resolved_root / "runtime" / "voice" / "live_listener.py"
+
+    if not py.exists():
+        print(
+            f"[cadence] live_listener unavailable: {py} not found — "
+            f"falling back to legacy loop",
+            file=sys.stderr,
+        )
+        run_legacy_loop(
+            device=device,
+            command_window_sec=command_window_sec,
+            execute=execute,
+            actor=actor,
+            lane=lane,
+            root=root,
+        )
+        return
+
+    resolved_device = device or "RDPSource"
+    cmd = [
+        str(py), str(script),
+        "--device", resolved_device,
+        "--model", FASTER_WHISPER_MODEL,
+        "--threshold", str(OWW_THRESHOLD),
+        "--command-window", str(command_window_sec),
+    ]
+
+    print(
+        f"[cadence] standby_start (live)  execute={execute}  "
+        f"device={resolved_device}  model={FASTER_WHISPER_MODEL}",
+        file=sys.stderr,
+    )
+
+    listener_proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,   # listener logs its own stderr
+        cwd=str(resolved_root),
+        env={**os.environ, "PYTHONPATH": str(resolved_root)},
+    )
+
+    try:
+        for raw_line in listener_proc.stdout:
+            if _STOP.is_set():
+                break
+
+            raw_line = raw_line.decode("utf-8", errors="replace").strip()
+            if not raw_line:
+                continue
+
+            try:
+                event = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+
+            etype = event.get("event", "")
+
+            if etype == "ready":
+                print(
+                    f"[cadence] listener_ready  "
+                    f"oww={event.get('oww_model','?')}  "
+                    f"vad={event.get('vad','?')}  "
+                    f"whisper={event.get('whisper','?')}",
+                    file=sys.stderr,
+                )
+
+            elif etype == "wake_detected":
+                phrase = event.get("phrase", "")
+                score  = event.get("score", 0.0)
+                print(
+                    f"[cadence] wake_detected  phrase={phrase!r}  score={score:.2f}",
+                    file=sys.stderr,
+                )
+                play_cue("wake_accept")
+
+            elif etype == "transcript":
+                command = _clean_command(event.get("text", "")).strip()
+
+                # Strip any repeated wake phrase that came through
+                normalized = _normalize(command)
+                wake = check_wake_phrase(normalized)
+                if wake["valid"] and wake["normalized_command"].strip():
+                    command = _clean_command(wake["normalized_command"])
+
+                if not command or _is_garbage_text(command):
+                    print("[cadence] command_timeout (empty transcript)", file=sys.stderr)
+                    continue
+
+                print(f"[cadence] command_captured: {command!r}", file=sys.stderr)
+                try:
+                    route_result = route_cadence_utterance(
+                        command,
+                        voice_session_id=voice_session_id,
+                        actor=actor,
+                        lane=lane,
+                        execute=execute,
+                        root=resolved_root,
+                    )
+                    intent = route_result.get("intent_result", {}).get("intent", "?")
+                    routed = route_result.get("routed", False)
+                    route_ok = routed or not execute
+                    if route_ok:
+                        play_cue("route_ok")
+                        print(f"[cadence] routed_ok  intent={intent}", file=sys.stderr)
+                    else:
+                        play_cue("error")
+                        print(f"[cadence] routed_error  intent={intent}", file=sys.stderr)
+                except Exception as exc:
+                    play_cue("error")
+                    print(f"[cadence] routed_error  exc={exc}", file=sys.stderr)
+
+            elif etype == "timeout":
+                print("[cadence] command_timeout", file=sys.stderr)
+
+            elif etype == "error":
+                msg = event.get("message", "?")
+                print(f"[cadence] listener_error  {msg}", file=sys.stderr)
+                # listener errors are non-fatal; loop continues
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        _STOP.set()
+        try:
+            listener_proc.terminate()
+            listener_proc.wait(timeout=5)
+        except Exception:
+            try:
+                listener_proc.kill()
+            except Exception:
+                pass
+        print("\n[cadence] stopped.", file=sys.stderr)
+
+
+def run_legacy_loop(
+    *,
+    passive_duration_sec: float = DEFAULT_PASSIVE_CHUNK_SEC,
+    command_window_sec: float = DEFAULT_COMMAND_WINDOW_SEC,
+    device: Optional[str] = None,
+    whisper_model: str = "",
+    execute: bool = False,
+    actor: str = "cadence",
+    lane: str = "voice",
+    root: Optional[Path] = None,
+    sleep_between: float = DEFAULT_LOOP_SLEEP_SEC,
+) -> None:
+    """Legacy passive full-Whisper polling loop (fallback).
+
+    DEPRECATED in favour of run_live_loop().  Kept as fallback.
+    Set CADENCE_LISTENER=legacy to force this path.
+    """
+    # Delegate to run_loop with LISTENER_MODE forced to legacy
+    import os as _os
+    _orig = _os.environ.get("CADENCE_LISTENER", "")
+    _os.environ["CADENCE_LISTENER"] = "legacy"
+    try:
+        run_loop(
+            passive_duration_sec=passive_duration_sec,
+            command_window_sec=command_window_sec,
+            device=device,
+            whisper_model=whisper_model,
+            execute=execute,
+            actor=actor,
+            lane=lane,
+            root=root,
+            sleep_between=sleep_between,
+        )
+    finally:
+        if _orig:
+            _os.environ["CADENCE_LISTENER"] = _orig
+        else:
+            _os.environ.pop("CADENCE_LISTENER", None)
+
+
 def run_loop(
     *,
     passive_duration_sec: float = DEFAULT_PASSIVE_CHUNK_SEC,
@@ -424,15 +621,25 @@ def run_loop(
     verbose: bool = True,
     sleep_between: float = DEFAULT_LOOP_SLEEP_SEC,
 ) -> None:
-    """Continuous two-phase voice loop.
+    """Dispatch to live listener (default) or legacy loop.
 
-    Uses SINGLE sequential capture — one parecord at a time.
-    The overlap_sec parameter is accepted for CLI compatibility but is not
-    used; see module docstring for why concurrent parecord is unsafe on
-    WSL/RDPSource.
-
-    Exits cleanly on KeyboardInterrupt or SIGTERM.
+    Default: live listener (openWakeWord + Silero VAD + faster-whisper).
+    Set CADENCE_LISTENER=legacy to use the old passive Whisper polling path.
     """
+    from runtime.voice.voice_config import LISTENER_MODE
+
+    if LISTENER_MODE == "live":
+        run_live_loop(
+            device=device,
+            command_window_sec=command_window_sec,
+            execute=execute,
+            actor=actor,
+            lane=lane,
+            root=root,
+        )
+        return
+
+    # Legacy path -----------------------------------------------------------
     from runtime.core.models import new_id
     from runtime.voice.mic_capture import probe_best_whisper_model, record_and_transcribe
 

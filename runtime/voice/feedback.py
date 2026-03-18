@@ -84,14 +84,45 @@ def _try_gateway_tts(text: str) -> str:
         return f"failed:{exc}"
 
 
-def speak_response(text: str, *, actor: str = "system", lane: str = "voice", root=None) -> dict:
-    tts_status = _try_gateway_tts(text) if text else "skipped:empty"
+def speak_response(text: str, *, actor: str = "system", lane: str = "voice",
+                   engine: str = "", root=None) -> dict:
+    """Speak text using the configured TTS engine.
+
+    Routes to tts_dispatch (Piper by default, Coqui optional).
+    Falls back to legacy gateway TTS stub if dispatch fails entirely.
+
+    Args:
+        engine: "piper" | "coqui" | "" (use CADENCE_TTS_ENGINE env or default=piper)
+    """
+    tts_status = "skipped:empty"
+    mode = "tts_piper"
+    status = "attempted"
+
+    if text and text.strip():
+        try:
+            from runtime.voice.tts_dispatch import speak as _speak
+            result = _speak(text, engine=engine or None)
+            engine_used = result.get("engine_used", "piper")
+            if result.get("ok"):
+                tts_status = f"ok:{engine_used}"
+                mode = f"tts_{engine_used}"
+                status = "played"
+            else:
+                tts_status = f"dispatch_error:{result.get('error', '?')}"
+                mode = "tts_failed"
+                status = "failed"
+        except Exception as exc:
+            # Last resort: legacy gateway stub
+            tts_status = _try_gateway_tts(text)
+            mode = "gateway_tts" if tts_status.startswith("ok") else "tts_stub"
+            status = "attempted" if tts_status.startswith("ok") else "stubbed"
+
     record = {
         "response_id": new_id("voicersp"),
         "event_type": "speak_response",
         "text": str(text or ""),
-        "status": "attempted" if tts_status.startswith("ok") else "stubbed",
-        "mode": "gateway_tts" if tts_status.startswith("ok") else "tts_placeholder",
+        "status": status,
+        "mode": mode,
         "reason": tts_status,
         "actor": actor,
         "lane": lane,

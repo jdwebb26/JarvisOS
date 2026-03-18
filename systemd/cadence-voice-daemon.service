@@ -1,23 +1,55 @@
 [Unit]
-Description=Cadence Voice Daemon — mic capture + Whisper + intent routing
+Description=Cadence Voice Daemon — openWakeWord + Silero VAD + faster-whisper + Piper TTS
 After=openclaw-gateway.service pulseaudio.service
 Wants=openclaw-gateway.service
 
 [Service]
 Type=simple
-ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/runtime/voice/cadence_daemon.py --execute --device RDPSource --duration 4
+ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 \
+  /home/rollan/.openclaw/workspace/jarvis-v5/runtime/voice/cadence_daemon.py \
+  --execute --device RDPSource
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=15
-# control-group kills all child processes (parecord) on stop/restart
+# control-group kills child processes (parecord, live_listener subprocess) on stop/restart
 KillMode=control-group
 
 Environment=HOME=/home/rollan
 Environment=TMPDIR=/tmp
 Environment=PULSE_SERVER=unix:/mnt/wslg/PulseServer
+
+# ── Listener mode ──────────────────────────────────────────────────────────
+# live   = openWakeWord + Silero VAD + faster-whisper subprocess (default)
+# legacy = passive full-Whisper polling (deprecated fallback)
+Environment=CADENCE_LISTENER=live
+
+# ── Wake word / STT ────────────────────────────────────────────────────────
+Environment=CADENCE_OWW_THRESHOLD=0.5
+Environment=CADENCE_VAD_THRESHOLD=0.5
+Environment=CADENCE_FASTER_WHISPER_MODEL=small.en
+Environment=CADENCE_FASTER_WHISPER_COMPUTE=int8
+Environment=CADENCE_COMMAND_WINDOW_SECONDS=8.0
+
+# ── Legacy STT fallback settings (used if CADENCE_LISTENER=legacy) ─────────
 Environment=CADENCE_WHISPER_MODEL=small.en
 Environment=CADENCE_PASSIVE_CHUNK_SEC=4.0
-Environment=CADENCE_COMMAND_WINDOW_SECONDS=8.0
+
+# ── TTS engine ─────────────────────────────────────────────────────────────
+# piper  = default always-on voice (runs in .venv-voice)
+# coqui  = optional premium voice (runs in .venv-coqui, falls back to piper)
+Environment=CADENCE_TTS_ENGINE=piper
+Environment=CADENCE_PIPER_VOICE=en_US-lessac-medium
+
+# ── Venv paths (auto-detected from repo root; override if needed) ───────────
+# Environment=CADENCE_VENV_VOICE=/home/rollan/.openclaw/workspace/jarvis-v5/.venv-voice
+# Environment=CADENCE_VENV_COQUI=/home/rollan/.openclaw/workspace/jarvis-v5/.venv-coqui
+
+# ── Audio cues ────────────────────────────────────────────────────────────
+Environment=CADENCE_AUDIO_CUES=1
+Environment=CADENCE_WAKE_ACCEPT_CUE=1
+Environment=CADENCE_COMMAND_OPEN_CUE=0
+Environment=CADENCE_ROUTE_OK_CUE=1
+Environment=CADENCE_ERROR_CUE=1
 
 WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
 

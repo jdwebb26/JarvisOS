@@ -357,13 +357,23 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Status**: **SCAFFOLD**
 - **Next step**: Not a current priority
 
-### 7.3 Voice subsystem
-- **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/integrations/voice_gateway.py`
-- **Description**: First-class voice ingress/egress. V1: dictation. V2: conversational. TTS in Jarvis allowlist.
-- **Repo evidence**: `runtime/integrations/voice_gateway.py`, `runtime/core/voice_sessions.py`, `runtime/core/spoken_approval.py`; `tts` in Jarvis/Muse/Qwen tool allowlists; `sherpa-onnx-tts` in Jarvis skill allowlist
-- **Live evidence**: TTS tools present in Jarvis loadout. Voice gateway file exists. Not confirmed as active.
-- **Status**: **PARTIAL** — bounded framework exists, live use not confirmed
-- **Next step**: Test voice channel if hardware is available. TTS skill is in Jarvis allowlist.
+### 7.3 Voice subsystem — Cadence
+- **Source**: `runtime/voice/cadence_daemon.py`, `runtime/voice/live_listener.py`, `runtime/voice/tts_piper.py`, `runtime/voice/tts_coqui_render.py`, `runtime/voice/tts_dispatch.py`, `runtime/voice/voice_config.py`
+- **Description**: Full Cadence voice stack: openWakeWord wake detection → Silero VAD speech gating → faster-whisper transcription → cadence_ingress routing → Piper TTS reply. Coqui TTS in isolated .venv-coqui for optional premium/cloned voice. cadence-voice-daemon.service live as user systemd service.
+- **Repo evidence**: All voice modules present and wired. `systemd/cadence-voice-daemon.service` configured with `CADENCE_LISTENER=live`. `.venv-voice` has openwakeword, faster_whisper, piper, torch, silero_vad. `.venv-coqui` has TTS 0.22.0.
+- **Live evidence (2026-03-17 voice stabilization pass)**:
+  - `cadence-voice-daemon.service` active/running. Main PID spawns `.venv-voice/bin/python live_listener.py`
+  - OWW loaded `hey_jarvis_v0.1`, Silero VAD loaded (torch hub onnx), faster-whisper `small.en` loaded — all confirmed via `--probe`
+  - Transcript proof: `--transcript "Jarvis browse to finance.yahoo.com"` → `phase=routed route_ok=True` ✓
+  - Two-transcript proof: `--transcript "Hey Jarvis" --command-transcript "open the research notes"` → `phase=routed intent=scout_research` ✓
+  - Piper render: `en_US-lessac-medium` → 113KB WAV, exit 0 ✓
+  - Piper dispatch: `tts_dispatch.speak()` → `ok=True engine_used=piper` ✓
+  - Coqui render: `tacotron2-DDC + hifigan` → 204KB WAV, exit 0, RTF 0.70 ✓ (runs in .venv-coqui, isolated)
+  - Real mic: `RDPSource` not present in current PA source list (only `RDPSink.monitor SUSPENDED`). Capture gate fires cleanly (`capture_ok=False`, no crash).
+- **Status**: **LIVE (mic blocked)**
+- **Blocking gap**: `RDPSource` (WSLg Windows mic passthrough) is SUSPENDED / not showing in `pactl list sources short`. This is a WSLg session-level issue — the source appears only when Windows audio input is active in the RDP session. The daemon loop retries every 15s automatically; when RDPSource reconnects it will be picked up without restart.
+- **Known design gap**: No OWW model for "Cadence" / "Hey Cadence". Current OWW fires on `hey_jarvis_v0.1` only. Wake phrases in text-matching path are `("Hey Jarvis", "Jarvis", "Hey Cadence", "Cadence")` but the live OWW path only responds to `hey_jarvis`. Custom OWW model would be needed for "Cadence" wake phrase.
+- **Next step**: Confirm RDPSource reconnects (mic appears) with an active Windows audio session, then run a live end-to-end wake+command proof.
 
 ### 7.4 TradingView adapter
 - **Source**: `runtime/integrations/tradingview_adapter.py`
@@ -622,3 +632,44 @@ Capture one unambiguous HAL ACP production-path proof with either:
 ### Remaining gap
 - All Discord webhook URLs in secrets.env are HTTP 403 expired. User must recreate webhooks in Discord server and set `JARVIS_DISCORD_WEBHOOK_*` env vars.
 - Until webhooks are set: entries accumulate in discord_outbox/ as skipped_no_webhook.
+
+---
+
+## Cadence voice stack — 2026-03-17 (third pass: OWW + VAD + faster-whisper + Piper)
+
+### What changed
+
+**Architecture replaced**: passive full-Whisper polling → openWakeWord + Silero VAD + faster-whisper subprocess. Legacy path preserved as fallback (set `CADENCE_LISTENER=legacy`).
+
+**New/modified files:**
+- `runtime/voice/live_listener.py` — subprocess that runs in `.venv-voice`: streams raw PCM from parecord → feeds 80ms frames to OWW → on wake fires VAD command window → assembles speech frames → faster-whisper transcription → emits JSON events to stdout.
+- `runtime/voice/cadence_daemon.py` — updated `run_live_loop()` to spawn `live_listener.py`, consume its JSON events, play cues, route transcripts. Legacy `run_loop()` and `run_legacy_loop()` preserved for fallback. Fixed: added `"Hey Jarvis"` to `WAKE_PHRASES` tuple (was missing; OWW fires on hey_jarvis).
+- `runtime/voice/voice_config.py` — env-driven config for LISTENER_MODE, VENV_VOICE/VENV_COQUI paths, Piper/Coqui model selection, OWW/VAD thresholds.
+- `runtime/voice/tts_dispatch.py` — TTS dispatcher: piper (default) or coqui, with piper fallback if coqui fails.
+- `runtime/voice/tts_piper.py` — Piper integration: renders via `.venv-voice` subprocess → paplay.
+- `runtime/voice/tts_coqui_render.py` — Coqui render script: runs in `.venv-coqui` (Python 3.11), isolated from main runtime.
+- `runtime/voice/feedback.py` — `speak_response()` routes through `tts_dispatch.speak()`.
+- `systemd/cadence-voice-daemon.service` — updated: `CADENCE_LISTENER=live`, OWW/VAD thresholds, faster-whisper model, Piper voice, `KillMode=control-group`.
+- `.venv-voice` — Python 3.12 venv with: openwakeword, faster_whisper, piper-tts, torch (cpu), silero_vad, numpy.
+- `.venv-coqui` — Python 3.11 venv with: TTS 0.22.0 (Coqui), tacotron2-DDC + hifigan models cached.
+
+### Live proofs (2026-03-17)
+
+| Proof | Result |
+|---|---|
+| `live_listener.py --probe` | parecord OK, OWW OK (hey_jarvis_v0.1), torch OK (2.10.0+cpu), silero_vad OK, faster_whisper OK |
+| Transcript: `"Jarvis browse to finance.yahoo.com"` | `phase=routed route_ok=True command="browse to finance yahoo com"` |
+| Two-transcript: `"Hey Jarvis"` + `"open the research notes"` | `phase=routed intent=scout_research` |
+| Piper probe | `status=ok voice=en_US-lessac-medium` |
+| Piper render | 113KB WAV, exit 0 |
+| `tts_dispatch.speak()` | `ok=True engine_used=piper` |
+| Coqui probe | `status=ok version=0.22.0` |
+| Coqui render | 204KB WAV, exit 0, RTF 0.70 |
+| Real mic (RDPSink.monitor) | `capture_ok=False` clean gate — no crash, no corrupted capture |
+
+### Remaining blocks to full-time voice use
+
+1. **RDPSource unavailable**: `pactl list sources short` shows only `RDPSink.monitor SUSPENDED` — Windows mic passthrough not active. Daemon retries every 15s. Fix: ensure Windows mic is active and RDP session has audio input enabled. Source appears automatically; no restart needed.
+2. **No "Cadence" OWW model**: OWW fires on `hey_jarvis_v0.1` only. "Hey Cadence" wake phrase exists in text-match list for legacy path but has no ML model. Would need custom openWakeWord model trained on "Cadence". Low priority — "Hey Jarvis" works.
+3. **Coqui startup latency**: ~3s first-inference (model load). Piper is <200ms. Coqui is `optional` and not on the live path (CADENCE_TTS_ENGINE=piper).
+4. **Intent routing**: `browse` commands route to `unclassified` (no browser intent pattern). Scout/research works. Browser routing patterns need expansion in `cadence_ingress`.
