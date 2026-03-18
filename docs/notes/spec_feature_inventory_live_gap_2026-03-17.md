@@ -81,9 +81,9 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Description**: Long-running Claude Code subprocess handles HAL turns. HAL is first designated ACP candidate.
 - **Repo evidence**: `AGENT_RUNTIME_TYPES["hal"] = "acp_ready"` in `agent_roster.py`; `openclaw.json` has `acp.enabled=true, backend=acpx, defaultAgent=hal, allowedAgents=["hal"]`
 - **Live evidence (2026-03-17)**: `systemctl --user status openclaw-gateway.service` shows active child processes: `openclaw-acp` (multiple) + `acpx --session agent:hal:acp:<uuid> --file -`. Gateway is routing HAL turns through acpx. Direct ACP client proof also confirmed (`ACP_DIRECT_OK`).
-- **Live evidence (2026-03-18)**: Per-turn ACP telemetry added. Journal now shows `[acp:hal] context_build session=agent:hal:acp:<uuid> path=acpx model=... provider=...` for every HAL context build call. State file `state/acp_telemetry/hal_acp.jsonl` accumulates durable per-turn records. path=acpx for ACP task sessions, path=embedded for main Discord session.
-- **Status**: **LIVE** — ACP dispatch proven + per-turn telemetry live in gateway journal
-- **Next step**: N/A
+- **Live evidence (2026-03-17 re-evaluation)**: `openclaw-acp` subprocess spawns and TCP-connects to gateway (ESTABLISHED). WS upgrade handshake times out (~23-45s). `acpx hal prompt` exits 124. The `sessions_spawn → acpx prompt → openclaw-acp → gateway WS` chain does not complete. `state/acp_telemetry/hal_acp.jsonl` exists but contains synthetic proof entries (path=acpx, session_key=proof-uuid-0001), not real production sessions. Production delegation uses `sessions_send` embedded path (no ACP subprocess needed).
+- **Status**: **PRESENT BUT NOT LIVE** — acpx spawns + TCP connects; WS handshake times out. Exact blocker: likely `OPENCLAW_GATEWAY_TOKEN` not forwarded through acpx subprocess env, or protocol version mismatch.
+- **Next step**: Trace whether token is forwarded in `acpx → openclaw-acp` subprocess env. The production path (`sessions_send` embedded) is working and does not need ACP to function.
 
 ---
 
@@ -302,9 +302,10 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Source**: `docs/agent_roster.md`, `runtime/core/decision_router.py`
 - **Description**: HAL builds → Archimedes technical review → Anton supreme/high-stakes review. Wired via `decision_router.py` which posts completed work to reviewer channels.
 - **Repo evidence**: `REVIEW_HIERARCHY`, `DELEGATION_WIRING` in `agent_roster.py`; `decision_router.py`
-- **Live evidence (2026-03-17)**: `route_task_for_decision_explainable()` now writes `routing_decision` episodic memory entries when tasks are dispatched to review/approval. Proven: `code` task → `archimedes` review entry written correctly. Routing policy (code→archimedes, deploy→anton) is now durably captured in memory across sessions.
-- **Status**: **PARTIAL** — routing logic and memory live; no confirmed end-to-end Discord-triggered HAL→Archimedes cycle yet
-- **Next step**: Trigger a real HAL coding task from Discord, observe routing to Archimedes, confirm memory entry appears.
+- **Live evidence (2026-03-17)**: `route_task_for_decision_explainable()` writes `routing_decision` episodic memory entries. Routing policy (code→archimedes, deploy→anton) durably captured in memory.
+- **Live evidence (2026-03-18)**: End-to-end sessions_send delegation chain proven live. Gateway logs confirm: `[agent:nested] session=agent:hal:main run=54fd99b2 reply=HAL_FROM_JARVIS_OK` → `session=agent:archimedes:main run=6fdf128c reply=ARCHIMEDES_REVIEW_OK` → `session=agent:anton:main run=26ca9afa reply=ANTON_ESCALATION_OK`. Path: sessions_send embedded (not ACP). Required config gates: `tools.sessions.visibility=all` + `tools.agentToAgent.enabled=true` in `~/.openclaw/openclaw.json` (checked by preflight; see section 1.10).
+- **Status**: **WORKING** — end-to-end Jarvis→HAL→Archimedes→Anton delegation confirmed live via sessions_send embedded path.
+- **Next step**: Exercise from a real Discord-triggered HAL task to complete the production loop.
 
 ### 6.2 Approval store / resumable approvals
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/core/approval_store.py`
@@ -530,13 +531,40 @@ Merged branch `audit/parallel-runs-2026-03-17` into `main` and pushed to `origin
 - **Observed response**: `HAL_LIVE_OK`
 
 ### HAL ACP validation
-- **Status**: PARTIAL / DIRECT ACP PROOF ONLY
-- **Direct ACP proof**:
-  - wrapper server script launched `openclaw acp --session agent:hal:main`
-  - `openclaw acp client` returned `ACP_DIRECT_OK`
-  - ACP client showed `[end_turn]`
-- **Interpretation**: ACP path is reachable and completes a direct session
-- **Remaining gap**: gateway journal did not emit strong ACP/acpx session evidence for the direct proof, and Discord-initiated HAL ACP dispatch is still not conclusively evidenced from logs
+- **Status**: PRESENT BUT NOT LIVE
+- `openclaw-acp` subprocess spawns and TCP-connects to gateway. WS handshake times out. `acpx hal prompt` exits 124. `state/acp_telemetry/hal_acp.jsonl` contains synthetic test entries, not real production sessions.
+- Production delegation uses `sessions_send` embedded path — no ACP subprocess needed.
+- **Blocker**: `OPENCLAW_GATEWAY_TOKEN` likely not forwarded through `acpx → openclaw-acp` subprocess env. Check `acpx` source for env passthrough.
+
+### Cross-agent delegation validation (sessions_send path)
+- **Status**: WORKING
+- Proven 2026-03-18 via gateway logs:
+  - Jarvis→HAL: `runId=54fd99b2 session=agent:hal:main reply=HAL_FROM_JARVIS_OK`
+  - HAL→Archimedes: `runId=6fdf128c session=agent:archimedes:main reply=ARCHIMEDES_REVIEW_OK`
+  - Archimedes→Anton: `runId=26ca9afa session=agent:anton:main reply=ANTON_ESCALATION_OK`
+- **Required config** (both must be in `~/.openclaw/openclaw.json`, checked by preflight since 2026-03-18):
+  - `tools.sessions.visibility = "all"`
+  - `tools.agentToAgent.enabled = true`
+- **Model constraint**: sessions_send nested runs time out if LM Studio must cold-swap models mid-chain. Warm the target model, or use same model for caller+callee during proof.
+
+### Shadowbroker sidecar validation
+- **Status**: PRESENT BUT NOT LIVE
+- Adapter: `runtime/integrations/shadowbroker_adapter.py` — fully implemented. Healthcheck, snapshot fetch, event normalization, evidence bundle, brief export all wired.
+- **Missing pieces**:
+  - `JARVIS_SHADOWBROKER_BASE_URL` — **env/config missing**: not set in `~/.openclaw/.env`
+  - Shadowbroker service (`GET /healthz`, `GET /snapshot`) — **external service missing**: not deployed anywhere
+  - `JARVIS_SHADOWBROKER_API_KEY` — **credentials missing** if the service requires auth
+- **Shortest path to live**: Deploy any HTTP service that serves `GET /healthz` (200) and `GET /snapshot` (JSON with `{"events": [...]}` list). Set `JARVIS_SHADOWBROKER_BASE_URL=<url>` in `~/.openclaw/.env`. Validate with `python3 scripts/validate.py`.
+- **Nothing to fix in code**: adapter is complete. Only external service + env required.
+
+### Current model assignments (verified 2026-03-18)
+| Agent | Provider | Model | Status |
+|-------|----------|-------|--------|
+| jarvis | lmstudio | qwen/qwen3.5-9b | production (9B n_ctx tight for system prompt; use 35B fallback for tool-heavy tasks) |
+| hal | lmstudio | qwen/qwen3-coder-30b | production |
+| archimedes | lmstudio | qwen/qwen3-coder-next | production |
+| anton | lmstudio | qwen3.5-122b-a10b | production |
+| kitt | nvidia | moonshotai/kimi-k2.5 | production |
 
 ### Inventory of merged work now on main
 - context engine session turn ceiling + memory flush

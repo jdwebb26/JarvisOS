@@ -1237,6 +1237,40 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
             str(_acpx_cfg),
         )
 
+    # Cross-agent messaging gates — required for sessions_send delegation chain to work.
+    # Both must be set in ~/.openclaw/openclaw.json (not repo-owned; no auto-fix possible).
+    # Proven required: 2026-03-17 orchestration proof (Jarvis→HAL→Archimedes→Anton via sessions_send).
+    _openclaw_cfg_path = Path.home() / ".openclaw" / "openclaw.json"
+    try:
+        _openclaw_cfg = json.loads(_openclaw_cfg_path.read_text(encoding="utf-8"))
+        _tools_cfg = _openclaw_cfg.get("tools", {})
+        _sessions_visibility = _tools_cfg.get("sessions", {}).get("visibility", "")
+        _a2a_enabled = _tools_cfg.get("agentToAgent", {}).get("enabled", False)
+        if _sessions_visibility == "all":
+            _add(findings, "pass", "cross_agent_visibility", "tools.sessions.visibility=all (cross-agent sessions_send allowed).")
+        else:
+            _add(
+                findings,
+                "warn",
+                "cross_agent_visibility",
+                f"tools.sessions.visibility={_sessions_visibility!r} — cross-agent sessions_send will be forbidden.",
+                'Set tools.sessions.visibility="all" in ~/.openclaw/openclaw.json.',
+                str(_openclaw_cfg_path),
+            )
+        if _a2a_enabled:
+            _add(findings, "pass", "cross_agent_a2a", "tools.agentToAgent.enabled=true (agent-to-agent messaging allowed).")
+        else:
+            _add(
+                findings,
+                "warn",
+                "cross_agent_a2a",
+                "tools.agentToAgent.enabled is not true — sessions_send between agents will be forbidden.",
+                'Set tools.agentToAgent.enabled=true in ~/.openclaw/openclaw.json.',
+                str(_openclaw_cfg_path),
+            )
+    except Exception:
+        _add(findings, "warn", "cross_agent_visibility", "Could not read ~/.openclaw/openclaw.json to check cross-agent messaging gates.")
+
     pass_count = sum(1 for item in findings if item.status == "pass")
     warn_count = sum(1 for item in findings if item.status == "warn")
     fail_count = sum(1 for item in findings if item.status == "fail")
