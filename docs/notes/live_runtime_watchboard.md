@@ -258,12 +258,14 @@
   - Validate: 395/395 pass ✅
 - **Status**: ✅ LIVE
 
-### R. Runtime provider profiles (2026-03-18)
+### R. Runtime provider profiles + realized model visibility (2026-03-18)
 - **Files**:
-  - `runtime/core/runtime_profiles.py` — profile definitions, get/set/show, CLI
+  - `runtime/core/runtime_profiles.py` — profile definitions, get/set/show, realized-model status, CLI
   - `runtime/core/routing.py` — `load_runtime_routing_policy()` now applies active profile overrides
   - `scripts/sync_routing_policy_to_openclaw.py` — profile-aware sync (reads active profile, accepts `--profile` flag)
+  - `scripts/source_owned_context_engine_cli.py` — generalized per-agent turn telemetry (was HAL-only)
   - `state/active_profile.json` — persisted active profile state
+  - `state/acp_telemetry/<agent>.jsonl` — per-agent turn telemetry with profile name
 - **Profiles available**:
   - `local_only` — All Qwen on LM Studio (default, safe)
   - `hybrid` — Jarvis/Scout/Hermes on Kimi 2.5, coders stay local
@@ -273,16 +275,19 @@
 - **Usage**:
   - `python3 -m runtime.core.runtime_profiles list` — show available profiles
   - `python3 -m runtime.core.runtime_profiles set hybrid` — switch profile
-  - `python3 -m runtime.core.runtime_profiles show` — show realized routing per agent
+  - `python3 -m runtime.core.runtime_profiles show` — show realized routing + last model per agent
   - `python3 scripts/sync_routing_policy_to_openclaw.py` — sync active profile to gateway
+  - `systemctl --user restart openclaw-gateway.service` — gateway must restart to pick up new config
 - **Proven live** (2026-03-18):
-  - Set `hybrid` → `resolve_runtime_route_policy(agent_id="jarvis")` returns `preferred_provider=nvidia, preferred_model=moonshotai/kimi-k2.5` ✅
-  - Sync applied → `openclaw.json` Jarvis primary changed to `nvidia/moonshotai/kimi-k2.5` ✅
-  - Real Kimi 2.5 API call: `model=moonshotai/kimi-k2.5`, content="I am live and ready to assist." ✅
-  - Switch back to `local_only` → sync restored Jarvis to `lmstudio/qwen3.5-35b-a3b` ✅
-  - Tests: 16/16 profile tests pass, 395/395 validate pass ✅
-- **Before**: All agents hardcoded to local Qwen. No way to switch providers without editing JSON files.
-- **After**: Explicit named profiles. `set hybrid` → Jarvis runs on Kimi 2.5. `set local_only` → safe default restored. Active profile visible in `state/active_profile.json` and `show` output.
+  - Set `hybrid` → sync → gateway restart → `openclaw agent --agent jarvis --json -m "..."` ✅
+  - **Real Jarvis turn on Kimi 2.5**: `agentMeta.provider=nvidia, agentMeta.model=moonshotai/kimi-k2.5` ✅
+  - Response: "I am live. I am running on Kimi K2.5 via NVIDIA/Moonshot AI." (8341ms, 11462 tokens) ✅
+  - Session file `model-snapshot`: `{provider: "nvidia", modelId: "moonshotai/kimi-k2.5"}` ✅
+  - `show` command: Jarvis `[ok]` when profile matches realized, `[stale]` when mismatched ✅
+  - Switch back to `local_only` → sync → gateway restart → safe default restored ✅
+  - Tests: 33/33 pass (16 profile + 17 context engine), 395/395 validate pass ✅
+- **Before**: No way to see what model actually ran. No way to switch providers without editing JSON. HAL-only telemetry.
+- **After**: `show` displays per-agent profile, expected model, last realized model, and match status. All agents emit turn telemetry with profile name. Gateway session files contain `model-snapshot` records.
 - **Status**: ✅ LIVE
 
 ---

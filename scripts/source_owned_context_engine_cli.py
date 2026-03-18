@@ -23,7 +23,7 @@ def _pick(payload: dict, *keys: str, default=None):
     return default
 
 
-def _emit_hal_acp_telemetry(
+def _emit_turn_telemetry(
     *,
     agent_id: str,
     session_key: str,
@@ -31,24 +31,20 @@ def _emit_hal_acp_telemetry(
     provider_id: str,
     root: Path,
 ) -> None:
-    """Emit per-turn ACP telemetry for HAL.
+    """Emit per-turn telemetry for any agent's context build.
 
     Writes to two sinks:
-    1. state/acp_telemetry/hal_acp.jsonl — durable, operator-queryable
+    1. state/acp_telemetry/<agent>.jsonl — durable, operator-queryable
     2. systemd journal via systemd-cat — appears in journalctl under the
        caller's cgroup; when invoked by the gateway subprocess, cgroup is
        openclaw-gateway.service so the entry appears in
        `journalctl --user -u openclaw-gateway.service`.
 
-    Log format: [acp:hal] context_build session=<key> path=<acpx|embedded>
-                model=<model> provider=<provider> ts=<iso>
-
-    path=acpx     → session_key contains ":acp:" (standalone ACP task session)
-    path=embedded → HAL's main Discord session (agent:hal:main), uses
-                    embedded model call for its own inference
+    Log format: [turn:<agent>] context_build session=<key> path=<acpx|embedded>
+                model=<model> provider=<provider> profile=<profile> ts=<iso>
     """
     normalized = str(agent_id or "").strip().lower()
-    if normalized != "hal":
+    if not normalized:
         return
 
     session = str(session_key or "").strip()
@@ -57,19 +53,31 @@ def _emit_hal_acp_telemetry(
     provider = str(provider_id or "").strip() or "unknown"
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
+    # Read active profile for visibility
+    profile = "unknown"
+    try:
+        profile_path = root / "state" / "active_profile.json"
+        if profile_path.exists():
+            profile = json.loads(profile_path.read_text(encoding="utf-8")).get("profile", "local_only")
+        else:
+            profile = "local_only"
+    except Exception:
+        pass
+
     log_line = (
-        f"[acp:hal] context_build"
+        f"[turn:{normalized}] context_build"
         f" session={session}"
         f" path={path}"
         f" model={model}"
         f" provider={provider}"
+        f" profile={profile}"
         f" ts={ts}"
     )
 
     # --- journal via systemd-cat (inherits cgroup from gateway subprocess) ---
     try:
         subprocess.run(
-            ["systemd-cat", "-t", "openclaw-acp", "-p", "info"],
+            ["systemd-cat", "-t", "openclaw-turn", "-p", "info"],
             input=log_line.encode(),
             timeout=2,
             check=False,
@@ -77,7 +85,7 @@ def _emit_hal_acp_telemetry(
     except Exception:
         pass
 
-    # --- durable state file ---
+    # --- durable state file (per-agent JSONL) ---
     try:
         tel_dir = root / "state" / "acp_telemetry"
         tel_dir.mkdir(parents=True, exist_ok=True)
@@ -88,9 +96,15 @@ def _emit_hal_acp_telemetry(
             "path": path,
             "model": model,
             "provider": provider,
+            "profile": profile,
         }
-        with open(tel_dir / "hal_acp.jsonl", "a", encoding="utf-8") as fh:
+        # Write to per-agent file
+        with open(tel_dir / f"{normalized}.jsonl", "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
+        # Also maintain the legacy hal_acp.jsonl for backward compatibility
+        if normalized == "hal":
+            with open(tel_dir / "hal_acp.jsonl", "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry) + "\n")
     except Exception:
         pass
 
@@ -134,7 +148,7 @@ def main() -> int:
     if hygiene_report:
         result["sessionHygiene"] = hygiene_report
 
-    _emit_hal_acp_telemetry(
+    _emit_turn_telemetry(
         agent_id=agent_id,
         session_key=session_key,
         model_id=model_id,

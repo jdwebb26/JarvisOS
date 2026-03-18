@@ -248,6 +248,40 @@ def apply_profile_overrides(
     return merged
 
 
+def _read_last_model_snapshot(
+    agent_id: str,
+    openclaw_root: Optional[Path] = None,
+) -> Optional[dict[str, Any]]:
+    """Read the most recent model-snapshot from an agent's session files."""
+    oc_root = Path(openclaw_root or Path.home() / ".openclaw")
+    sessions_dir = oc_root / "agents" / agent_id / "sessions"
+    if not sessions_dir.exists():
+        return None
+
+    # Find most recent .jsonl session file
+    jsonl_files = sorted(sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for session_file in jsonl_files[:3]:  # Check up to 3 most recent
+        try:
+            # Read from end for efficiency
+            lines = session_file.read_text(encoding="utf-8").splitlines()
+            for line in reversed(lines[-50:]):  # Check last 50 entries
+                try:
+                    entry = json.loads(line)
+                    if entry.get("type") == "model-snapshot" or entry.get("customType") == "model-snapshot":
+                        data = entry.get("data", entry)
+                        return {
+                            "provider": data.get("provider", ""),
+                            "model": data.get("modelId", data.get("model", "")),
+                            "timestamp": data.get("timestamp", ""),
+                            "session_file": session_file.name,
+                        }
+                except (json.JSONDecodeError, KeyError):
+                    continue
+        except OSError:
+            continue
+    return None
+
+
 def show_realized_routing(
     root: Optional[Path] = None,
 ) -> dict[str, Any]:
@@ -266,14 +300,27 @@ def show_realized_routing(
     base_agent_policies = policy.get("agent_policies", {})
     effective = apply_profile_overrides(base_agent_policies, profile_name)
 
+    # Determine openclaw root for session reads
+    openclaw_root = base.parent.parent if base.name == "jarvis-v5" else None
+
     agents_summary = {}
     for agent_id, ap in sorted(effective.items()):
-        agents_summary[agent_id] = {
+        agent_info: dict[str, Any] = {
             "provider": ap.get("preferred_provider", "qwen"),
             "model": ap.get("preferred_model", "?"),
             "fallbacks": ap.get("allowed_fallbacks", []),
             "families": ap.get("allowed_families", []),
         }
+        # Try to read last realized model from session evidence
+        snapshot = _read_last_model_snapshot(agent_id, openclaw_root)
+        if snapshot:
+            agent_info["last_realized"] = {
+                "provider": snapshot["provider"],
+                "model": snapshot["model"],
+            }
+            if snapshot.get("timestamp"):
+                agent_info["last_realized"]["timestamp"] = snapshot["timestamp"]
+        agents_summary[agent_id] = agent_info
 
     return {
         "active_profile": profile_name,
@@ -282,6 +329,54 @@ def show_realized_routing(
         "set_by": state.get("set_by", ""),
         "agents": agents_summary,
     }
+
+
+# ---------------------------------------------------------------------------
+# Model name matching (policy names vs gateway refs)
+# ---------------------------------------------------------------------------
+
+# Maps policy model names to patterns found in gateway model refs
+_MODEL_MATCH_PATTERNS: dict[str, list[str]] = {
+    "Qwen3.5-9B": ["qwen3.5-9b", "qwen/qwen3.5-9b"],
+    "Qwen3.5-35B": ["qwen3.5-35b", "qwen3.5-35b-a3b"],
+    "Qwen3.5-122B": ["qwen3.5-122b", "qwen3.5-122b-a10b"],
+    "Qwen3-Coder-Next": ["qwen3-coder-next"],
+    "Qwen3-Coder-30B": ["qwen3-coder-30b"],
+    "moonshotai/kimi-k2.5": ["moonshotai/kimi-k2.5", "kimi-k2.5"],
+}
+
+# Maps policy provider names to gateway provider names
+_PROVIDER_MATCH: dict[str, list[str]] = {
+    "qwen": ["lmstudio", "qwen"],
+    "nvidia": ["nvidia"],
+    "local": ["local"],
+}
+
+
+def _match_provider_model(
+    policy_provider: str,
+    policy_model: str,
+    realized_provider: str,
+    realized_model: str,
+) -> str:
+    """Compare policy provider/model against realized values, return 'ok' or 'stale'."""
+    # Provider match
+    prov_ok = False
+    for pattern in _PROVIDER_MATCH.get(policy_provider, [policy_provider]):
+        if pattern.lower() in realized_provider.lower():
+            prov_ok = True
+            break
+
+    # Model match
+    model_ok = False
+    for pattern in _MODEL_MATCH_PATTERNS.get(policy_model, [policy_model.lower()]):
+        if pattern.lower() in realized_model.lower():
+            model_ok = True
+            break
+
+    if prov_ok and model_ok:
+        return "ok"
+    return "stale"
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +406,25 @@ def main() -> int:
 
     if args.cmd == "show":
         result = show_realized_routing()
-        print(json.dumps(result, indent=2))
+        # Pretty table output
+        print(f"Profile: {result['active_profile']}  ({result['description']})")
+        print(f"Set at:  {result['set_at']}  by: {result['set_by']}")
+        print()
+        print(f"  {'Agent':<12} {'Provider':<10} {'Model':<28} {'Last Realized'}")
+        print(f"  {'─'*12} {'─'*10} {'─'*28} {'─'*30}")
+        for agent_id, info in result["agents"].items():
+            realized = info.get("last_realized", {})
+            if realized:
+                r_prov = realized.get("provider", "")
+                r_model = realized.get("model", "")
+                match = _match_provider_model(info["provider"], info["model"], r_prov, r_model)
+                last = f"{r_prov}/{r_model} [{match}]"
+            else:
+                last = "(no turn yet)"
+            print(f"  {agent_id:<12} {info['provider']:<10} {info['model']:<28} {last}")
+        if "--json" in sys.argv:
+            print()
+            print(json.dumps(result, indent=2))
         return 0
 
     if args.cmd == "set":
