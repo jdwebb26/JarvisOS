@@ -1212,6 +1212,31 @@ def run_validate(root: Path, *, strict: bool = False) -> dict:
     else:
         _add(findings, "warn", "operator", "Operator handoff pack does not exist yet.", "Run smoke or `python3 scripts/operator_handoff_pack.py` before operator handoff.")
 
+    # acpx HAL agent mapping — required for gateway sessions_spawn to reach HAL via ACP.
+    # Root cause: spawnAcpDirect passes agent="hal" but acpx AGENT_REGISTRY only knows "openclaw".
+    # Fix: bash scripts/provision_acpx_hal.sh
+    _acpx_cfg = Path.home() / ".acpx" / "config.json"
+    _acpx_ok = False
+    if _acpx_cfg.exists():
+        try:
+            _acpx_data = json.loads(_acpx_cfg.read_text(encoding="utf-8"))
+            _hal_entry = _acpx_data.get("agents", {}).get("hal", {})
+            _hal_cmd = _hal_entry.get("command", "") if isinstance(_hal_entry, dict) else _hal_entry
+            _acpx_ok = _hal_cmd == "openclaw acp"
+        except Exception:
+            pass
+    if _acpx_ok:
+        _add(findings, "pass", "acp_runtime", "acpx HAL agent mapping is present (hal -> 'openclaw acp').")
+    else:
+        _add(
+            findings,
+            "warn",
+            "acp_runtime",
+            "acpx HAL agent mapping is missing from ~/.acpx/config.json.",
+            "Run `bash scripts/provision_acpx_hal.sh` to register hal -> 'openclaw acp'.",
+            str(_acpx_cfg),
+        )
+
     pass_count = sum(1 for item in findings if item.status == "pass")
     warn_count = sum(1 for item in findings if item.status == "warn")
     fail_count = sum(1 for item in findings if item.status == "fail")
