@@ -81,8 +81,9 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Description**: Long-running Claude Code subprocess handles HAL turns. HAL is first designated ACP candidate.
 - **Repo evidence**: `AGENT_RUNTIME_TYPES["hal"] = "acp_ready"` in `agent_roster.py`; `openclaw.json` has `acp.enabled=true, backend=acpx, defaultAgent=hal, allowedAgents=["hal"]`
 - **Live evidence (2026-03-17)**: `systemctl --user status openclaw-gateway.service` shows active child processes: `openclaw-acp` (multiple) + `acpx --session agent:hal:acp:<uuid> --file -`. Gateway is routing HAL turns through acpx. Direct ACP client proof also confirmed (`ACP_DIRECT_OK`).
-- **Status**: **LIVE** — ACP dispatch via gateway confirmed by process evidence
-- **Next step**: Add per-turn ACP telemetry to gateway journal for operator visibility (cosmetic improvement).
+- **Live evidence (2026-03-18)**: Per-turn ACP telemetry added. Journal now shows `[acp:hal] context_build session=agent:hal:acp:<uuid> path=acpx model=... provider=...` for every HAL context build call. State file `state/acp_telemetry/hal_acp.jsonl` accumulates durable per-turn records. path=acpx for ACP task sessions, path=embedded for main Discord session.
+- **Status**: **LIVE** — ACP dispatch proven + per-turn telemetry live in gateway journal
+- **Next step**: N/A
 
 ---
 

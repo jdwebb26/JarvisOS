@@ -110,7 +110,26 @@
   - `acpx --session agent:hal:acp:<uuid> --file -` (live acpx session)
 - **Gateway**: `acp.enabled=true`, `backend=acpx`, `allowedAgents=["hal"]` in `openclaw.json`
 - **Status**: ✅ LIVE (gateway dispatches HAL turns through acpx; multiple concurrent ACP sessions confirmed)
-- **Remaining**: No explicit per-turn ACP telemetry in gateway journal (cosmetic, not a blocker)
+
+### N. HAL ACP per-turn journal telemetry (2026-03-18)
+- **File**: `scripts/source_owned_context_engine_cli.py` (modified)
+- **Seam**: `_emit_hal_acp_telemetry()` called in `main()` after `build_context_packet()` for every `agent_id=hal` turn
+- **Two sinks**:
+  1. `state/acp_telemetry/hal_acp.jsonl` — durable per-turn records, operator-queryable
+  2. `systemd-cat -t openclaw-acp -p info` — writes to journal; inherits gateway cgroup so appears in `journalctl --user -u openclaw-gateway.service`
+- **Path detection**:
+  - `path=acpx` when `":acp:"` in session_key (standalone ACP task session: `agent:hal:acp:<uuid>`)
+  - `path=embedded` for HAL's main Discord session (`agent:hal:main`, uses embedded model calls)
+- **Log format**: `[acp:hal] context_build session=<key> path=<acpx|embedded> model=<model> provider=<provider> ts=<iso>`
+- **Guard**: fires only for `agent_id == "hal"` — all other agents pass through unchanged
+- **Proven live** (2026-03-18):
+  - ACP session: `[acp:hal] context_build session=agent:hal:acp:proof-from-gw-cgroup path=acpx model=qwen/qwen3-coder-30b provider=lmstudio` in `journalctl --user -u openclaw-gateway.service` ✅
+  - Main session: `path=embedded` recorded correctly ✅
+  - Non-HAL (jarvis) filtered: state line count unchanged ✅
+  - 17/17 context engine tests pass; 393/393 validate pass ✅
+- **Before**: `[agent:nested] session=agent:hal:main run=<uuid>` only — no path/model/ACP label
+- **After**: `[acp:hal] context_build session=agent:hal:acp:<uuid> path=acpx model=qwen/qwen3-coder-30b provider=lmstudio` appears BEFORE the nested session reply line
+- **Status**: ✅ LIVE
 
 ### M. Routing decision memory write point (2026-03-17)
 - **File**: `runtime/core/decision_router.py`
