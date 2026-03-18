@@ -35,7 +35,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 2.5 | Scout recon | v5.1 §4 | Web search via SearXNG | Agent config. SearXNG integration via `searxng_client.py`. | Probe: 10 results for NQ E-mini query. Status file shows live actions. | **LIVE** | Probe results | — |
 | 2.6 | Kitt quant specialist | v5.1 §4 | Quant research with Kimi 2.5 | `kitt_quant` in `BACKEND_ADAPTERS`. `kitt_quant_workflow.py` wires SearXNG → Bowser → Kimi → artifact. | Dispatch proven: brief artifact + backend result + agent status + Discord event. | **LIVE** | f026883 | — |
 | 2.7 | Bowser browser bridge | v5.1 §26 | Bounded browser automation via PinchTab | `bowser_adapter.py`, PinchTab at `127.0.0.1:9867` | Navigate, snapshot, screenshot, DOM text extraction (4000 char). Status file shows live actions. | **LIVE** | Watchboard §F | — |
-| 2.8 | Ralph task runner | v5.1 §20 | Task runner + memory consolidation | `runtime/ralph/agent_loop.py`, `scripts/run_ralph_v1.py` | v1 bounded loop: claim → HAL dispatch → review → complete. Status: `waiting`. End-to-end proven. | **PARTIAL** | 011f733 | Not fully autonomous. No cron. No memory consolidation runs. |
+| 2.8 | Ralph task runner | v5.1 §20 | Task runner + memory consolidation | `runtime/ralph/agent_loop.py`, `scripts/run_ralph_v1.py` | Full operator-usable loop: claim → HAL → auto-review → approval → completion. CLI: `--status`, `--approve`, `--reject`, `--retry`. Rejected reviews fail cleanly. Stale recovery. Idle clears error state. E2E proven with real task. | **LIVE** | This commit | No cron timer. No memory consolidation. |
 | 2.9 | Hermes research daemon | v5.1 §21 | Long-form research, source gathering, synthesis | `hermes_adapter.py` (43KB). Contract hardened. | Adapter importable. Lane activation: `not_run`. External daemon not running. | **BLOCKED** | — | External Hermes service not configured. |
 | 2.10 | Muse creative | v5.1 §4 | Creative specialist | Agent config in `openclaw.json`. Bootstrap files present. Webhook live. | Probe response confirmed (22.7s). No Discord channel binding. | **PARTIAL** | Probe results | No Discord channel binding in `openclaw.json` bindings. |
 | 2.11 | Cadence voice | v5.1 §25 | Wake detection → VAD → STT → routing → TTS | Full voice stack in `runtime/voice/`. Daemon active. OWW + Silero + faster-whisper + Piper. | Daemon running. Transcript routing proven. TTS proven. Mic blocked: RDPSource unavailable in WSL2. | **PARTIAL** | Watchboard §7.3 | Mic blocked. No live end-to-end wake+command proof. |
@@ -143,12 +143,12 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 
 ## Summary
 
-### Fully Verified (LIVE) — 38 features
+### Fully Verified (LIVE) — 39 features
 
 | Area | Count | Features |
 |------|-------|----------|
 | Control plane | 8 | Discord bindings, context engine, budget guard, tool filtering, allowlists, lane routing, no-silent-switch, capability matrix |
-| Agents | 7 | Jarvis, HAL+ACP, Archimedes, Anton, Scout, Kitt, Bowser |
+| Agents | 8 | Jarvis, HAL+ACP, Archimedes, Anton, Scout, Kitt, Bowser, Ralph |
 | Task lifecycle | 5 | Explicit tasks, lifecycle events, backend dispatch, resumable approvals, review hierarchy |
 | Memory | 5 | Memory typing, write points, learnings ledger, rolling summary, session hygiene |
 | Provider mgmt | 4 | Runtime profiles, profile sync, realized visibility, Qwen-first policy |
@@ -157,11 +157,10 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | Integrations | 4 | SearXNG, PinchTab, NVIDIA/Kimi, LM Studio |
 | Strategy | 2 | Factory pipeline, durable queues |
 
-### Partially Verified — 10 features
+### Partially Verified — 9 features
 
 | # | Feature | What Works | What's Missing |
 |---|---------|-----------|----------------|
-| 2.8 | Ralph loop | Bounded v1 cycle proven | No cron, no memory consolidation |
 | 2.10 | Muse | Agent config + probe response | No Discord channel binding |
 | 2.11 | Cadence voice | Stack built, daemon running, transcript routing | Mic blocked (WSL2 RDPSource) |
 | 3.7 | Autonomy modes | Ralph uses bounded pattern | No formal mode field on tasks |

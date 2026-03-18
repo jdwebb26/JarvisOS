@@ -45,7 +45,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 | **Scout** | Qwen 3.5-35B | Web search via SearXNG |
 | **Kitt** | Kimi K2.5 (NVIDIA) | Quant briefs via `kitt_quant` dispatch: SearXNG → Bowser → Kimi synthesis → artifact |
 | **Bowser** | PinchTab browser | Navigate, snapshot, screenshot, text extraction |
-| **Ralph** | Qwen 3.5-35B | Bounded autonomy loop v1: claim task → proxy to HAL → collect review → complete. End-to-end proven |
+| **Ralph** | Qwen 3.5-35B | Full operator-usable loop: task claim → HAL dispatch → Archimedes auto-review → operator approval → completion. CLI: `--status`, `--approve`, `--reject`, `--retry`. Rejected reviews fail cleanly. Stale-running recovery. Idle clears error state. |
 
 ## 4. Agents — Partial or Blocked
 
@@ -104,7 +104,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 
 ### High-leverage improvements
 3. **First real strategy factory run with operator review** — prove the end-to-end IDEA → BACKTESTED → PROMOTED pipeline with a real NQ strategy candidate
-4. **Wire Ralph to cron** — memory compaction, queue draining, failure analytics as scheduled jobs (Ralph v1 loop is proven, just needs cron entry)
+4. **Wire Ralph to cron** — Ralph is now operator-usable (`--status`, `--approve`, `--retry`). Next: systemd timer for automatic cycle runs
 5. **Activate Muse** — send first message to Muse Discord channel to create session
 
 ### Medium-leverage

@@ -1,38 +1,37 @@
 #!/usr/bin/env python3
 """Ralph v1 — Bounded autonomy loop.
 
-One cycle. One task. One step forward. Stop at approval.
+One cycle. One task. One step forward.
 
 Cycle order (highest stage wins, so the queue drains forward):
-  1. Health gates → any fail → emit blocked digest → exit(0)
-  2. Stage scan (pick first match):
-     a. task in waiting_review  + execution_backend==ralph_adapter
-        + latest review approved
-        → request_approval → exit
-     b. task in queued + eligible
-        → take ownership → start → call Qwen (HAL proxy) → complete
-        → request_review(archimedes) → exit
-  3. Idle → emit idle digest → exit(0)
+  0. Health gates → any fail → emit blocked digest → exit(0)
+  0b. Stale-running recovery → fail stuck tasks
+  1a. approval granted → finalize task (mark completed)
+  1b. review approved  → request approval
+  1c. review rejected  → fail task (operator can --retry)
+  1d. review pending   → invoke Archimedes auto-review
+  1e. task queued      → take ownership → HAL proxy → request review
+  2. Idle → clear error state → exit(0)
 
-State mapping (Ralph labels → live TaskStatus values):
-  running_hal        → TaskStatus.RUNNING
-  waiting_archimedes → TaskStatus.WAITING_REVIEW
-  waiting_approval   → TaskStatus.WAITING_APPROVAL
-  done               → TaskStatus.COMPLETED
-  failed             → TaskStatus.FAILED
-  blocked            → TaskStatus.BLOCKED
+Operator commands:
+  python3 scripts/run_ralph_v1.py               # run one cycle
+  python3 scripts/run_ralph_v1.py --status       # show state + tasks
+  python3 scripts/run_ralph_v1.py --approve TID  # approve pending task
+  python3 scripts/run_ralph_v1.py --reject TID   # reject pending task
+  python3 scripts/run_ralph_v1.py --retry TID    # requeue failed task
+  python3 scripts/run_ralph_v1.py --dry-run      # health gates only
 
 Allowed transitions exercised by Ralph:
-  queued           → running        (start_task)
-  running          → completed      (complete_task)
-  running          → failed         (fail_task)
-  running          → blocked        (block_task)
-  completed        → waiting_review (request_review — via task_store.transition_task)
-  waiting_review   → waiting_approval (request_approval — via task_store.transition_task)
-
-Retry paths (operator-initiated only, not touched by Ralph v1):
-  failed  → queued  (explicit retry)
-  blocked → queued  (explicit retry)
+  queued           → running          (start_task)
+  running          → completed        (complete_task)
+  running          → failed           (fail_task / stale recovery)
+  running          → blocked          (block_task)
+  completed        → waiting_review   (request_review)
+  waiting_review   → waiting_approval (request_approval, after approved review)
+  waiting_review   → failed           (after rejected review)
+  waiting_approval → completed        (after approved approval)
+  failed           → queued           (operator --retry)
+  blocked          → queued           (operator --retry)
 """
 from __future__ import annotations
 
@@ -307,6 +306,44 @@ def pick_review_ready_task(root: Path) -> Optional[Any]:
     return None
 
 
+def pick_rejected_review_task(root: Path) -> Optional[Any]:
+    """Find a Ralph-owned waiting_review task whose review was rejected."""
+    from runtime.core.task_store import list_tasks
+    from runtime.core.models import TaskStatus
+    from runtime.core.review_store import latest_review_for_task
+
+    tasks = list_tasks(root=root, limit=200)
+    for task in tasks:
+        if task.status != TaskStatus.WAITING_REVIEW.value:
+            continue
+        if task.execution_backend != "ralph_adapter":
+            continue
+        review = latest_review_for_task(task.task_id, root=root)
+        if review and review.status == "rejected":
+            log.info("Rejected-review task: %s  review=%s", task.task_id, review.review_id)
+            return task
+    return None
+
+
+def pick_approved_approval_task(root: Path) -> Optional[Any]:
+    """Find a Ralph-owned waiting_approval task whose approval is granted."""
+    from runtime.core.task_store import list_tasks
+    from runtime.core.models import TaskStatus
+    from runtime.core.approval_store import latest_approval_for_task
+
+    tasks = list_tasks(root=root, limit=200)
+    for task in tasks:
+        if task.status != TaskStatus.WAITING_APPROVAL.value:
+            continue
+        if task.execution_backend != "ralph_adapter":
+            continue
+        approval = latest_approval_for_task(task.task_id, root=root)
+        if approval and approval.status == "approved":
+            log.info("Approved-approval task: %s  approval=%s", task.task_id, approval.approval_id)
+            return task
+    return None
+
+
 def pick_pending_review_task(root: Path) -> Optional[Any]:
     """Find a Ralph-owned waiting_review task with a pending review."""
     from runtime.core.task_store import list_tasks
@@ -485,13 +522,15 @@ def call_hal_via_qwen(task: Any) -> dict[str, Any]:
         data = r.json()
         choice = (data.get("choices") or [{}])[0]
         content = str((choice.get("message") or {}).get("content") or "").strip()
+        usage = data.get("usage") or {}
         if not content:
             return {"ok": False, "content": "", "error": "empty response from model",
-                    "elapsed": elapsed, "model": model}
-        return {"ok": True, "content": content, "error": "", "elapsed": elapsed, "model": model}
+                    "elapsed": elapsed, "model": model, "usage": usage}
+        return {"ok": True, "content": content, "error": "", "elapsed": elapsed,
+                "model": model, "usage": usage}
     except Exception as exc:
         return {"ok": False, "content": "", "error": str(exc),
-                "elapsed": round(time.time() - t0, 2), "model": model}
+                "elapsed": round(time.time() - t0, 2), "model": model, "usage": {}}
 
 
 def _record_hal_result(task: Any, result: dict[str, Any], *, root: Path) -> str:
@@ -518,6 +557,69 @@ def _record_hal_result(task: Any, result: dict[str, Any], *, root: Path) -> str:
     )
     save_backend_execution_result(record, root=root)
     return record.backend_execution_result_id
+
+
+def _track_usage(task: Any, result: dict[str, Any], *, agent: str, root: Path) -> None:
+    """Track token usage from a Qwen API call against the global budget."""
+    try:
+        from runtime.core.token_budget import apply_budget_usage
+        usage = result.get("usage") or {}
+        prompt_tokens = int(usage.get("prompt_tokens", 0))
+        completion_tokens = int(usage.get("completion_tokens", 0))
+        total = prompt_tokens + completion_tokens
+        if total > 0:
+            apply_budget_usage(
+                task_id=task.task_id,
+                execution_backend=f"ralph_{agent}_proxy",
+                token_usage=total,
+                root=root,
+            )
+            log.info("[BUDGET] %s usage: %d tokens (prompt=%d, completion=%d)",
+                     agent, total, prompt_tokens, completion_tokens)
+    except Exception as exc:
+        log.debug("Budget tracking skipped: %s", exc)
+
+
+def _record_execution_trace(
+    task: Any, result: dict[str, Any], *, agent: str, result_id: str, root: Path,
+) -> None:
+    """Record a run trace for the HAL/Archimedes execution."""
+    try:
+        from runtime.evals.trace_store import save_run_trace
+        from runtime.core.models import RunTraceRecord, new_id, now_iso
+
+        usage = result.get("usage") or {}
+        trace = RunTraceRecord(
+            trace_id=new_id("trace"),
+            task_id=task.task_id,
+            created_at=now_iso(),
+            updated_at=now_iso(),
+            actor=ACTOR,
+            lane=LANE,
+            trace_kind=f"ralph_{agent}_proxy",
+            execution_backend=f"ralph_{agent}_proxy",
+            status="completed" if result.get("ok") or result.get("approved") is not None else "failed",
+            request_payload={
+                "normalized_request": (task.normalized_request or "")[:500],
+                "task_type": task.task_type or "",
+                "model": result.get("model", ""),
+            },
+            response_payload={
+                "ok": result.get("ok"),
+                "approved": result.get("approved"),
+                "content_length": len(result.get("content", result.get("reason", ""))),
+                "elapsed": result.get("elapsed", 0),
+                "model": result.get("model", ""),
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+            },
+            replay_payload={},
+            source_refs={"result_id": result_id, "agent": agent},
+            candidate_artifact_id="",
+        )
+        save_run_trace(trace, root=root)
+    except Exception as exc:
+        log.debug("Trace recording skipped: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -605,11 +707,12 @@ def call_archimedes_via_qwen(task: Any, review_details: str) -> dict[str, Any]:
                 reason = content.split(prefix, 1)[1].strip()
                 break
 
-        return {"approved": approved, "reason": reason[:500], "elapsed": elapsed, "model": model}
+        usage = data.get("usage") or {}
+        return {"approved": approved, "reason": reason[:500], "elapsed": elapsed, "model": model, "usage": usage}
     except Exception as exc:
         return {"approved": None, "error": True,
                 "reason": f"Review call failed: {exc}",
-                "elapsed": round(time.time() - t0, 2), "model": model}
+                "elapsed": round(time.time() - t0, 2), "model": model, "usage": {}}
 
 
 # ---------------------------------------------------------------------------
@@ -644,6 +747,10 @@ def stage_auto_review(task: Any, *, root: Path) -> str:
     log.info("[ARCHIMEDES] Calling Qwen reviewer for task %s ...", task.task_id)
     result = call_archimedes_via_qwen(task, hal_output)
     log.info("[ARCHIMEDES] Done  elapsed=%.1fs  approved=%s", result["elapsed"], result["approved"])
+
+    # --- Token budget tracking + trace recording ---
+    _track_usage(task, result, agent="archimedes", root=root)
+    _record_execution_trace(task, result, agent="archimedes", result_id=review.review_id, root=root)
 
     # Transport/model errors: do NOT record a verdict. Leave the review pending
     # so the next cycle can retry.
@@ -753,6 +860,98 @@ def stage_review_to_approval(task: Any, *, root: Path) -> str:
     return f"approval_requested:{approval.approval_id}"
 
 
+def stage_rejected_review(task: Any, *, root: Path) -> str:
+    """Stage: waiting_review + rejected review → fail the task with reason.
+
+    The operator can then --retry to re-dispatch, or leave it failed.
+    Returns: "task_failed:<task_id>" or "failed:<reason>"
+    """
+    from runtime.core.review_store import latest_review_for_task
+    from runtime.core.task_runtime import fail_task
+    from runtime.core.task_store import load_task
+
+    fresh = load_task(task.task_id, root=root)
+    if fresh is None:
+        return f"failed:task_missing:{task.task_id}"
+
+    review = latest_review_for_task(task.task_id, root=root)
+    reason_text = review.verdict_reason if review else "Review rejected (no details)"
+
+    log.info("[STAGE] rejected_review  task=%s  reason=%s", task.task_id, reason_text[:80])
+
+    try:
+        fail_task(
+            root=root,
+            task_id=task.task_id,
+            actor=ACTOR,
+            lane=LANE,
+            reason=f"Archimedes review rejected: {reason_text[:300]}",
+        )
+    except Exception as exc:
+        log.error("fail_task after rejected review failed: %s", exc)
+        return f"failed:fail_task:{exc}"
+
+    from runtime.core.agent_status_store import update_agent_status
+    update_agent_status(
+        ACTOR,
+        f"Task {task.task_id} rejected by Archimedes",
+        state="idle",
+        current_task_id=None,
+        last_result=f"Rejected: {reason_text[:100]}",
+        root=root,
+    )
+
+    log.info("[OK] Task %s failed after rejected review", task.task_id)
+    return f"task_failed:{task.task_id}"
+
+
+def stage_approval_complete(task: Any, *, root: Path) -> str:
+    """Stage: waiting_approval + approved → mark task fully done.
+
+    Returns: "task_done:<task_id>" or "failed:<reason>"
+    """
+    from runtime.core.approval_store import latest_approval_for_task
+    from runtime.core.task_store import load_task, transition_task
+    from runtime.core.models import TaskStatus
+
+    fresh = load_task(task.task_id, root=root)
+    if fresh is None:
+        return f"failed:task_missing:{task.task_id}"
+
+    approval = latest_approval_for_task(task.task_id, root=root)
+    if approval is None or approval.status != "approved":
+        return f"blocked:approval_not_approved for {task.task_id}"
+
+    log.info("[STAGE] approval_complete  task=%s  approval=%s", task.task_id, approval.approval_id)
+
+    try:
+        transition_task(
+            task_id=task.task_id,
+            to_status=TaskStatus.COMPLETED.value,
+            actor=ACTOR,
+            lane=LANE,
+            summary=f"Approval granted by {approval.decided_by or 'operator'}. Task complete.",
+            root=root,
+            details=f"Approval {approval.approval_id}: {approval.reason or 'approved'}",
+        )
+    except Exception as exc:
+        log.error("transition_task to completed failed: %s", exc)
+        return f"failed:transition_task:{exc}"
+
+    from runtime.core.agent_status_store import update_agent_status
+    update_agent_status(
+        ACTOR,
+        f"Task {task.task_id} approved and complete",
+        state="idle",
+        current_task_id=None,
+        last_result=f"Approved by {approval.decided_by or 'operator'}",
+        root=root,
+    )
+
+    log.info("[OK] Task %s approved and completed", task.task_id)
+    return f"task_done:{task.task_id}"
+
+
 def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
     """Stage: queued → take ownership → start → Qwen/HAL → complete → request_review.
 
@@ -800,6 +999,10 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
     log.info("[HAL] Done  elapsed=%.1fs  ok=%s", result["elapsed"], result["ok"])
 
     result_id = _record_hal_result(task, result, root=root)
+
+    # --- Token budget tracking + trace recording ---
+    _track_usage(task, result, agent="hal", root=root)
+    _record_execution_trace(task, result, agent="hal", result_id=result_id, root=root)
 
     if not result["ok"]:
         fail_task(
@@ -884,23 +1087,132 @@ def stage_dispatch_and_review(task: Any, *, root: Path) -> str:
 # Main cycle entry point
 # ---------------------------------------------------------------------------
 
+def ralph_status(root: Path) -> dict[str, Any]:
+    """Return a snapshot of Ralph's current state and owned tasks.
+
+    Designed for operator visibility — shows what Ralph is doing, what
+    tasks he owns, and what needs operator action.
+    """
+    from runtime.core.task_store import list_tasks
+    from runtime.core.models import TaskStatus
+    from runtime.core.agent_status_store import get_agent_status
+    from runtime.core.review_store import latest_review_for_task
+    from runtime.core.approval_store import latest_approval_for_task
+
+    agent = get_agent_status(ACTOR, root=root) or {}
+    tasks = list_tasks(root=root, limit=200)
+
+    ralph_tasks: list[dict[str, Any]] = []
+    needs_action: list[dict[str, Any]] = []
+
+    for t in tasks:
+        if t.execution_backend != "ralph_adapter":
+            continue
+        info: dict[str, Any] = {
+            "task_id": t.task_id,
+            "status": t.status,
+            "type": t.task_type,
+            "request": (t.normalized_request or "")[:80],
+        }
+
+        if t.status == TaskStatus.WAITING_APPROVAL.value:
+            apr = latest_approval_for_task(t.task_id, root=root)
+            info["approval_status"] = apr.status if apr else "none"
+            if apr and apr.status == "pending":
+                needs_action.append({
+                    "action": "approve_or_reject",
+                    "task_id": t.task_id,
+                    "approval_id": apr.approval_id,
+                    "summary": apr.summary[:80] if apr.summary else "",
+                })
+            elif apr and apr.status == "approved":
+                needs_action.append({
+                    "action": "run_ralph_cycle",
+                    "reason": f"Approval granted for {t.task_id} — next cycle will finalize",
+                })
+
+        elif t.status == TaskStatus.FAILED.value:
+            info["error"] = t.last_error[:80] if t.last_error else ""
+            needs_action.append({
+                "action": "retry_or_dismiss",
+                "task_id": t.task_id,
+                "hint": f"python3 scripts/run_ralph_v1.py --retry {t.task_id}",
+            })
+
+        ralph_tasks.append(info)
+
+    return {
+        "agent_state": agent.get("state", "unknown"),
+        "headline": agent.get("headline", ""),
+        "last_result": agent.get("last_result", ""),
+        "ralph_tasks": ralph_tasks,
+        "needs_operator_action": needs_action,
+        "total_ralph_tasks": len(ralph_tasks),
+    }
+
+
+def approve_task(task_id: str, *, decision: str = "approved", reason: str = "",
+                 root: Path) -> dict[str, Any]:
+    """Approve or reject a pending Ralph approval from the CLI.
+
+    Args:
+        task_id: The task to approve/reject.
+        decision: "approved" or "rejected".
+        reason: Optional reason text.
+    Returns:
+        Summary dict.
+    """
+    from runtime.core.approval_store import latest_approval_for_task, record_approval_decision
+
+    if decision not in ("approved", "rejected"):
+        return {"ok": False, "error": f"Invalid decision: {decision}. Use 'approved' or 'rejected'."}
+
+    approval = latest_approval_for_task(task_id, root=root)
+    if approval is None:
+        return {"ok": False, "error": f"No approval found for task {task_id}"}
+    if approval.status != "pending":
+        return {"ok": False, "error": f"Approval {approval.approval_id} is '{approval.status}', not pending"}
+
+    record_approval_decision(
+        approval_id=approval.approval_id,
+        decision=decision,
+        actor="operator",
+        lane="operator",
+        reason=reason or f"Operator {decision} via CLI",
+        root=root,
+    )
+
+    log.info("[APPROVE] %s: %s  approval=%s  task=%s", decision, reason or "(no reason)", approval.approval_id, task_id)
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "approval_id": approval.approval_id,
+        "decision": decision,
+    }
+
+
 def run_cycle(root: Path) -> dict[str, Any]:
     """Run one Ralph v1 cycle. Returns a result dict.
 
-    Stage priority (first match wins):
-      2a. review approved → request approval
-      2b. review pending  → Archimedes auto-review
-      2c. task queued     → HAL dispatch → request review
+    Stage priority (first match wins — highest stage first so queue drains forward):
+      1a. approval granted → finalize task
+      1b. review approved  → request approval
+      1c. review rejected  → fail task (operator can --retry)
+      1d. review pending   → Archimedes auto-review
+      1e. task queued      → HAL dispatch → request review
 
     Outcome values:
       "blocked"                — health gate failed; no task processed
       "idle"                   — no eligible tasks found
-      "review_requested:<id>"  — task dispatched through HAL, awaiting review
+      "task_done:<id>"         — approval granted, task finalized
+      "approval_requested:<id>"— review approved, approval pending
+      "task_failed:<id>"       — review rejected, task failed
       "review_approved:<id>"   — Archimedes approved the review
       "review_rejected:<id>"   — Archimedes rejected the review
-      "approval_requested:<id>"— review approved, approval pending
+      "review_requested:<id>"  — task dispatched through HAL, awaiting review
       "failed:<reason>"        — a stage failed; task marked failed/blocked
     """
+    from runtime.core.agent_status_store import update_agent_status
     from runtime.core.models import new_id
 
     _load_env(root)
@@ -908,7 +1220,7 @@ def run_cycle(root: Path) -> dict[str, Any]:
     log.info("=== Ralph v1 cycle %s start ===", cycle_id)
 
     # ------------------------------------------------------------------
-    # 1. Health gates
+    # 0. Health gates
     # ------------------------------------------------------------------
     healthy, gate_results = run_health_gates(root)
     if not healthy:
@@ -932,14 +1244,29 @@ def run_cycle(root: Path) -> dict[str, Any]:
     log.info("[OK] Health gates passed (%d checks)", len(gate_results))
 
     # ------------------------------------------------------------------
-    # 1b. Stale-running recovery (before any stage)
+    # 0b. Stale-running recovery (before any stage)
     # ------------------------------------------------------------------
     recovered = recover_stale_running(root)
     if recovered:
         log.info("[CYCLE] Recovered stale task %s — will be eligible for retry", recovered)
 
     # ------------------------------------------------------------------
-    # 2a. Stage: review approved → request approval
+    # 1a. Stage: approval granted → finalize task
+    # ------------------------------------------------------------------
+    approved_task = pick_approved_approval_task(root)
+    if approved_task:
+        outcome = stage_approval_complete(approved_task, root=root)
+        log.info("[CYCLE] stage=approval_complete  task=%s  outcome=%s",
+                 approved_task.task_id, outcome)
+        return {
+            "cycle_id": cycle_id,
+            "outcome": outcome,
+            "stage": "approval_complete",
+            "task_id": approved_task.task_id,
+        }
+
+    # ------------------------------------------------------------------
+    # 1b. Stage: review approved → request approval
     # ------------------------------------------------------------------
     review_ready = pick_review_ready_task(root)
     if review_ready:
@@ -954,7 +1281,22 @@ def run_cycle(root: Path) -> dict[str, Any]:
         }
 
     # ------------------------------------------------------------------
-    # 2b. Stage: pending review → Archimedes auto-review
+    # 1c. Stage: review rejected → fail task
+    # ------------------------------------------------------------------
+    rejected_task = pick_rejected_review_task(root)
+    if rejected_task:
+        outcome = stage_rejected_review(rejected_task, root=root)
+        log.info("[CYCLE] stage=rejected_review  task=%s  outcome=%s",
+                 rejected_task.task_id, outcome)
+        return {
+            "cycle_id": cycle_id,
+            "outcome": outcome,
+            "stage": "rejected_review",
+            "task_id": rejected_task.task_id,
+        }
+
+    # ------------------------------------------------------------------
+    # 1d. Stage: pending review → Archimedes auto-review
     # ------------------------------------------------------------------
     pending_review = pick_pending_review_task(root)
     if pending_review:
@@ -969,7 +1311,7 @@ def run_cycle(root: Path) -> dict[str, Any]:
         }
 
     # ------------------------------------------------------------------
-    # 2c. Stage: queued → HAL dispatch → request review
+    # 1e. Stage: queued → HAL dispatch → request review
     # ------------------------------------------------------------------
     queued_task = pick_queued_task(root)
     if queued_task:
@@ -984,14 +1326,16 @@ def run_cycle(root: Path) -> dict[str, Any]:
         }
 
     # ------------------------------------------------------------------
-    # 3. Idle
+    # 2. Idle — clear error state if nothing to do
     # ------------------------------------------------------------------
     log.info("[IDLE] No eligible tasks")
-    try:
-        emit_event("agent_status", ACTOR,
-                   detail=f"Ralph v1 idle — no eligible tasks (cycle {cycle_id})", root=root)
-    except Exception:
-        pass
+    update_agent_status(
+        ACTOR,
+        "Ralph v1 idle — no eligible tasks",
+        state="idle",
+        current_task_id=None,
+        root=root,
+    )
 
     return {
         "cycle_id": cycle_id,
