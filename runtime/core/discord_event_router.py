@@ -72,7 +72,7 @@ def _outbox_dir(root: Optional[Path] = None) -> Path:
 _AGENT_DISPLAY: dict[str, str] = {
     "jarvis": "Jarvis", "hal": "HAL", "scout": "Scout",
     "anton": "Anton", "archimedes": "Archimedes", "hermes": "Hermes",
-    "kitt": "Kitt", "claude": "Claude", "qwen": "Qwen",
+    "kitt": "Kitt", "sigma": "Sigma", "claude": "Claude", "qwen": "Qwen",
     "bowser": "Bowser", "cadence": "Cadence", "muse": "Muse", "ralph": "Ralph",
 }
 

@@ -18,6 +18,7 @@ Channel → env var mapping (set these in ~/.openclaw/secrets.env):
     1483320979185733722  kitt      → JARVIS_DISCORD_WEBHOOK_KITT
     1483133844663304272  muse      → JARVIS_DISCORD_WEBHOOK_MUSE
     1483131473543303208  qwen      → JARVIS_DISCORD_WEBHOOK_QWEN
+    1483916191046041811  sigma     → JARVIS_DISCORD_WEBHOOK_SIGMA  (quant validation)
 """
 from __future__ import annotations
 
@@ -56,6 +57,7 @@ CHANNEL_WEBHOOK_ENV: dict[str, str] = {
     "1483320979185733722": "JARVIS_DISCORD_WEBHOOK_KITT",    # kitt
     "1483133844663304272": "JARVIS_DISCORD_WEBHOOK_MUSE",    # muse
     "1483131473543303208": "JARVIS_DISCORD_WEBHOOK_QWEN",    # qwen
+    "1483916191046041811": "JARVIS_DISCORD_WEBHOOK_SIGMA",   # sigma (quant validation)
 }
 
 
