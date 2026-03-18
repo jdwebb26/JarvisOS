@@ -1,5 +1,8 @@
 # Spec-to-Live Feature Inventory — 2026-03-17
 
+> **For current truth / backlog / what to do next**: see **[CURRENT_TRUTH.md](CURRENT_TRUTH.md)**
+> This file is the detailed per-feature spec-vs-live audit (historical reference).
+
 Generated from: v5 / v5.1 / v5.2 specs and live runtime evidence.
 Source docs: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `docs/spec/JARVIS 5.2 MASTER SPEC.md`,
 `docs/agent_roster.md`, `docs/source_owned_context_engine.md`, `docs/jarvis_5_2_migration_status.md`,
