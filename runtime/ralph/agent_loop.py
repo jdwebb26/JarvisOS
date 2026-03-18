@@ -60,7 +60,7 @@ LANE = "ralph"
 # ralph_adapter = explicitly routed to Ralph.
 # qwen_executor / qwen_planner = routed to Qwen; Ralph may pick these up if stale.
 # unassigned = not yet routed; Ralph can take.
-ELIGIBLE_BACKENDS = frozenset({"ralph_adapter", "qwen_executor", "qwen_planner", "unassigned"})
+ELIGIBLE_BACKENDS = frozenset({"ralph_adapter", "qwen_executor", "qwen_planner", "unassigned", "hermes_adapter"})
 
 # Task types Ralph will not touch (belong to dedicated pipelines).
 BLOCKED_TASK_TYPES = frozenset({"deploy"})
@@ -1170,6 +1170,11 @@ def stage_review_to_approval(task: Any, *, root: Path) -> str:
         )
 
         log.info("[OK] Task %s completed after review (approval_required=False)", fresh.task_id)
+
+        # Auto-promote: create artifact + publish if result is promotable.
+        from runtime.ralph.auto_promote import auto_promote_completed_task
+        auto_promote_completed_task(fresh.task_id, root=root)
+
         return f"review_complete:{fresh.task_id}"
 
     # --- Standard path: approval required → request it ---
@@ -1311,6 +1316,11 @@ def stage_approval_complete(task: Any, *, root: Path) -> str:
     )
 
     log.info("[OK] Task %s approved and completed", task.task_id)
+
+    # Auto-promote: create artifact + publish if result is promotable.
+    from runtime.ralph.auto_promote import auto_promote_completed_task
+    auto_promote_completed_task(task.task_id, root=root)
+
     return f"task_done:{task.task_id}"
 
 
