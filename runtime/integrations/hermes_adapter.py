@@ -464,8 +464,11 @@ def _parse_hermes_response(*, request: HermesTaskRequest, payload: dict[str, Any
     )
 
 
-def _default_transport(_: HermesTaskRequest) -> dict[str, Any]:
-    raise HermesTransportUnreachableError("Hermes transport is not configured.")
+def _default_transport(request: HermesTaskRequest) -> dict[str, Any]:
+    """Default transport — calls LM Studio Qwen via hermes_transport."""
+    from runtime.integrations.hermes_transport import lmstudio_transport
+
+    return lmstudio_transport(request)
 
 
 def _update_task_for_hermes(task, *, request: HermesTaskRequest, result: Optional[HermesTaskResult]) -> None:

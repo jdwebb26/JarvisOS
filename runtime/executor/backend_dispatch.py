@@ -121,16 +121,48 @@ def _kitt_adapter(
 # Backend registry — add new adapters here.
 # ---------------------------------------------------------------------------
 
+def _hermes_adapter(
+    *,
+    task_id: str,
+    actor: str,
+    lane: str,
+    messages: list[dict[str, str]],
+    routing_decision_id: Optional[str] = None,
+    root: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Dispatch to the Hermes research backend adapter."""
+    from runtime.integrations.hermes_adapter import execute_hermes_task
+
+    result = execute_hermes_task(
+        task_id=task_id,
+        actor=actor or "hermes",
+        lane=lane or "hermes",
+        root=root,
+        timeout_seconds=120,
+    )
+    return {
+        "status": result.get("result", {}).get("status", "error"),
+        "content": result.get("result", {}).get("content", ""),
+        "usage": result.get("result", {}).get("token_usage", {}),
+        "error": result.get("result", {}).get("error", ""),
+        "execution_backend": "hermes_adapter",
+        "dispatched": True,
+        "request_id": result.get("request", {}).get("request_id"),
+        "result_id": result.get("result", {}).get("result_id"),
+        "candidate_artifact_id": result.get("candidate_artifact_id"),
+    }
+
+
 BACKEND_ADAPTERS: dict[str, Callable[..., dict[str, Any]]] = {
     "nvidia_executor": _nvidia_adapter,
     "browser_backend": _bowser_adapter,
     "kitt_quant": _kitt_adapter,
+    "hermes_adapter": _hermes_adapter,
 }
 
 # Backends that are known but not yet wired to an adapter.
 # Dispatching to these returns a structured "not_wired" result.
 KNOWN_BUT_UNWIRED: set[str] = {
-    "hermes_adapter",
     "autoresearch_adapter",
     "memory_spine",
     "voice_gateway",
