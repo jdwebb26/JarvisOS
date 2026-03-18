@@ -180,14 +180,20 @@ def _load_env(root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _check_gateway(url: str = "http://127.0.0.1:18789/health") -> dict[str, Any]:
-    try:
-        import requests as _req
-        r = _req.get(url, timeout=5)
-        if r.ok and r.json().get("ok"):
-            return {"ok": True, "gate": "gateway"}
-        return {"ok": False, "gate": "gateway", "error": f"http {r.status_code}"}
-    except Exception as exc:
-        return {"ok": False, "gate": "gateway", "error": str(exc)}
+    """Check gateway health with one retry (handles transient restart races)."""
+    import time
+    for attempt in range(2):
+        try:
+            import requests as _req
+            r = _req.get(url, timeout=5)
+            if r.ok and r.json().get("ok"):
+                return {"ok": True, "gate": "gateway", "attempt": attempt + 1}
+            return {"ok": False, "gate": "gateway", "error": f"http {r.status_code}"}
+        except Exception as exc:
+            if attempt == 0:
+                time.sleep(3)  # brief backoff before retry
+                continue
+            return {"ok": False, "gate": "gateway", "error": str(exc)}
 
 
 def _check_model_backend() -> dict[str, Any]:
@@ -1084,20 +1090,24 @@ def stage_auto_review(task: Any, *, root: Path) -> str:
 
 
 def stage_review_to_approval(task: Any, *, root: Path) -> str:
-    """Stage: waiting_review + approved review → request_approval.
+    """Stage: waiting_review + approved review → request_approval or complete.
+
+    If the task has approval_required=True, requests operator/anton approval.
+    If approval_required=False, completes the task directly (no approval gate).
 
     Guards:
       - task must still be in waiting_review (re-checked from store)
       - latest review must have status == "approved"
       - reviewer is chosen by task type/risk (operator for normal, anton for deploy/quant/high_stakes)
 
-    Returns: "approval_requested:<apr_id>" or "blocked:<reason>" or "failed:<reason>"
+    Returns: "approval_requested:<apr_id>" or "review_complete:<task_id>"
+             or "blocked:<reason>" or "failed:<reason>"
     """
     from runtime.core.approval_store import request_approval
     from runtime.core.models import TaskStatus
     from runtime.core.review_store import choose_followup_approval_reviewer, latest_review_for_task
     from runtime.core.task_runtime import checkpoint_task
-    from runtime.core.task_store import load_task
+    from runtime.core.task_store import load_task, transition_task
 
     # Consistency guard: re-read from store to avoid acting on a stale in-memory snapshot.
     fresh = load_task(task.task_id, root=root)
@@ -1115,6 +1125,42 @@ def stage_review_to_approval(task: Any, *, root: Path) -> str:
     if review.status != "approved":
         return f"blocked:review_not_approved (status={review.status}) for {task.task_id}"
 
+    # --- Fast path: no approval required → complete directly ---
+    if not fresh.approval_required:
+        log.info(
+            "[STAGE] review_complete (no approval required)  task=%s  review=%s",
+            fresh.task_id, review.review_id,
+        )
+        try:
+            transition_task(
+                task_id=fresh.task_id,
+                to_status=TaskStatus.COMPLETED.value,
+                actor=ACTOR,
+                lane=LANE,
+                summary=(
+                    f"Review {review.review_id} approved. "
+                    f"No operator approval required — completing."
+                ),
+                root=root,
+            )
+        except Exception as exc:
+            log.error("transition_task to completed failed: %s", exc)
+            return f"failed:transition_task:{exc}"
+
+        from runtime.core.agent_status_store import update_agent_status
+        update_agent_status(
+            ACTOR,
+            f"Task {fresh.task_id} review-approved and complete (no approval needed)",
+            state="idle",
+            current_task_id=None,
+            last_result=f"Review approved: {review.review_id}",
+            root=root,
+        )
+
+        log.info("[OK] Task %s completed after review (approval_required=False)", fresh.task_id)
+        return f"review_complete:{fresh.task_id}"
+
+    # --- Standard path: approval required → request it ---
     reviewer = choose_followup_approval_reviewer(fresh)
     log.info(
         "[STAGE] review_to_approval  task=%s  review=%s  reviewer=%s",
