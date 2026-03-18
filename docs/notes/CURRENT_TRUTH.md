@@ -25,6 +25,9 @@ Updated by proven facts only. Supersedes narrative in older trackers.
 | SearXNG | localhost:8888 | **LIVE** |
 | PinchTab (browser) | 127.0.0.1:9867 (systemd) | **LIVE** |
 | Discord outbox sender | systemd timer, 60s interval | **LIVE** |
+| Operator inbound server | http://127.0.0.1:18790 (systemd) | **LIVE** |
+| Ralph timer | systemd timer, 90s interval | **LIVE** |
+| Review poller | systemd timer, 30s interval | **LIVE** |
 | Strategy factory cron | daily 4AM data, Sunday batch | **LIVE** |
 
 ## 2. Discord Delivery
@@ -69,7 +72,8 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Session hygiene**: automatic rotation before context builds for stale sessions
 - **Token budget enforcement**: global budget in `state/token_budgets/`, applied after every Ralph HAL/Archimedes call. 841 tokens tracked from live proof runs. Hard stop blocks task at threshold
 - **Regression scoring**: `scripts/run_regression.py` scores execution traces for output completeness, model drift, token efficiency, routing correctness. Traces recorded from every Ralph HAL/Archimedes call in `state/run_traces/`
-- **#todo intake**: `scripts/todo_intake.py` — submit plain text → task created with `ralph_adapter` backend → Ralph picks up on next cycle → HAL → review → approval. No Jarvis turn needed. Discord event emitted on creation
+- **#todo intake (live Discord ingress)**: Discord #todo channel → gateway inbound server → bridge cycle detects `source_channel=todo` → `submit_todo()` → task created with `ralph_adapter` backend → Ralph picks up on next cycle → HAL → Archimedes auto-review → operator approval → completed. No Jarvis turn. Proven end-to-end 2026-03-18 (`task_129e548cb242`)
+- **#review approval lane**: `approval_requested` events post to #review with approve/reject instructions. Operator approvals via gateway `/operator/approval` endpoint (or `discord_review_poller.py` for emoji/text commands). Proven end-to-end 2026-03-18 (`apr_a4ea9dfa2183`, `apr_903c0215a3b3`)
 
 ### Working (operator tooling)
 - **Runtime profiles**: 5 named profiles (local_only, hybrid, cloud_fast, cloud_smart, degraded). `set` → sync → gateway restart
@@ -108,7 +112,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 
 ### High-leverage improvements
 3. **First real strategy factory run with operator review** — prove the end-to-end IDEA → BACKTESTED → PROMOTED pipeline with a real NQ strategy candidate
-4. **Wire Ralph to cron** — Ralph is now operator-usable (`--status`, `--approve`, `--retry`). Next: systemd timer for automatic cycle runs
+4. ~~Wire Ralph to cron~~ **DONE** — Ralph timer (`openclaw-ralph.timer`, 90s) and review poller (`openclaw-review-poller.timer`, 30s) are live
 5. **Activate Muse** — send first message to Muse Discord channel to create session
 
 ### Medium-leverage
