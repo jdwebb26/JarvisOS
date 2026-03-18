@@ -17,7 +17,7 @@ Event kinds supported:
     voice_session_started, voice_session_ended, tts_started, tts_completed,
     call_started, call_ended, agent_online, agent_offline, agent_status,
     delegation_sent, delegation_received, profile_changed, models_status,
-    warning, error
+    cockpit_status, warning, error
 """
 from __future__ import annotations
 
@@ -124,6 +124,7 @@ _EMOJI: dict[str, str] = {
     "error": "\U0001f534",             # 🔴
     "profile_changed": "\U0001f504",   # 🔄
     "models_status": "\U0001f4ca",     # 📊
+    "cockpit_status": "\U0001f4ca",    # 📊
 }
 
 
@@ -347,6 +348,10 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
     if kind == "models_status":
         # detail carries the pre-formatted status block
         return f"{e} **Model status**\n{detail}" if detail else f"{e} **Model status**"
+
+    if kind == "cockpit_status":
+        # detail carries the pre-formatted cockpit block
+        return detail if detail else f"{e} **Mission Control**"
 
     if kind == "warning":
         err = _extract_error_summary(detail) if len(detail) > 120 else clean

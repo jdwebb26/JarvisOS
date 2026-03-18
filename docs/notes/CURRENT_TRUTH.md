@@ -71,7 +71,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 ### Working (operator tooling)
 - **Runtime profiles**: 5 named profiles (local_only, hybrid, cloud_fast, cloud_smart, degraded). `set` → sync → gateway restart
 - **Model visibility**: `runtime_profiles status` (terminal) / `post` (Discord). Profile changes auto-post to #jarvis
-- **Operator cockpit**: `scripts/operator_cockpit.py` — service health, agent states, blockers
+- **Operator cockpit**: `scripts/operator_cockpit.py` — service health, agent states, blockers. `--discord` posts live status to #jarvis
 - **Validate**: `scripts/validate.py` — 395 checks, comprehensive
 
 ### Not working / scaffold only
