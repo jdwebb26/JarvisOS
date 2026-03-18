@@ -25,6 +25,17 @@ HARD_BUDGET_RATIO = 0.82
 DEFAULT_RETRIEVAL_BUDGET_TOKENS = 1200
 DEFAULT_EPISODIC_LIMIT = 4
 DEFAULT_SEMANTIC_LIMIT = 4
+
+# ── Delegation compact mode ─────────────────────────────────────────────────
+# Delegation agents (executors/reviewers) receive compact context instead of
+# full orchestrator-level memory and summary.  This prevents context inherited
+# from unrelated past delegations and keeps the working set focused on the
+# current task.
+DELEGATION_AGENTS = frozenset({"hal", "archimedes"})
+DELEGATION_RAW_USER_TURN_WINDOW = 2
+DELEGATION_EPISODIC_LIMIT = 1
+DELEGATION_SEMANTIC_LIMIT = 2
+DELEGATION_RETRIEVAL_BUDGET_TOKENS = 600
 # Hard ceiling on total user turns per session before the packet is blocked.
 # Callers must reset the session (new session_key) once this fires.
 # Setting max_session_turns=0 disables the ceiling (not recommended in production).
@@ -451,6 +462,17 @@ def build_context_packet(
 ) -> dict[str, Any]:
     root = Path(root).resolve()
     resolved_agent_id = infer_agent_id(agent_id=agent_id, session_key=session_key, lane=channel)
+
+    # ── Delegation compact mode ──
+    # Executor/reviewer agents get reduced context to keep them focused on the
+    # current delegation task, not stale history from prior unrelated runs.
+    delegation_compact = resolved_agent_id in DELEGATION_AGENTS
+    if delegation_compact:
+        raw_user_turn_window = min(raw_user_turn_window, DELEGATION_RAW_USER_TURN_WINDOW)
+        episodic_limit = min(episodic_limit, DELEGATION_EPISODIC_LIMIT)
+        semantic_limit = min(semantic_limit, DELEGATION_SEMANTIC_LIMIT)
+        retrieval_budget_tokens = min(retrieval_budget_tokens, DELEGATION_RETRIEVAL_BUDGET_TOKENS)
+
     total_user_turns = _count_user_turns(messages)
     distilled_messages, distillation = _apply_distillation(messages, raw_user_turn_window=raw_user_turn_window)
     recent_messages = _bounded_recent_messages(distilled_messages, raw_user_turn_window=raw_user_turn_window)
@@ -480,7 +502,10 @@ def build_context_packet(
         "memory_retrieval_id": dict(retrieval.get("retrieval") or {}).get("memory_retrieval_id"),
     }
     save_session_context_summary(rolling_summary, root=root)
-    _flush_session_memory_entries(rolling_summary=rolling_summary, actor=resolved_agent_id, lane=channel or "main", root=root)
+    # Delegation agents should not promote constraints/preferences to durable
+    # memory — that is the orchestrator's (Jarvis's) job.
+    if not delegation_compact:
+        _flush_session_memory_entries(rolling_summary=rolling_summary, actor=resolved_agent_id, lane=channel or "main", root=root)
     tool_exposure = _select_tool_exposure(current_prompt, tools, channel=channel, agent_id=resolved_agent_id)
     visible_tools = list(tool_exposure.get("tools") or [])
     loaded_tools = summarize_visible_tools(visible_tools, agent_id=resolved_agent_id)
@@ -624,9 +649,21 @@ def build_context_packet(
         "chars": len(str(rolling_summary.get("markdown") or "")),
         "refreshedAt": str(rolling_summary.get("updated_at") or ""),
     }
+    delegation_compact_meta: Optional[dict[str, Any]] = None
+    if delegation_compact:
+        delegation_compact_meta = {
+            "enabled": True,
+            "agentId": resolved_agent_id,
+            "rawUserTurnWindow": raw_user_turn_window,
+            "episodicLimit": episodic_limit,
+            "semanticLimit": semantic_limit,
+            "retrievalBudgetTokens": retrieval_budget_tokens,
+            "memoryFlushSkipped": True,
+        }
     result: dict[str, Any] = {
         "sessionKey": session_key,
         "generatedAt": now_iso(),
+        "delegationCompact": delegation_compact_meta,
         "workingMemoryMessages": recent_messages,
         "rollingSummary": rolling_summary,
         "retrievedMemory": {
