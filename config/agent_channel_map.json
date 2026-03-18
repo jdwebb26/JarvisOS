@@ -13,7 +13,7 @@
     "qwen":       { "channel_id": "1483131473543303208", "purpose": "qwen_agent",       "voice_only": false },
     "bowser":     { "channel_id": "1483539080271761408", "purpose": "browser",          "voice_only": false },
     "cadence":    { "channel_id": "1483537502152425625", "purpose": "voice_tts_calls",  "voice_only": true  },
-    "muse":       { "channel_id": "1483515985628627116", "purpose": "creative",         "voice_only": false },
+    "muse":       { "channel_id": "1483133844663304272", "purpose": "creative",         "voice_only": false },
     "ralph":      { "channel_id": "1483539374854639761", "purpose": "overflow",         "voice_only": false }
   },
   "logical_channels": {
