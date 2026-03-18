@@ -112,6 +112,21 @@
 - **Status**: ✅ LIVE (gateway dispatches HAL turns through acpx; multiple concurrent ACP sessions confirmed)
 - **Remaining**: No explicit per-turn ACP telemetry in gateway journal (cosmetic, not a blocker)
 
+### L. Memory write points for task/review/approval outcomes (2026-03-17)
+- **Files**: `runtime/core/task_runtime.py`, `runtime/core/review_store.py`, `runtime/core/approval_store.py`
+- **Write points added**:
+  1. **Task completion** — `set_task_status()` → `_write_task_outcome_memory()`: writes `decision_memory` episodic entry when a task completes/fails with a real outcome (>15 chars). Guards: skips trivial ping/test tasks, skips empty outcomes.
+  2. **Review verdict** — `record_review_verdict()`: writes `decision_memory` semantic entry for APPROVED/REJECTED verdicts with reason (>10 chars). Guards: skips CHANGES_REQUESTED (noisy), skips empty reason.
+  3. **Approval decision** — `record_approval_decision()`: writes `decision_memory` semantic entry for APPROVED decisions. confidence=0.85 (highest).
+- **Dedup**: all use `write_session_memory_entry()` which deduplicates by title+memory_class.
+- **Proven live**:
+  - Task complete: `decision_memory` episodic entry written: `hal: completed code — Implement momentum signal...` ✅
+  - Review approved: `decision_memory` semantic entry: `archimedes approved review (code): Add walk-forward validation...` ✅
+  - Approval approved: `decision_memory` semantic entry: `operator approved (deploy): Promote NQ momentum strategy...` ✅
+  - Guard filters: trivial ping task + empty outcome both suppressed (count unchanged) ✅
+  - Retrieval: `retrieve_memory_for_context()` returns all 3 entries correctly ranked ✅
+- **Status**: ✅ LIVE
+
 ### K. Rolling summary constraint/memory extraction fix (2026-03-17)
 - **File**: `runtime/gateway/source_owned_context_engine.py`
 - **Problem fixed**: `active_constraints` was capturing system-injected text, JSON payloads, timestamp-prefixed messages, and assistant output as "operator constraints". Every session was poisoning `state/memory_entries/` with junk (3 garbage entries confirmed and removed).

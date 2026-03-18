@@ -320,6 +320,34 @@ def record_review_verdict(
     except Exception:
         pass
 
+    # Memory write — durable semantic record of review verdicts (APPROVED/REJECTED only).
+    # Tells future sessions what gets approved/rejected and why. Never raises.
+    try:
+        if verdict in {ReviewStatus.APPROVED.value, ReviewStatus.REJECTED.value}:
+            task_type = str(task.task_type or "general").strip()
+            req = str(task.normalized_request or "").strip()
+            if req and len(req) >= 8 and reason and len(reason.strip()) >= 10:
+                from runtime.memory.governance import write_session_memory_entry
+                root_path = Path(root) if root else ROOT
+                title = f"{actor} {verdict} review ({task_type}): {req[:70]}"
+                summary = (
+                    f"Reviewer {actor} gave verdict '{verdict}' on {task_type} task {record.task_id}. "
+                    f"Reason: {reason.strip()[:250]}"
+                )
+                write_session_memory_entry(
+                    actor=actor,
+                    lane="review",
+                    memory_type="review_verdict",
+                    memory_class="decision_memory",
+                    structural_type="semantic",
+                    title=title[:160],
+                    summary=summary[:400],
+                    confidence_score=0.80,
+                    root=root_path,
+                )
+    except Exception:
+        pass
+
     return record
 
 

@@ -168,9 +168,11 @@ Status labels: **LIVE** | **PARTIAL** | **BLOCKED** | **NOT LIVE / DOC-ONLY** | 
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/core/models.py`
 - **Description**: Three memory types. Episodic: recent observations, bounded decay. Semantic: stable facts, operator preferences. Procedural: approved skills.
 - **Repo evidence**: `MemoryEntryRecord` in `models.py`, `runtime/memory/governance.py`; `save_memory_entry()`, `retrieve_memory_for_context()`
-- **Live evidence (updated 2026-03-17)**: `_flush_session_memory_entries()` is called every turn and promotes `operator_preferences` + `active_constraints` from the rolling summary to durable memory entries. Previously, `active_constraints` was populated with system-injected noise (5 junk entries confirmed in `state/memory_entries/`). **Fixed**: `_SUMMARY_NOISE_RE` added, constraints extraction scoped to `user_texts` only with length bounds 20-200 chars. 3 garbage entries deleted. Memory now only captures real operator constraints/preferences.
-- **Status**: **LIVE** — auto-flush path active and noise-clean as of 2026-03-17. Memory entries will accumulate from real operator turns.
-- **Next step**: After real Discord sessions with operator constraints, confirm memory entries are written and `retrieve_memory_for_context()` returns non-empty results.
+- **Live evidence (updated 2026-03-17)**: Two complementary write paths are now live:
+  1. **Session-level auto-flush** (`_flush_session_memory_entries()`): promotes `operator_preferences` + `active_constraints` from rolling summary to `operator_preference_memory` / `risk_memory` entries. Noise fixed (see 3.5).
+  2. **Event-level outcome writes** (new, 2026-03-17): `task_runtime._write_task_outcome_memory()` writes `decision_memory` episodic entries on COMPLETED/FAILED tasks; `review_store.record_review_verdict()` writes `decision_memory` semantic entries on APPROVED/REJECTED; `approval_store.record_approval_decision()` writes `decision_memory` semantic entries on APPROVED decisions. All guarded against trivial/empty entries. Proven live via direct execution.
+- **Status**: **LIVE** — dual write paths active; retrieval returns useful entries.
+- **Next step**: After real Discord task cycles, confirm `retrieve_memory_for_context()` surfaces relevant prior decisions to Jarvis during routing.
 
 ### 3.4 Token/cost budget tracking
 - **Source**: `docs/spec/Jarvis_OS_v5_1_Master_Spec.md`, `runtime/core/token_budget.py`

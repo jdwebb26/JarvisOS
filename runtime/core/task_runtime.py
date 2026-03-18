@@ -169,6 +169,17 @@ def set_task_status(
         root=root,
     )
 
+    # Memory write — durable episodic record of meaningful task completions/failures.
+    # Only on terminal states with real signal. Never raises.
+    _write_task_outcome_memory(
+        new_status=new_status,
+        actor=actor,
+        task=task,
+        final_outcome=final_outcome or (task.final_outcome or ""),
+        reason=reason,
+        root=root,
+    )
+
     return {
         "task_id": task.task_id,
         "previous_status": previous_status,
@@ -217,6 +228,64 @@ def _emit_task_status_event(
             kind, actor,
             task_id=task_id,
             detail=final_outcome or reason,
+            root=root,
+        )
+    except Exception:
+        pass
+
+
+_TRIVIAL_REQUEST_RE = __import__("re").compile(
+    r"^(?:reply with exactly|ping|test|noop|alive)",
+    __import__("re").IGNORECASE,
+)
+
+
+def _write_task_outcome_memory(
+    *,
+    new_status: str,
+    actor: str,
+    task: "TaskRecord",
+    final_outcome: str,
+    reason: str,
+    root: Path,
+) -> None:
+    """Write a durable episodic memory entry for completed/failed tasks.
+
+    Only fires for COMPLETED with a real final_outcome, or FAILED with a real reason.
+    Skips trivial test/ping tasks. Never raises.
+    """
+    if new_status == TaskStatus.COMPLETED.value:
+        if not final_outcome or len(final_outcome.strip()) < 15:
+            return
+        mem_type = "task_outcome"
+        outcome_text = final_outcome.strip()
+    elif new_status == TaskStatus.FAILED.value:
+        if not reason or len(reason.strip()) < 15:
+            return
+        mem_type = "task_failure"
+        outcome_text = reason.strip()
+    else:
+        return
+
+    req = str(task.normalized_request or "").strip()
+    task_type = str(task.task_type or "general").strip()
+    if not req or len(req) < 8 or _TRIVIAL_REQUEST_RE.search(req):
+        return
+
+    title = f"{actor}: {new_status} {task_type} — {req[:70]}"
+    summary = f"[{task_type}] {actor} {new_status} task {task.task_id}. {outcome_text[:250]}"
+
+    try:
+        from runtime.memory.governance import write_session_memory_entry
+        write_session_memory_entry(
+            actor=actor,
+            lane=task_type,
+            memory_type=mem_type,
+            memory_class="decision_memory",
+            structural_type="episodic",
+            title=title[:160],
+            summary=summary[:400],
+            confidence_score=0.72,
             root=root,
         )
     except Exception:

@@ -737,6 +737,36 @@ def record_approval_decision(
     except Exception:
         pass
 
+    # Memory write — durable semantic record of approval decisions.
+    # Captures operator/anton APPROVED decisions with reasons for cross-session knowledge.
+    # Skips REJECTED/CANCELLED without reason (not informative). Never raises.
+    try:
+        if decision == ApprovalStatus.APPROVED.value:
+            task_type = str(task.task_type or "general").strip()
+            req = str(task.normalized_request or "").strip()
+            if req and len(req) >= 8:
+                from runtime.memory.governance import write_session_memory_entry
+                root_path = Path(root) if root else ROOT
+                reason_text = (reason.strip() or "operator approved")[:250]
+                title = f"{actor} approved ({task_type}): {req[:70]}"
+                summary = (
+                    f"Approver {actor} gave approval decision '{decision}' on {task_type} "
+                    f"task {record.task_id}. {reason_text}"
+                )
+                write_session_memory_entry(
+                    actor=actor,
+                    lane="approval",
+                    memory_type="approval_decision",
+                    memory_class="decision_memory",
+                    structural_type="semantic",
+                    title=title[:160],
+                    summary=summary[:400],
+                    confidence_score=0.85,
+                    root=root_path,
+                )
+    except Exception:
+        pass
+
     return record
 
 
