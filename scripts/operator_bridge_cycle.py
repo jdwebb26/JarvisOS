@@ -23,6 +23,49 @@ from scripts.operator_triage_support import (
     operator_gateway_inbound_messages_dir,
     save_bridge_cycle_record,
 )
+from scripts.todo_intake import submit_todo
+
+
+# Channel names that route to the #todo direct-intake path (no Jarvis turn).
+_TODO_CHANNELS = {"todo", "#todo"}
+
+
+def _handle_todo_inbound(root: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    """Route a #todo channel message directly to task creation via submit_todo.
+
+    Bypasses the normal Jarvis reply transport path entirely.
+    Returns a result dict compatible with the imported_rows structure.
+    """
+    raw_text = str(payload.get("raw_text", "")).strip()
+    source_user = str(payload.get("source_user", "operator"))
+    source_message_id = str(payload.get("source_message_id", ""))
+
+    if not raw_text:
+        return {
+            "classification": "todo_intake",
+            "imported": False,
+            "source_channel": "todo",
+            "source_user": source_user,
+            "raw_text": "",
+            "error": "empty todo text",
+            "gateway_message_path": payload.get("gateway_message_path"),
+        }
+
+    result = submit_todo(
+        raw_text,
+        user=source_user,
+        lane="jarvis",
+        channel="todo",
+        message_id=source_message_id,
+        root=root,
+    )
+    result["classification"] = "todo_intake"
+    result["imported"] = bool(result.get("task_created"))
+    result["source_channel"] = "todo"
+    result["source_user"] = source_user
+    result["raw_text"] = raw_text
+    result["gateway_message_path"] = payload.get("gateway_message_path")
+    return result
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -55,6 +98,18 @@ def run_operator_bridge_cycle(
             if payload is None or payload.get("imported_at"):
                 continue
             payload["gateway_message_path"] = str(path)
+
+            # --- #todo channel special case: direct task creation, no Jarvis turn ---
+            source_channel = str(payload.get("source_channel", "")).strip().lower()
+            if source_channel in _TODO_CHANNELS:
+                todo_result = _handle_todo_inbound(root, payload)
+                payload["imported_at"] = now_iso()
+                payload["import_id"] = todo_result.get("task_id", "")
+                payload["classification"] = "todo_intake"
+                path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                imported_rows.append(todo_result)
+                continue
+
             imported = import_gateway_reply_message(root, payload=payload)
             payload["imported_at"] = now_iso()
             payload["import_id"] = imported.get("import_id")
