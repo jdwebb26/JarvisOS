@@ -39,7 +39,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 2.9 | Hermes research daemon | v5.1 §21 | Long-form research, source gathering, synthesis | `hermes_adapter.py` (43KB). Contract hardened. | Adapter importable. Lane activation: `not_run`. External daemon not running. | **BLOCKED** | — | External Hermes service not configured. |
 | 2.10 | Muse creative | v5.1 §4 | Creative specialist | Agent config + gateway binding (channel 1483133844663304272). Model: lmstudio/qwen3.5-35b-a3b. Webhook + bot delivery live. | Agent turns via gateway proven (3 turns). Bot delivers replies to #muse Discord channel. Session file created/updated. Event routing + outbox + worklog mirror working. No channel collisions (11 bindings). Config structurally identical to Jarvis (proven Discord ingress). | **LIVE** | 527ede7 | Discord user-message ingress untested (gateway `allowFrom` requires operator to type in #muse). Ralph muse_creative backend path untested under timer. |
 | 2.11 | Cadence voice | v5.1 §25 | Wake detection → VAD → STT → routing → TTS | Full voice stack in `runtime/voice/`. Daemon active. OWW + Silero + faster-whisper + Piper. | Daemon running. Transcript routing proven. TTS proven. Mic blocked: RDPSource unavailable in WSL2. | **PARTIAL** | Watchboard §7.3 | Mic blocked. No live end-to-end wake+command proof. |
-| 2.12 | Flowstate distillation | v5.1 §4 | Ingestion and distillation lane | No dedicated Flowstate module found. Rolling summary in context engine serves partial role. | Context engine rolling summary distills session state. No separate Flowstate daemon. | **SUPERSEDED** | — | Replaced by context engine rolling summary. |
+| 2.12 | Flowstate distillation | v5.1 §4 | Ingestion and distillation lane | `runtime/flowstate/` — source_store, distill_store, promotion_store, index_builder. Operator CLI: `scripts/flowstate.py`. State in `state/flowstate_sources/`. | Full ingest→extract→distill lifecycle proven with real input. Source records, extraction artifacts, distillation artifacts stored on disk with provenance. Promotion is explicit (approval-gated, not auto-promoted). 2 sources, 2 distillations in live state. | **LIVE** | This commit | No daemon. No Discord #flowstate channel wiring. No LLM-powered auto-distillation. |
 
 ## 3. Task Lifecycle & Execution
 
@@ -179,6 +179,6 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 
 1.8 Multi-node burst, 3.6 Task envelopes, 4.6 Memory consolidation, 8.5 ShadowBroker, 8.7 A2A protocol, 8.9 TradingView, 8.10 Mission control, 10.4 Layered eval profiles, 11.1–11.6 v5.2 advanced features (skills engine, generative UI, knowledge vault, director, self-optimization, fine-tuning).
 
-### SUPERSEDED — 1 feature
+### SUPERSEDED — 0 features
 
-2.12 Flowstate distillation — replaced by context engine rolling summary.
+(Previously listed 2.12 Flowstate as superseded — corrected: Flowstate module exists and is live.)
