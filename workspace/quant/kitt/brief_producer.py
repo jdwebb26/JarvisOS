@@ -162,6 +162,12 @@ PIPELINE
         tier = tf_pkt.agreement_tier if tf_pkt.agreement_tier is not None else "?"
         brief_text += f"\n\nTRADEFLOOR\n  Agreement tier: {tier}\n  {tf_pkt.thesis[:120]}"
 
+    # Check delivery health for HEALTH section
+    from workspace.quant.shared.discord_bridge import check_delivery_health
+    dh = check_delivery_health()
+    dh_problems = [k for k, v in dh.items() if v != "ok"]
+    delivery_line = "  Delivery: all channels ok" if not dh_problems else f"  Delivery: {', '.join(dh_problems)} missing webhook (worklog mirror active)"
+
     brief_text += f"""
 
 LANES
@@ -169,6 +175,7 @@ LANES
 
 HEALTH
   Active: {', '.join(lanes) if lanes else 'none'}
+{delivery_line}
   Governor: not yet active
 
 OPERATOR ACTION NEEDED

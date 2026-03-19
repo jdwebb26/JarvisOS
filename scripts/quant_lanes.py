@@ -84,6 +84,17 @@ def cmd_status(args):
             v, r = a.is_valid()
             print(f"  {a.approval_ref} {a.strategy_id} [{'valid' if v else r}]")
 
+    # Delivery health
+    from workspace.quant.shared.discord_bridge import check_delivery_health
+    health = check_delivery_health()
+    problems = [f"{k}={v}" for k, v in health.items() if v != "ok"]
+    if problems:
+        print(f"\nDELIVERY  {' '.join(f'{k}=ok' for k, v in health.items() if v == 'ok')}")
+        for p in problems:
+            print(f"  {p}")
+    else:
+        print(f"\nDELIVERY  all ok")
+
 
 def cmd_strategies(args):
     """List all strategies."""

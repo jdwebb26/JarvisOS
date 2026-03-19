@@ -128,3 +128,45 @@ def emit_quant_approval_request(
         },
         root=resolved_root,
     )
+
+
+# ---------------------------------------------------------------------------
+# Delivery health check
+# ---------------------------------------------------------------------------
+
+# Quant-relevant channels to check
+_QUANT_DELIVERY_CHANNELS = {
+    "sigma":   "JARVIS_DISCORD_WEBHOOK_SIGMA",
+    "kitt":    "JARVIS_DISCORD_WEBHOOK_KITT",
+    "review":  "REVIEW_WEBHOOK_URL",
+    "worklog": "JARVIS_DISCORD_WEBHOOK_WORKLOG",
+}
+
+
+def check_delivery_health() -> dict[str, str]:
+    """Check whether quant-relevant Discord webhooks are configured.
+
+    Returns {channel_name: "ok" | "missing_webhook"}.
+    Reads ~/.openclaw/secrets.env (same source the outbox sender uses).
+    """
+    import os
+    # Load secrets.env the same way systemd EnvironmentFile does
+    env_vals: dict[str, str] = {}
+    secrets_path = Path.home() / ".openclaw" / "secrets.env"
+    if secrets_path.exists():
+        for line in secrets_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                k, v = line.split("=", 1)
+                env_vals[k.strip()] = v.strip()
+
+    result = {}
+    for name, env_var in _QUANT_DELIVERY_CHANNELS.items():
+        val = env_vals.get(env_var, os.environ.get(env_var, ""))
+        if val and val != "REPLACE_ME":
+            result[name] = "ok"
+        else:
+            result[name] = "missing_webhook"
+    return result
