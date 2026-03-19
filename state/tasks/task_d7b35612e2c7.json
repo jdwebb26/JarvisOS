@@ -1,7 +1,7 @@
 {
   "task_id": "task_d7b35612e2c7",
   "created_at": "2026-03-09T17:04:03.447097+00:00",
-  "updated_at": "2026-03-10T03:02:00.726187",
+  "updated_at": "2026-03-19T10:45:28.588398+00:00",
   "source_lane": "router_smoke",
   "source_channel": "router_smoke",
   "source_message_id": "router_smoke_20260309_120403",
@@ -12,7 +12,7 @@
   "task_type": "deploy",
   "priority": "normal",
   "risk_level": "high_stakes",
-  "status": "ready_to_ship",
+  "status": "archived",
   "assigned_role": "executor",
   "assigned_model": "Qwen3.5-122B",
   "review_required": true,
@@ -29,5 +29,6 @@
   "error_count": 0,
   "last_error": "",
   "final_outcome": "candidate_ready_for_live_apply",
-  "version": "v1"
+  "version": "v1",
+  "lifecycle_state": "archived"
 }
