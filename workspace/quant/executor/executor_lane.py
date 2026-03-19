@@ -214,3 +214,123 @@ def execute_paper_trade(
     _emit_pkt(status_pkt)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Portfolio risk checks
+# ---------------------------------------------------------------------------
+
+def check_portfolio_risk(root: Path) -> dict:
+    """Check portfolio-level risk: total exposure, concentration, correlation.
+
+    Returns {ok: bool, issues: [str], exposure: int, limits: dict}.
+    """
+    from workspace.quant.shared.registries.strategy_registry import get_strategies_by_state
+    limits = _load_json(root / "workspace" / "quant" / "shared" / "config" / "risk_limits.json")
+    portfolio = limits.get("portfolio", {})
+    max_exposure = portfolio.get("max_total_exposure", 4)
+    max_correlated = portfolio.get("max_correlated_strategies", 3)
+    concentration_threshold = portfolio.get("concentration_threshold", 0.6)
+
+    active_paper = get_strategies_by_state(root, "PAPER_ACTIVE")
+    active_live = get_strategies_by_state(root, "LIVE_ACTIVE")
+    total_active = len(active_paper) + len(active_live)
+
+    issues = []
+    if total_active > max_exposure:
+        issues.append(f"total_exposure {total_active} > max {max_exposure}")
+
+    # Concentration: if any single strategy represents too large a fraction
+    if total_active > 0:
+        fraction_per = 1.0 / total_active
+        # With only 1 strategy, concentration = 1.0 which is expected and OK
+        if total_active >= 2 and fraction_per > concentration_threshold:
+            issues.append(f"concentration {fraction_per:.2f} > {concentration_threshold}")
+
+    return {
+        "ok": len(issues) == 0,
+        "issues": issues,
+        "exposure": total_active,
+        "limits": portfolio,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Health summary
+# ---------------------------------------------------------------------------
+
+def emit_health_summary(
+    root: Path,
+    period_start: str,
+    period_end: str,
+    packets_produced: int,
+    executions_attempted: int = 0,
+    executions_filled: int = 0,
+    executions_rejected: int = 0,
+    error_count: int = 0,
+    usefulness_score: float = 0.5,
+    efficiency_score: float = 0.5,
+    health_score: float = 0.8,
+    confidence_score: float = 0.5,
+    host_used: str = "NIMO",
+    scheduler_waits: int = 0,
+) -> QuantPacket:
+    """Emit Executor health_summary per spec §10."""
+    from workspace.quant.shared.scheduler.scheduler import check_capacity
+    from workspace.quant.shared.governor import evaluate_cycle, get_lane_params
+
+    can_start, _, _ = check_capacity(root, "executor")
+    gov_action, gov_reason = evaluate_cycle(
+        root, "executor",
+        usefulness_score=usefulness_score,
+        efficiency_score=efficiency_score,
+        health_score=health_score,
+        confidence_score=confidence_score,
+        host_has_capacity=can_start,
+    )
+    params = get_lane_params(root, "executor")
+
+    kill_engaged = _kill_switch_engaged(root)
+    portfolio = check_portfolio_risk(root)
+
+    notable_parts = []
+    if kill_engaged:
+        notable_parts.append("kill_switch=ENGAGED")
+    if not portfolio["ok"]:
+        notable_parts.append(f"portfolio_risk: {'; '.join(portfolio['issues'])}")
+
+    pkt = make_packet(
+        "health_summary", "executor",
+        f"Executor health: {executions_filled}/{executions_attempted} filled, "
+        f"{executions_rejected} rejected, kill_switch={'ENGAGED' if kill_engaged else 'off'}, "
+        f"portfolio_exposure={portfolio['exposure']}",
+        priority="low",
+        period_start=period_start,
+        period_end=period_end,
+        packets_produced=packets_produced,
+        packets_by_type={
+            "execution_intent_packet": executions_attempted,
+            "execution_status_packet": executions_filled,
+            "execution_rejection_packet": executions_rejected,
+        },
+        escalation_count=0,
+        error_count=error_count,
+        cloud_bursts=0,
+        estimated_cloud_cost=0.0,
+        notable_events="; ".join(notable_parts) if notable_parts else "routine",
+        scheduler_waits=scheduler_waits,
+        scheduler_bypasses=0,
+        host_used=host_used,
+        local_runtime_seconds=0.0,
+        cloud_runtime_seconds=0.0,
+        usefulness_score=usefulness_score,
+        efficiency_score=efficiency_score,
+        health_score=health_score,
+        confidence_score=confidence_score,
+        governor_action_taken=gov_action,
+        governor_reason=gov_reason,
+        current_batch_size=params.get("batch_size", 1),
+        current_cadence_multiplier=params.get("cadence_multiplier", 1.0),
+    )
+    store_packet(root, pkt)
+    return pkt

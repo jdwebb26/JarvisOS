@@ -113,18 +113,71 @@ def _top_signal(latest: dict[str, QuantPacket]) -> str:
     return "No high-priority signals."
 
 
-def _lane_activity(latest: dict[str, QuantPacket]) -> str:
+def _feedback_loops(root: Path, latest: dict[str, QuantPacket]) -> str:
+    """Build per-lane feedback loop status. Phone-readable, concise."""
     lines = []
-    for lane in ["sigma", "atlas", "hermes", "fish"]:
-        pkts = [(k, p) for k, p in latest.items()
-                if p.lane == lane
-                and not (p.strategy_id and _is_proof_artifact(p.strategy_id))]
-        if pkts:
-            _, best = max(pkts, key=lambda x: x[1].created_at)
-            label = best.packet_type.replace("_packet", "").replace("_", " ")
-            lines.append(f"  {lane:8s} {label}: {best.thesis[:80]}")
+
+    # Atlas: learning state
+    try:
+        from workspace.quant.atlas.exploration_lane import build_knowledge
+        k = build_knowledge(root)
+        rej = k["rejection_count"]
+        adapted = k["adapted"]
+        banned = len(k["banned_params"])
+        lines.append(f"  atlas    {rej} rejections ingested, adapted={adapted}, {banned} banned params")
+    except Exception:
+        lines.append("  atlas    no data")
+
+    # Fish: calibration track record
+    try:
+        from workspace.quant.fish.scenario_lane import build_calibration_state, get_pending_forecasts
+        cal = build_calibration_state(root)
+        pending = get_pending_forecasts(root)
+        if cal["total_calibrations"] > 0:
+            hr = f"{cal['direction_hit_rate']:.0%}" if cal["direction_hit_rate"] is not None else "?"
+            lines.append(
+                f"  fish     {cal['total_calibrations']} calibrations, "
+                f"hit_rate={hr}, trend={cal['trend']}, "
+                f"streak={cal['streak']}, {len(pending)} pending"
+            )
         else:
-            lines.append(f"  {lane:8s} silent")
+            lines.append(f"  fish     no calibrations yet, {len(pending)} pending forecasts")
+    except Exception:
+        lines.append("  fish     no data")
+
+    # Sigma: promotion/rejection pressure
+    from workspace.quant.shared.packet_store import list_lane_packets
+    sigma_rej = list_lane_packets(root, "sigma", "strategy_rejection_packet")
+    sigma_promo = list_lane_packets(root, "sigma", "promotion_packet")
+    sigma_rej = [p for p in sigma_rej if not (p.strategy_id and _is_proof_artifact(p.strategy_id))]
+    sigma_promo = [p for p in sigma_promo if not (p.strategy_id and _is_proof_artifact(p.strategy_id))]
+    lines.append(f"  sigma    {len(sigma_promo)} promoted, {len(sigma_rej)} rejected")
+
+    # TradeFloor: last agreement + risk
+    tf_pkt = None
+    for key, pkt in latest.items():
+        if pkt.packet_type == "tradefloor_packet":
+            tf_pkt = pkt
+    if tf_pkt:
+        tier = tf_pkt.agreement_tier if tf_pkt.agreement_tier is not None else "?"
+        risk_note = ""
+        notes = tf_pkt.notes or ""
+        if "risk_zones=" in notes:
+            risk_note = " +risk"
+        lines.append(f"  floor    tier={tier}{risk_note}")
+    else:
+        lines.append("  floor    no synthesis yet")
+
+    # Stale lane warnings
+    try:
+        from workspace.quant.shared.restart import check_stale_lanes
+        stale = check_stale_lanes(root)
+        stale_names = [lane for lane, info in stale.items() if info["stale"]]
+        if stale_names:
+            lines.append(f"  ⚠ stale  {', '.join(stale_names)}")
+    except Exception:
+        pass
+
     return "\n".join(lines)
 
 
@@ -169,7 +222,7 @@ PIPELINE
     if exec_section:
         brief_text += f"\n\nEXECUTION\n{exec_section}"
 
-    # TradeFloor section — surface synthesis for operator if present
+    # TradeFloor section
     tf_pkt = None
     for key, pkt in latest.items():
         if pkt.packet_type == "tradefloor_packet":
@@ -177,6 +230,9 @@ PIPELINE
     if tf_pkt is not None:
         tier = tf_pkt.agreement_tier if tf_pkt.agreement_tier is not None else "?"
         brief_text += f"\n\nTRADEFLOOR\n  Agreement tier: {tier}\n  {tf_pkt.thesis[:120]}"
+
+    # Feedback loops section
+    brief_text += f"\n\nFEEDBACK LOOPS\n{_feedback_loops(root, latest)}"
 
     # Check delivery health for HEALTH section
     from workspace.quant.shared.discord_bridge import check_delivery_health
@@ -196,9 +252,6 @@ PIPELINE
         governor_line = "  Governor: no state"
 
     brief_text += f"""
-
-LANES
-{_lane_activity(latest)}
 
 HEALTH
   Active: {', '.join(lanes) if lanes else 'none'}

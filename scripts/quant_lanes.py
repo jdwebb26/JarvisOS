@@ -505,6 +505,113 @@ def cmd_acceptance(args):
     print(f"\nACCEPTANCE  {passed}/{total} pass")
 
 
+def cmd_observe(args):
+    """Concise operator observability surface. Phone-readable truth."""
+    from workspace.quant.shared.governor import load_governor_state
+    from workspace.quant.shared.restart import check_stale_lanes, check_kill_switch
+    from workspace.quant.shared.discord_bridge import check_delivery_health
+    from workspace.quant.sigma.validation_lane import load_thresholds
+    from workspace.quant.hermes.research_lane import get_watchlist_status
+    from workspace.quant.shared.packet_store import list_lane_packets
+
+    print("QUANT OBSERVE")
+    print("━" * 40)
+
+    # Governor
+    gov = load_governor_state(ROOT)
+    paused = [k for k, v in gov.items() if v.get("paused")]
+    if paused:
+        print(f"  Governor: {len(gov)} lanes, PAUSED: {', '.join(paused)}")
+    else:
+        print(f"  Governor: {len(gov)} lanes, all running")
+    for lane in sorted(gov):
+        p = gov[lane]
+        batch = p.get("batch_size", 1)
+        cadence = p.get("cadence_multiplier", 1.0)
+        backoffs = p.get("consecutive_backoff_cycles", 0)
+        status = "PAUSED" if p.get("paused") else "ok"
+        print(f"    {lane:12s} batch={batch} cadence={cadence} backoffs={backoffs} {status}")
+
+    # Stale lanes
+    print()
+    stale = check_stale_lanes(ROOT)
+    stale_names = [l for l, i in stale.items() if i["stale"]]
+    if stale_names:
+        print(f"  Stale lanes: {', '.join(stale_names)}")
+    else:
+        print(f"  Stale lanes: none (all {len(stale)} active)")
+    for lane in sorted(stale):
+        info = stale[lane]
+        age = f"{info['last_packet_age_hours']:.1f}h" if info['last_packet_age_hours'] is not None else "never"
+        tag = "STALE" if info["stale"] else "ok"
+        print(f"    {lane:12s} {age:>8s}  {tag}")
+
+    # Delivery
+    print()
+    dh = check_delivery_health()
+    missing = [k for k, v in dh.items() if v != "ok"]
+    if missing:
+        print(f"  Delivery: MISSING {', '.join(missing)}")
+    else:
+        print(f"  Delivery: {len(dh)} channels ok")
+
+    # Kill switch
+    ks = check_kill_switch(ROOT)
+    print(f"  Kill switch: {'ENGAGED — ' + (ks['reason'] or '?') if ks['engaged'] else 'off'}")
+
+    # Sigma thresholds
+    print()
+    t = load_thresholds(ROOT)
+    src = t.get("_source", "?")
+    v = t.get("validation", {})
+    print(f"  Sigma thresholds: {src}")
+    print(f"    validation: PF≥{v.get('min_profit_factor', '?')}, Sharpe≥{v.get('min_sharpe', '?')}, "
+          f"DD≤{v.get('max_drawdown_pct', '?')}, trades≥{v.get('min_trades', '?')}")
+
+    # Hermes watchlist
+    wl = get_watchlist_status(ROOT)
+    print(f"  Hermes watchlist: {wl['active']} active / {wl['total']} total")
+    for topic in wl.get("topics", [])[:5]:
+        print(f"    • {topic}")
+
+    # Pipeline summary
+    print()
+    strats = load_all_strategies(ROOT)
+    by_state: dict[str, int] = {}
+    for s in strats.values():
+        by_state[s.lifecycle_state] = by_state.get(s.lifecycle_state, 0) + 1
+    if by_state:
+        parts = [f"{state}={count}" for state, count in sorted(by_state.items())]
+        print(f"  Pipeline: {', '.join(parts)}")
+    else:
+        print("  Pipeline: empty")
+
+    # Pending approvals
+    approvals = load_all_approvals(ROOT)
+    active_approvals = [a for a in approvals if not a.revoked]
+    if active_approvals:
+        print(f"  Pending approvals: {len(active_approvals)}")
+        for a in active_approvals[-3:]:
+            print(f"    {a.approval_ref} → {a.strategy_id}")
+    else:
+        print("  Pending approvals: none")
+
+    # Fish pending forecasts
+    try:
+        from workspace.quant.fish.scenario_lane import get_pending_forecasts, build_calibration_state
+        pending = get_pending_forecasts(ROOT)
+        cal = build_calibration_state(ROOT)
+        if cal["total_calibrations"] > 0:
+            hr = f"{cal['direction_hit_rate']:.0%}" if cal["direction_hit_rate"] is not None else "?"
+            print(f"  Fish: {cal['total_calibrations']} calibrations, hit_rate={hr}, {len(pending)} pending")
+        elif pending:
+            print(f"  Fish: {len(pending)} pending forecasts, no calibrations yet")
+    except Exception:
+        pass
+
+    print()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Quant Lanes — Operator CLI")
     sub = parser.add_subparsers(dest="command")
@@ -556,6 +663,7 @@ def main():
     s_hb.add_argument("--source", default=None)
 
     sub.add_parser("live-proof", help="Run live runtime proof")
+    sub.add_parser("observe", help="Operator observability surface")
     sub.add_parser("doctor", help="Operator health check")
     sub.add_parser("acceptance", help="Non-destructive acceptance test")
 
@@ -580,6 +688,7 @@ def main():
         "fish-batch": cmd_fish_batch,
         "hermes-batch": cmd_hermes_batch,
         "live-proof": cmd_live_proof,
+        "observe": cmd_observe,
         "doctor": cmd_doctor,
         "acceptance": cmd_acceptance,
     }

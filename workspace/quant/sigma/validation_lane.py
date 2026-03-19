@@ -6,9 +6,13 @@ paper-trade reviewer.
 
 Sigma should: validate, gate, promote/reject, maintain rigor, explain
 rejections for Atlas, review paper and live performance.
+
+Thresholds loaded from shared/config/review_thresholds.json at runtime.
+Falls back to hardcoded defaults if file is missing or corrupt.
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -19,6 +23,59 @@ sys.path.insert(0, str(ROOT))
 from workspace.quant.shared.schemas.packets import make_packet, QuantPacket, REJECTION_REASONS
 from workspace.quant.shared.packet_store import store_packet
 from workspace.quant.shared.registries.strategy_registry import transition_strategy, get_strategy
+
+# Hardcoded defaults — used when config file is missing or corrupt.
+_DEFAULT_VALIDATION = {
+    "min_profit_factor": 1.3,
+    "min_sharpe": 0.8,
+    "max_drawdown_pct": 0.15,
+    "min_trades": 20,
+}
+
+_DEFAULT_PAPER_REVIEW = {
+    "min_profit_factor": 1.3,
+    "min_sharpe": 0.8,
+    "max_drawdown_pct": 0.15,
+    "min_fill_rate": 0.90,
+    "max_correlation": 0.7,
+}
+
+
+def load_thresholds(root: Path) -> dict:
+    """Load review_thresholds.json. Returns full config dict.
+
+    Falls back to defaults if missing or corrupt. Never crashes.
+    """
+    path = root / "workspace" / "quant" / "shared" / "config" / "review_thresholds.json"
+    if not path.exists():
+        return {"validation": dict(_DEFAULT_VALIDATION), "paper_review": dict(_DEFAULT_PAPER_REVIEW),
+                "_source": "defaults"}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        # Validate structure minimally
+        if not isinstance(data.get("validation"), dict) or not isinstance(data.get("paper_review"), dict):
+            return {"validation": dict(_DEFAULT_VALIDATION), "paper_review": dict(_DEFAULT_PAPER_REVIEW),
+                    "_source": "defaults (invalid structure)"}
+        return {**data, "_source": str(path)}
+    except (json.JSONDecodeError, ValueError, OSError):
+        return {"validation": dict(_DEFAULT_VALIDATION), "paper_review": dict(_DEFAULT_PAPER_REVIEW),
+                "_source": "defaults (corrupt file)"}
+
+
+def _get_validation_thresholds(root: Path) -> dict:
+    """Get validation thresholds, merging config over defaults."""
+    cfg = load_thresholds(root)
+    result = dict(_DEFAULT_VALIDATION)
+    result.update(cfg.get("validation", {}))
+    return result
+
+
+def _get_paper_review_thresholds(root: Path) -> dict:
+    """Get paper review thresholds, merging config over defaults."""
+    cfg = load_thresholds(root)
+    result = dict(_DEFAULT_PAPER_REVIEW)
+    result.update(cfg.get("paper_review", {}))
+    return result
 
 
 def _emit_discord(packet: QuantPacket, root: Path):
@@ -42,17 +99,18 @@ def validate_candidate(
 ) -> tuple[str, QuantPacket]:
     """Validate a candidate strategy and produce validation outcome.
 
+    Thresholds loaded from review_thresholds.json; falls back to defaults.
     Returns (outcome, packet) where outcome is "promoted" or "rejected".
     """
     strategy_id = candidate_packet.strategy_id
     if not strategy_id:
         raise ValueError("candidate_packet must have strategy_id")
 
-    # Simple validation gates (will be configurable via review_thresholds.json later)
-    MIN_PF = 1.3
-    MIN_SHARPE = 0.8
-    MAX_DD = 0.15  # 15%
-    MIN_TRADES = 20
+    t = _get_validation_thresholds(root)
+    MIN_PF = t["min_profit_factor"]
+    MIN_SHARPE = t["min_sharpe"]
+    MAX_DD = t["max_drawdown_pct"]
+    MIN_TRADES = t["min_trades"]
 
     rejection_reasons = []
     if profit_factor < MIN_PF:
@@ -65,7 +123,6 @@ def validate_candidate(
         rejection_reasons.append(("insufficient_trades", f"Trades {trade_count} < {MIN_TRADES}"))
 
     if rejection_reasons:
-        # Reject — use the first/primary reason
         primary_reason, detail = rejection_reasons[0]
         all_details = "; ".join(d for _, d in rejection_reasons)
 
@@ -83,7 +140,6 @@ def validate_candidate(
         store_packet(root, rejection)
         _emit_discord(rejection, root)
 
-        # Transition registry
         try:
             strategy = get_strategy(root, strategy_id)
             if strategy and strategy.lifecycle_state == "VALIDATING":
@@ -117,7 +173,6 @@ def validate_candidate(
     store_packet(root, promotion)
     _emit_discord(promotion, root)
 
-    # Emit papertrade_candidate_packet for Kitt
     ptc = make_packet(
         "papertrade_candidate_packet", "sigma",
         f"Strategy {strategy_id} fit for paper trading. PF {profit_factor}, Sharpe {sharpe}.",
@@ -128,7 +183,6 @@ def validate_candidate(
     )
     store_packet(root, ptc)
 
-    # Transition registry
     try:
         strategy = get_strategy(root, strategy_id)
         if strategy and strategy.lifecycle_state == "VALIDATING":
@@ -153,16 +207,16 @@ def review_paper_results(
 ) -> tuple[str, QuantPacket]:
     """Review paper trading results per spec §11.
 
+    Thresholds loaded from review_thresholds.json; falls back to defaults.
     Returns (outcome, paper_review_packet) where outcome is
     "advance_to_live", "iterate", or "kill".
     """
-    # Review thresholds per spec §11
-    MIN_PF = 1.3
-    MIN_SHARPE = 0.8
-    MAX_DD = 0.15
-    MAX_SLIPPAGE_MULT = 2.0  # vs backtest
-    MIN_FILL_RATE = 0.90
-    MAX_CORRELATION = 0.7
+    t = _get_paper_review_thresholds(root)
+    MIN_PF = t["min_profit_factor"]
+    MIN_SHARPE = t["min_sharpe"]
+    MAX_DD = t["max_drawdown_pct"]
+    MIN_FILL_RATE = t["min_fill_rate"]
+    MAX_CORRELATION = t["max_correlation"]
 
     issues = []
     if realized_pf < MIN_PF:
@@ -206,3 +260,75 @@ def review_paper_results(
     store_packet(root, review)
 
     return outcome, review
+
+
+# ---------------------------------------------------------------------------
+# Health summary
+# ---------------------------------------------------------------------------
+
+def emit_health_summary(
+    root: Path,
+    period_start: str,
+    period_end: str,
+    packets_produced: int,
+    validations_done: int = 0,
+    promotions: int = 0,
+    rejections: int = 0,
+    paper_reviews: int = 0,
+    error_count: int = 0,
+    usefulness_score: float = 0.5,
+    efficiency_score: float = 0.5,
+    health_score: float = 0.8,
+    confidence_score: float = 0.5,
+    host_used: str = "NIMO",
+    scheduler_waits: int = 0,
+) -> QuantPacket:
+    """Emit Sigma health_summary per spec §10."""
+    from workspace.quant.shared.scheduler.scheduler import check_capacity
+    from workspace.quant.shared.governor import evaluate_cycle, get_lane_params
+
+    can_start, _, _ = check_capacity(root, "sigma")
+    gov_action, gov_reason = evaluate_cycle(
+        root, "sigma",
+        usefulness_score=usefulness_score,
+        efficiency_score=efficiency_score,
+        health_score=health_score,
+        confidence_score=confidence_score,
+        host_has_capacity=can_start,
+    )
+    params = get_lane_params(root, "sigma")
+
+    pkt = make_packet(
+        "health_summary", "sigma",
+        f"Sigma health: {validations_done} validations, {promotions} promoted, {rejections} rejected, {paper_reviews} paper reviews",
+        priority="low",
+        period_start=period_start,
+        period_end=period_end,
+        packets_produced=packets_produced,
+        packets_by_type={
+            "validation_packet": validations_done,
+            "promotion_packet": promotions,
+            "strategy_rejection_packet": rejections,
+            "paper_review_packet": paper_reviews,
+        },
+        escalation_count=0,
+        error_count=error_count,
+        cloud_bursts=0,
+        estimated_cloud_cost=0.0,
+        notable_events=f"{promotions} promoted, {rejections} rejected" if promotions or rejections else "routine",
+        scheduler_waits=scheduler_waits,
+        scheduler_bypasses=0,
+        host_used=host_used,
+        local_runtime_seconds=0.0,
+        cloud_runtime_seconds=0.0,
+        usefulness_score=usefulness_score,
+        efficiency_score=efficiency_score,
+        health_score=health_score,
+        confidence_score=confidence_score,
+        governor_action_taken=gov_action,
+        governor_reason=gov_reason,
+        current_batch_size=params.get("batch_size", 1),
+        current_cadence_multiplier=params.get("cadence_multiplier", 1.0),
+    )
+    store_packet(root, pkt)
+    return pkt

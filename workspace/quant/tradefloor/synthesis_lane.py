@@ -12,6 +12,8 @@ Output: tradefloor_packet with agreement tier (0-4), routed to Kitt.
 TradeFloor reads confidence from each lane's latest packet and uses them
 to weight synthesis. TradeFloor does not invent its own confidence.
 
+Per spec §9: Fish confidence is adjusted by calibration track record.
+
 Host placement: strongest available primary, cloud overflow (spec §2).
 """
 from __future__ import annotations
@@ -33,6 +35,23 @@ from workspace.quant.shared.scheduler.scheduler import heavy_job_slot, check_cap
 LANE = "tradefloor"
 CONFIDENCE_THRESHOLD = 0.6
 CADENCE_SECONDS = 6 * 3600  # 6 hours
+
+# Packet types per lane, in preference order for position extraction.
+# TradeFloor picks the first available type per lane.
+_LANE_PACKET_PREFERENCE = {
+    "fish": ["forecast_packet", "scenario_packet", "regime_packet", "risk_map_packet",
+             "calibration_packet", "health_summary"],
+    "atlas": ["candidate_packet", "idea_packet", "experiment_batch_packet",
+              "failure_learning_packet", "health_summary"],
+    "sigma": ["promotion_packet", "validation_packet", "strategy_rejection_packet",
+              "paper_review_packet", "papertrade_candidate_packet", "health_summary"],
+    "hermes": ["theme_packet", "research_packet", "dataset_packet", "repo_packet",
+               "research_request_packet", "health_summary"],
+    "kitt": ["brief_packet", "setup_packet", "alert_packet", "health_summary"],
+    "executor": ["execution_status_packet", "fill_packet", "execution_intent_packet",
+                 "execution_rejection_packet", "position_update_packet",
+                 "kill_switch_event", "health_summary"],
+}
 
 
 class CadenceRefused(Exception):
@@ -90,36 +109,141 @@ def _record_invocation(root: Path, override_reason: Optional[str] = None):
     _save_cadence_state(root, state)
 
 
+# ---------------------------------------------------------------------------
+# Position extraction — pick most representative packet per lane
+# ---------------------------------------------------------------------------
+
+def _classify_direction(thesis: str, notes: Optional[str] = None) -> str:
+    """Extract directional stance from thesis and notes text."""
+    text = thesis.lower()
+    if notes:
+        text += " " + notes.lower()
+
+    bullish_signals = ("bullish", "long", "breakout", "upside", "rally",
+                       "recovery", "support holding")
+    bearish_signals = ("bearish", "short", "breakdown", "downside", "selloff",
+                       "decline", "resistance holding")
+
+    bull = sum(1 for w in bullish_signals if w in text)
+    bear = sum(1 for w in bearish_signals if w in text)
+
+    if bull > bear:
+        return "bullish"
+    elif bear > bull:
+        return "bearish"
+    return "neutral"
+
+
 def _extract_lane_positions(latest: dict[str, QuantPacket]) -> dict[str, dict]:
-    """Extract each lane's current position/thesis from latest packets."""
-    positions: dict[str, dict] = {}
+    """Extract each lane's current position from latest packets.
 
+    Uses packet type preference to pick the most representative packet per lane.
+    Returns {lane: {thesis, confidence, direction, packet_id, packet_type, priority}}.
+    """
+    # Group packets by lane
+    by_lane: dict[str, list[QuantPacket]] = {}
     for key, pkt in latest.items():
-        lane = pkt.lane
-        if lane in positions:
-            if pkt.priority in ("critical", "high") and positions[lane].get("priority") not in ("critical", "high"):
-                pass
-            else:
-                continue
+        by_lane.setdefault(pkt.lane, []).append(pkt)
 
-        thesis_lower = pkt.thesis.lower()
-        direction = "neutral"
-        if any(w in thesis_lower for w in ("bullish", "long", "breakout", "upside")):
-            direction = "bullish"
-        elif any(w in thesis_lower for w in ("bearish", "short", "breakdown", "downside")):
-            direction = "bearish"
+    positions: dict[str, dict] = {}
+    for lane, pkts in by_lane.items():
+        # Skip tradefloor's own packets
+        if lane == "tradefloor":
+            continue
+
+        # Pick best packet by preference order
+        chosen = None
+        prefs = _LANE_PACKET_PREFERENCE.get(lane, [])
+        for ptype in prefs:
+            for pkt in pkts:
+                if pkt.packet_type == ptype:
+                    chosen = pkt
+                    break
+            if chosen:
+                break
+
+        # Fallback: highest priority, most recent
+        if not chosen:
+            chosen = max(pkts, key=lambda p: (
+                p.priority in ("critical", "high"),
+                p.created_at,
+            ))
+
+        direction = _classify_direction(chosen.thesis, chosen.notes)
 
         positions[lane] = {
-            "thesis": pkt.thesis,
-            "confidence": pkt.confidence or 0.5,
+            "thesis": chosen.thesis,
+            "confidence": chosen.confidence or 0.5,
             "direction": direction,
-            "packet_id": pkt.packet_id,
-            "packet_type": pkt.packet_type,
-            "priority": pkt.priority,
+            "packet_id": chosen.packet_id,
+            "packet_type": chosen.packet_type,
+            "priority": chosen.priority,
         }
 
     return positions
 
+
+# ---------------------------------------------------------------------------
+# Fish calibration confidence adjustment (spec §9)
+# ---------------------------------------------------------------------------
+
+def _apply_calibration_adjustments(root: Path, positions: dict[str, dict]) -> dict[str, dict]:
+    """Adjust Fish confidence based on calibration track record per spec §9.
+
+    Reads Fish calibration state. If track record is weak, penalize
+    Fish's confidence in the synthesis. If strong, leave it alone.
+    """
+    if "fish" not in positions:
+        return positions
+
+    try:
+        from workspace.quant.fish.scenario_lane import build_calibration_state
+        cal_state = build_calibration_state(root)
+    except Exception:
+        return positions
+
+    if cal_state["total_calibrations"] == 0:
+        return positions
+
+    tr_conf = cal_state["track_record_confidence"]
+    original_conf = positions["fish"]["confidence"]
+
+    # Blend Fish's stated confidence with its track record.
+    # Good track record (>0.6) preserves or boosts; bad (<0.4) penalizes.
+    adjusted = 0.6 * original_conf + 0.4 * tr_conf
+    adjusted = max(0.05, min(0.95, adjusted))
+
+    positions["fish"] = {
+        **positions["fish"],
+        "confidence": adjusted,
+        "calibration_adjusted": True,
+        "original_confidence": original_conf,
+        "track_record_confidence": tr_conf,
+        "calibration_trend": cal_state["trend"],
+    }
+
+    return positions
+
+
+# ---------------------------------------------------------------------------
+# Risk zone integration
+# ---------------------------------------------------------------------------
+
+def _get_risk_context(root: Path) -> dict:
+    """Read Fish active risk zones for synthesis context.
+
+    Returns {zone_name: {level, trigger, ...}} or empty dict.
+    """
+    try:
+        from workspace.quant.fish.scenario_lane import get_active_risk_zones
+        return get_active_risk_zones(root)
+    except Exception:
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# Agreement computation
+# ---------------------------------------------------------------------------
 
 def _build_agreement_matrix(positions: dict[str, dict]) -> dict:
     directions: dict[str, list[str]] = {}
@@ -193,6 +317,10 @@ def _determine_agreement_tier(
     return 0, "No meaningful agreement across lanes"
 
 
+# ---------------------------------------------------------------------------
+# Pipeline snapshot
+# ---------------------------------------------------------------------------
+
 def _pipeline_snapshot(root: Path) -> dict:
     strategies = load_all_strategies(root)
     by_state: dict[str, int] = {}
@@ -203,6 +331,35 @@ def _pipeline_snapshot(root: Path) -> dict:
         "by_state": by_state,
     }
 
+
+# ---------------------------------------------------------------------------
+# Synthesis text
+# ---------------------------------------------------------------------------
+
+def _build_synthesis_text(
+    positions: dict[str, dict],
+    risk_zones: dict,
+) -> str:
+    """Build confidence-weighted synthesis text from lane positions."""
+    parts = []
+    for lane, pos in sorted(positions.items(), key=lambda x: -x[1]["confidence"]):
+        conf = pos["confidence"]
+        cal_marker = ""
+        if pos.get("calibration_adjusted"):
+            cal_marker = f" cal={pos.get('track_record_confidence', '?'):.2f}"
+        parts.append(f"[{lane} c={conf:.2f}{cal_marker} {pos['direction']}] {pos['thesis'][:80]}")
+
+    if risk_zones:
+        high_zones = [z for z, d in risk_zones.items() if d.get("level") == "high"]
+        if high_zones:
+            parts.append(f"[RISK] High zones active: {', '.join(high_zones)}")
+
+    return " | ".join(parts) if parts else "No lane data"
+
+
+# ---------------------------------------------------------------------------
+# Main synthesis
+# ---------------------------------------------------------------------------
 
 def synthesize(
     root: Path,
@@ -253,6 +410,13 @@ def synthesize(
 
         latest = get_all_latest(root)
         positions = _extract_lane_positions(latest)
+
+        # Apply Fish calibration adjustment per spec §9
+        positions = _apply_calibration_adjustments(root, positions)
+
+        # Read risk context
+        risk_zones = _get_risk_context(root)
+
         agreement_matrix = _build_agreement_matrix(positions)
         disagreement_matrix = _build_disagreement_matrix(positions)
 
@@ -261,20 +425,27 @@ def synthesize(
             positions, agreement_matrix, disagreement_matrix, has_action,
         )
 
-        # Confidence-weighted synthesis
-        weighted_theses = []
-        for lane, pos in positions.items():
-            conf = pos["confidence"]
-            weighted_theses.append(f"[{lane} c={conf:.2f}] {pos['thesis'][:80]}")
-        synthesis_text = " | ".join(weighted_theses) if weighted_theses else "No lane data"
+        # Build synthesis text
+        synthesis_text = _build_synthesis_text(positions, risk_zones)
 
         pipeline = _pipeline_snapshot(root)
+
+        # Collect evidence refs from all contributing packets
+        evidence_refs = [pos["packet_id"] for pos in positions.values()]
 
         next_actions = []
         if tier >= 3 and concrete_action:
             next_actions.append({"action": concrete_action, "assigned_lane": "kitt"})
         if any(s == "PROMOTED" for s in pipeline.get("by_state", {}).keys()):
             next_actions.append({"action": "Review promoted strategies for paper trade", "assigned_lane": "kitt"})
+
+        # Risk-driven actions
+        high_risk = [z for z, d in risk_zones.items() if d.get("level") == "high"]
+        if high_risk:
+            next_actions.append({
+                "action": f"Elevated risk zones: {', '.join(high_risk)}. Review exposure.",
+                "assigned_lane": "kitt",
+            })
 
         if tier >= 4:
             op_rec = "notify"
@@ -300,6 +471,17 @@ def synthesize(
         if override_reason:
             thesis += f" [override: {override_reason}]"
 
+        notes_parts = [f"host={slot.host}"]
+        if override_reason:
+            notes_parts.append(f"override={override_reason}")
+        if risk_zones:
+            notes_parts.append(f"risk_zones={len(risk_zones)}")
+        fish_pos = positions.get("fish", {})
+        if fish_pos.get("calibration_adjusted"):
+            notes_parts.append(
+                f"fish_cal_trend={fish_pos.get('calibration_trend', '?')}"
+            )
+
         pkt = make_packet(
             "tradefloor_packet", "tradefloor",
             thesis,
@@ -316,7 +498,74 @@ def synthesize(
             operator_recommendation_reasoning=op_reason,
             degraded=False,
             escalation_level=escalation,
-            notes=f"host={slot.host}" + (f"; override={override_reason}" if override_reason else ""),
+            evidence_refs=evidence_refs,
+            notes="; ".join(notes_parts),
         )
         store_packet(root, pkt)
         return pkt
+
+
+# ---------------------------------------------------------------------------
+# Health summary
+# ---------------------------------------------------------------------------
+
+def emit_health_summary(
+    root: Path,
+    period_start: str,
+    period_end: str,
+    packets_produced: int,
+    syntheses_run: int = 0,
+    cadence_refusals: int = 0,
+    degraded_count: int = 0,
+    error_count: int = 0,
+    usefulness_score: float = 0.5,
+    efficiency_score: float = 0.5,
+    health_score: float = 0.8,
+    confidence_score: float = 0.5,
+    host_used: str = "NIMO",
+    scheduler_waits: int = 0,
+) -> QuantPacket:
+    """Emit TradeFloor health_summary per spec §10."""
+    can_start, _, _ = check_capacity(root, LANE)
+    from workspace.quant.shared.governor import evaluate_cycle, get_lane_params
+    gov_action, gov_reason = evaluate_cycle(
+        root, LANE,
+        usefulness_score=usefulness_score,
+        efficiency_score=efficiency_score,
+        health_score=health_score,
+        confidence_score=confidence_score,
+        host_has_capacity=can_start,
+    )
+    params = get_lane_params(root, LANE)
+
+    pkt = make_packet(
+        "health_summary", "tradefloor",
+        f"TradeFloor health: {syntheses_run} syntheses, {cadence_refusals} cadence refusals, {degraded_count} degraded",
+        priority="low",
+        period_start=period_start,
+        period_end=period_end,
+        packets_produced=packets_produced,
+        packets_by_type={"tradefloor_packet": syntheses_run},
+        escalation_count=0,
+        error_count=error_count,
+        cloud_bursts=0,
+        estimated_cloud_cost=0.0,
+        notable_events=f"{degraded_count} degraded syntheses" if degraded_count else "routine",
+        scheduler_waits=scheduler_waits,
+        scheduler_bypasses=0,
+        host_used=host_used,
+        local_runtime_seconds=0.0,
+        cloud_runtime_seconds=0.0,
+        usefulness_score=usefulness_score,
+        efficiency_score=efficiency_score,
+        health_score=health_score,
+        confidence_score=confidence_score,
+        governor_action_taken=gov_action,
+        governor_reason=gov_reason,
+        current_batch_size=params.get("batch_size", 1),
+        current_cadence_multiplier=params.get("cadence_multiplier", cadence_multiplier)
+        if (cadence_multiplier := params.get("cadence_multiplier")) is not None
+        else 1.0,
+    )
+    store_packet(root, pkt)
+    return pkt

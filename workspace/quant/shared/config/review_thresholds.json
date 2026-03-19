@@ -1,0 +1,15 @@
+{
+  "validation": {
+    "min_profit_factor": 1.3,
+    "min_sharpe": 0.8,
+    "max_drawdown_pct": 0.15,
+    "min_trades": 20
+  },
+  "paper_review": {
+    "min_profit_factor": 1.3,
+    "min_sharpe": 0.8,
+    "max_drawdown_pct": 0.15,
+    "min_fill_rate": 0.90,
+    "max_correlation": 0.7
+  }
+}

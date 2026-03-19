@@ -1,0 +1,26 @@
+[
+  {
+    "topic": "NQ overnight gap patterns",
+    "symbol": "NQ",
+    "source_type": "web",
+    "active": true
+  },
+  {
+    "topic": "VIX term structure and futures roll",
+    "symbol": "VIX",
+    "source_type": "api",
+    "active": true
+  },
+  {
+    "topic": "Fed funds rate expectations",
+    "symbol": "NQ",
+    "source_type": "official_doc",
+    "active": true
+  },
+  {
+    "topic": "NQ options flow and gamma exposure",
+    "symbol": "NQ",
+    "source_type": "api",
+    "active": false
+  }
+]

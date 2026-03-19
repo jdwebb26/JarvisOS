@@ -102,7 +102,7 @@ def test_kitt_brief_reflects_lane_b(cycle_root):
             brief_pkt = pkt
     assert brief_pkt is not None, "No brief after cycle"
     notes = brief_pkt.notes or ""
-    assert "LANES" in notes or "LANE" in notes
+    assert "FEEDBACK LOOPS" in notes or "LANES" in notes
 
 
 def test_governor_state_persists(cycle_root):

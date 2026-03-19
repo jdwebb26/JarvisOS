@@ -34,11 +34,85 @@ DEFAULT_DEDUP_HOURS = 24
 
 
 def _load_watch_list(root: Path) -> list[dict]:
-    """Load the watch list config."""
+    """Load the watch list config. Returns list of watchlist entries.
+
+    Each entry: {topic, symbol?, source_type?, active?}
+    Only returns active entries. Falls back to [] on missing/corrupt file.
+    """
     path = root / "workspace" / "quant" / "shared" / "config" / "watch_list.json"
     if not path.exists():
         return []
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return []
+        return [e for e in data if isinstance(e, dict) and e.get("active", True)]
+    except (json.JSONDecodeError, ValueError, OSError):
+        return []
+
+
+def get_watchlist_status(root: Path) -> dict:
+    """Return watchlist status for observability.
+
+    Returns {total, active, inactive, topics: [str]}.
+    """
+    path = root / "workspace" / "quant" / "shared" / "config" / "watch_list.json"
+    if not path.exists():
+        return {"total": 0, "active": 0, "inactive": 0, "topics": [], "_source": "missing"}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return {"total": 0, "active": 0, "inactive": 0, "topics": [], "_source": "invalid"}
+        active = [e for e in data if isinstance(e, dict) and e.get("active", True)]
+        inactive = [e for e in data if isinstance(e, dict) and not e.get("active", True)]
+        return {
+            "total": len(data),
+            "active": len(active),
+            "inactive": len(inactive),
+            "topics": [e.get("topic", "?") for e in active],
+            "_source": str(path),
+        }
+    except (json.JSONDecodeError, ValueError, OSError):
+        return {"total": 0, "active": 0, "inactive": 0, "topics": [], "_source": "corrupt"}
+
+
+def run_watchlist_batch(root: Path) -> tuple[list[QuantPacket], dict]:
+    """Generate research requests from watchlist entries.
+
+    Reads watch_list.json, converts active entries to research batch requests,
+    runs through run_research_batch with dedup. Returns (packets, info).
+    """
+    entries = _load_watch_list(root)
+    if not entries:
+        return [], {"watchlist_entries": 0, "emitted": 0, "deduped": 0, "skipped": 0}
+
+    requests = []
+    for entry in entries:
+        topic = entry.get("topic", "")
+        if not topic:
+            continue
+        symbol = entry.get("symbol")
+        source_type = entry.get("source_type", "web")
+        # Use topic as the source identifier for dedup
+        source = f"watchlist:{topic}"
+        requests.append({
+            "thesis": topic,
+            "source": source,
+            "source_type": source_type,
+            "symbol_scope": symbol,
+        })
+
+    if not requests:
+        return [], {"watchlist_entries": len(entries), "emitted": 0, "deduped": 0, "skipped": 0}
+
+    packets, sched = run_research_batch(root, requests)
+    return packets, {
+        "watchlist_entries": len(entries),
+        "emitted": sched.get("emitted", 0),
+        "deduped": sched.get("deduped", 0),
+        "skipped": sched.get("skipped", 0),
+        "scheduler_acquired": sched.get("acquired", False),
+    }
 
 
 def _recent_sources(root: Path, hours: int = DEFAULT_DEDUP_HOURS) -> set[str]:
