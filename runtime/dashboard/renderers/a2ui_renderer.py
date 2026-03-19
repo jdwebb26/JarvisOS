@@ -117,9 +117,35 @@ def _degraded_state_view(source_payload: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _quant_live_queued_view(source_payload: dict[str, Any]) -> dict[str, Any]:
+    counts = dict(source_payload.get("counts") or {})
+    lq_count = int(counts.get("quant_live_queued", 0))
+    items = source_payload.get("quant_live_queued", [])
+    actionable = [i for i in items if i.get("approval_state") != "approved"]
+    return new_view(
+        "quant_live_queued_view",
+        title="LIVE_QUEUED Strategies",
+        view_type="operator_card",
+        components=[
+            new_component(
+                "quant_live_queued_card",
+                component_id="quant_live_queued_primary",
+                props={
+                    "title": "LIVE_QUEUED Strategies",
+                    "total_count": lq_count,
+                    "actionable_count": len(actionable),
+                    "status": "attention" if actionable else ("clear" if lq_count == 0 else "ready"),
+                },
+            )
+        ],
+        metadata={"scaffolding_only": True, "trusted_only": True},
+    )
+
+
 def build_operator_views(source_payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         _approval_view(source_payload),
+        _quant_live_queued_view(source_payload),
         _task_summary_view(source_payload),
         _skill_readiness_view(source_payload),
         _degraded_state_view(source_payload),

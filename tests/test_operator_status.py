@@ -15,6 +15,7 @@ from scripts.operator_status import (
     _pending_approvals,
     _actionable_tasks,
     _outbox_health,
+    _quant_live_queued,
     _fingerprint,
     _is_duplicate,
     _was_actionable,
@@ -182,6 +183,38 @@ def test_needs_attention_false_when_clear():
         "failed": [],
         "timers": [{"active": True}],
         "outbox": {"failed": 0},
+        "quant_live_queued": [],
+    }
+    assert needs_attention(data) is False
+
+
+def test_needs_attention_true_with_live_queued():
+    data = {
+        "approvals": [],
+        "failed": [],
+        "timers": [{"active": True}],
+        "outbox": {"failed": 0},
+        "quant_live_queued": [
+            {"strategy_id": "s1", "approval_state": "no_request",
+             "approval_ref": None, "action": "request-live s1",
+             "label": "needs live_trade approval request"},
+        ],
+    }
+    assert needs_attention(data) is True
+
+
+def test_needs_attention_false_with_approved_live_queued():
+    """Approved LIVE_QUEUED is not actionable — operator has already approved."""
+    data = {
+        "approvals": [],
+        "failed": [],
+        "timers": [{"active": True}],
+        "outbox": {"failed": 0},
+        "quant_live_queued": [
+            {"strategy_id": "s1", "approval_state": "approved",
+             "approval_ref": "qpt_xxx", "action": "execute-live s1",
+             "label": "live-approved"},
+        ],
     }
     assert needs_attention(data) is False
 
@@ -229,9 +262,53 @@ def test_render_discord_nothing_needed():
         "failed": [],
         "timers": [{"unit": "x.timer", "label": "Ralph", "active": True}],
         "outbox": {"pending": 0, "failed": 0},
+        "quant_live_queued": [],
     }
     text = render_discord(data)
     assert "Nothing needs attention" in text
+
+
+def test_render_terminal_includes_live_queued():
+    data = {
+        "ts": "2026-03-18T21:00:00Z",
+        "approvals": [],
+        "queued": [],
+        "blocked": [],
+        "failed": [],
+        "timers": [{"unit": "x.timer", "label": "Ralph", "active": True}],
+        "outbox": {"pending": 0, "failed": 0},
+        "quant_live_queued": [
+            {"strategy_id": "nq-mean-rev",
+             "approval_state": "no_request", "approval_ref": None,
+             "action": "request-live nq-mean-rev",
+             "label": "needs live_trade approval request"},
+        ],
+    }
+    text = render_terminal(data)
+    assert "LIVE QUEUED" in text
+    assert "nq-mean-rev" in text
+    assert "request-live" in text
+
+
+def test_render_discord_includes_live_queued():
+    data = {
+        "ts": "2026-03-18T21:00:00Z",
+        "approvals": [],
+        "queued": [],
+        "blocked": [],
+        "failed": [],
+        "timers": [{"unit": "x.timer", "label": "Ralph", "active": True}],
+        "outbox": {"pending": 0, "failed": 0},
+        "quant_live_queued": [
+            {"strategy_id": "nq-mean-rev",
+             "approval_state": "pending", "approval_ref": "qpt_abc",
+             "action": "approve qpt_abc",
+             "label": "live approval pending review (qpt_abc)"},
+        ],
+    }
+    text = render_discord(data)
+    assert "LIVE_QUEUED" in text
+    assert "nq-mean-rev" in text
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +343,22 @@ def test_fingerprint_changes_with_new_approval():
         "timers": [{"active": True, "unit": "x"}],
         "outbox": {"failed": 0},
     }
+    assert _fingerprint(data1) != _fingerprint(data2)
+
+
+def test_fingerprint_includes_live_queued():
+    """LIVE_QUEUED approval state changes the fingerprint."""
+    base = {
+        "approvals": [], "failed": [], "blocked": [],
+        "timers": [{"active": True, "unit": "x"}],
+        "outbox": {"failed": 0},
+    }
+    data1 = {**base, "quant_live_queued": [
+        {"strategy_id": "s1", "approval_state": "no_request"},
+    ]}
+    data2 = {**base, "quant_live_queued": [
+        {"strategy_id": "s1", "approval_state": "approved"},
+    ]}
     assert _fingerprint(data1) != _fingerprint(data2)
 
 

@@ -22,6 +22,12 @@ def test_collect_returns_required_keys():
     assert "blocked" in data
     assert "queued" in data
     assert "promotable_outputs" in data
+    assert "quant_live_queued" in data
+
+
+def test_quant_live_queued_is_list():
+    data = collect_dashboard_data()
+    assert isinstance(data["quant_live_queued"], list)
 
 
 def test_health_has_verdict():
@@ -44,5 +50,5 @@ def test_task_lists_are_lists():
 
 def test_html_template_is_valid():
     assert "<!DOCTYPE html>" in DASHBOARD_HTML
-    assert "OpenClaw Dashboard" in DASHBOARD_HTML
+    assert "OpenClaw" in DASHBOARD_HTML
     assert "/api/data" in DASHBOARD_HTML

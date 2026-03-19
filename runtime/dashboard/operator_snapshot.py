@@ -129,6 +129,14 @@ def build_operator_snapshot(root: Path) -> dict:
         if task.get("promoted_artifact_id")
     ]
 
+    # Quant LIVE_QUEUED strategies
+    quant_live_queued: list[dict] = []
+    try:
+        from scripts.operator_status import _quant_live_queued
+        quant_live_queued = _quant_live_queued()
+    except Exception:
+        pass
+
     if status.get("blocked"):
         operator_focus = "Inspect active control-state and blocked tasks before resuming any execution-bearing work."
     elif status.get("control_state", {}).get("effective", {}).get("has_active_controls"):
@@ -137,6 +145,12 @@ def build_operator_snapshot(root: Path) -> dict:
         operator_focus = "Clear pending reviews first."
     elif pending_approvals:
         operator_focus = "Clear pending approvals next."
+    elif quant_live_queued:
+        actionable = [lq for lq in quant_live_queued if lq["approval_state"] != "approved"]
+        if actionable:
+            operator_focus = f"LIVE_QUEUED: {actionable[0]['action']}"
+        else:
+            operator_focus = f"LIVE_QUEUED: {quant_live_queued[0]['action']}"
     elif status.get("revoked_outputs") or status.get("revoked_artifacts"):
         operator_focus = "Inspect revoked artifacts and outputs before continuing downstream work."
     elif status.get("impacted_outputs") or status.get("impacted_artifacts"):
@@ -241,6 +255,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "latest_compare_control_plane_checkpoints": (status.get("operator_control_plane", {}) or {}).get("latest_compare_control_plane_checkpoints"),
         "pending_reviews": pending_reviews,
         "pending_approvals": pending_approvals,
+        "quant_live_queued": quant_live_queued,
         "candidate_apply_ready": candidate_apply_ready,
         "flowstate_waiting_promotion": flowstate_waiting,
         "control_state": status.get("control_state", {}),
@@ -248,6 +263,7 @@ def build_operator_snapshot(root: Path) -> dict:
         "counts": {
             "pending_reviews": len(pending_reviews),
             "pending_approvals": len(pending_approvals),
+            "quant_live_queued": len(quant_live_queued),
             "candidate_apply_ready": len(candidate_apply_ready),
             "flowstate_waiting_promotion": len(flowstate_waiting),
             "blocked": len(status.get("blocked", [])),

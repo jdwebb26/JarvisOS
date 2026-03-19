@@ -21,6 +21,10 @@ TRUSTED_COMPONENT_CATALOG: dict[str, dict[str, Any]] = {
         "required_props": {"title", "overall_status", "active_degradation_mode_count", "operator_notification_required_event_count"},
         "description": "Trusted degraded-state summary card.",
     },
+    "quant_live_queued_card": {
+        "required_props": {"title", "total_count", "actionable_count", "status"},
+        "description": "Trusted LIVE_QUEUED strategy approval state card.",
+    },
 }
 
 

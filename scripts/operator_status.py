@@ -158,11 +158,83 @@ def _outbox_health() -> dict[str, int]:
     return {"pending": pending, "failed": failed}
 
 
+def _quant_live_queued() -> list[dict[str, Any]]:
+    """Return LIVE_QUEUED strategies with their live-approval state.
+
+    Each entry: {strategy_id, approval_state, approval_ref, action, label}.
+    approval_state is one of: no_request, pending, approved, revoked, expired.
+    """
+    results: list[dict[str, Any]] = []
+    try:
+        from workspace.quant.shared.registries.strategy_registry import (
+            load_all_strategies,
+        )
+        from workspace.quant.shared.registries.approval_registry import (
+            load_all_approvals,
+        )
+        strategies = load_all_strategies(ROOT)
+        approvals = load_all_approvals(ROOT)
+        for sid, s in strategies.items():
+            if s.lifecycle_state != "LIVE_QUEUED":
+                continue
+            live_apprs = [a for a in approvals
+                          if a.strategy_id == sid
+                          and a.approval_type == "live_trade"]
+            if not live_apprs:
+                results.append({
+                    "strategy_id": sid,
+                    "approval_state": "no_request",
+                    "approval_ref": None,
+                    "action": f"request-live {sid}",
+                    "label": "needs live_trade approval request",
+                })
+                continue
+            latest = live_apprs[-1]
+            if latest.revoked:
+                results.append({
+                    "strategy_id": sid,
+                    "approval_state": "revoked",
+                    "approval_ref": latest.approval_ref,
+                    "action": f"request-live {sid}",
+                    "label": f"live approval revoked ({latest.approval_ref})",
+                })
+            elif getattr(latest, "decision_status", None) == "pending":
+                results.append({
+                    "strategy_id": sid,
+                    "approval_state": "pending",
+                    "approval_ref": latest.approval_ref,
+                    "action": f"approve {latest.approval_ref}",
+                    "label": f"live approval pending review ({latest.approval_ref})",
+                })
+            else:
+                valid, reason = latest.is_valid()
+                if not valid:
+                    results.append({
+                        "strategy_id": sid,
+                        "approval_state": "expired",
+                        "approval_ref": latest.approval_ref,
+                        "action": f"request-live {sid}",
+                        "label": f"live approval expired ({latest.approval_ref})",
+                    })
+                else:
+                    results.append({
+                        "strategy_id": sid,
+                        "approval_state": "approved",
+                        "approval_ref": latest.approval_ref,
+                        "action": f"execute-live {sid} --approval-ref {latest.approval_ref}",
+                        "label": f"live-approved, ready for execute-live ({latest.approval_ref})",
+                    })
+    except Exception:
+        pass  # Quant lanes may not be initialized
+    return results
+
+
 def collect() -> dict[str, Any]:
     approvals = _pending_approvals()
     tasks = _actionable_tasks()
     timers = _timer_health()
     outbox = _outbox_health()
+    quant_lq = _quant_live_queued()
     return {
         "ts": datetime.now(tz=timezone.utc).isoformat()[:19] + "Z",
         "approvals": approvals,
@@ -171,6 +243,7 @@ def collect() -> dict[str, Any]:
         "failed": tasks["failed"],
         "timers": timers,
         "outbox": outbox,
+        "quant_live_queued": quant_lq,
     }
 
 
@@ -187,6 +260,7 @@ def render_terminal(data: dict[str, Any]) -> str:
     failed = data["failed"]
     blocked = data["blocked"]
     queued = data["queued"]
+    quant_lq = data.get("quant_live_queued", [])
     action_count = len(approvals) + len(failed)
 
     lines.append(f"=== OpenClaw Status  {ts} UTC ===")
@@ -197,12 +271,14 @@ def render_terminal(data: dict[str, Any]) -> str:
         parts.append(f"{len(failed)} failed")
     if blocked:
         parts.append(f"{len(blocked)} blocked")
+    if quant_lq:
+        parts.append(f"{len(quant_lq)} live-queued")
     parts.append(f"{len(queued)} queued")
     lines.append("  " + " | ".join(parts))
     lines.append("")
 
     # 1. Needs action
-    if action_count == 0 and not blocked:
+    if action_count == 0 and not blocked and not quant_lq:
         lines.append("  Nothing needs attention right now.")
         lines.append("")
     else:
@@ -232,6 +308,14 @@ def render_terminal(data: dict[str, Any]) -> str:
                 lines.append(f"  {tid_short}  {label}")
                 lines.append(f"    --retry {t['task_id']}")
             lines.append("")
+
+    # 1b. LIVE_QUEUED strategies
+    if quant_lq:
+        lines.append(f"LIVE QUEUED ({len(quant_lq)} strategies)")
+        for lq in quant_lq:
+            lines.append(f"  {lq['strategy_id']:30s} {lq['label']}")
+            lines.append(f"    {lq['action']}")
+        lines.append("")
 
     # 2. Queue
     queued = data["queued"]
@@ -306,8 +390,10 @@ def render_discord(data: dict[str, Any]) -> str:
     else:
         lines.append(f"\u2705 All {len(timers)} services/timers OK")
 
+    quant_lq = data.get("quant_live_queued", [])
+
     # Action items
-    if not approvals and not failed and not blocked:
+    if not approvals and not failed and not blocked and not quant_lq:
         lines.append("\u2705 Nothing needs attention")
     else:
         if approvals:
@@ -326,6 +412,12 @@ def render_discord(data: dict[str, Any]) -> str:
 
         if blocked:
             lines.append(f"\n\U0001f6ab **{len(blocked)} blocked**")
+
+        if quant_lq:
+            lines.append(f"\n\U0001f4b0 **{len(quant_lq)} LIVE_QUEUED**")
+            for lq in quant_lq[:5]:
+                lines.append(f"> `{lq['strategy_id']}` {lq['label']}")
+                lines.append(f">   `{lq['action']}`")
 
     # Queue
     lines.append(f"\n\U0001f4e5 **{len(queued)} queued**")
@@ -350,6 +442,10 @@ def needs_attention(data: dict[str, Any]) -> bool:
         return True
     if data["outbox"]["failed"] > 0:
         return True
+    # LIVE_QUEUED strategies needing action (not yet approved)
+    for lq in data.get("quant_live_queued", []):
+        if lq["approval_state"] in ("no_request", "pending", "revoked", "expired"):
+            return True
     return False
 
 
@@ -373,6 +469,8 @@ def _fingerprint(data: dict[str, Any]) -> str:
             parts.append(f"down:{s['unit']}")
     if data.get("outbox", {}).get("failed", 0) > 0:
         parts.append(f"outbox_fail:{data['outbox']['failed']}")
+    for lq in data.get("quant_live_queued", []):
+        parts.append(f"lq:{lq['strategy_id']}:{lq['approval_state']}")
     return hashlib.sha256("|".join(sorted(parts)).encode()).hexdigest()[:16]
 
 

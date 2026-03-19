@@ -98,12 +98,14 @@ def collect_dashboard_data() -> dict[str, Any]:
         result["blocked"] = status.get("blocked", [])
         result["queued"] = status.get("queued", [])
         result["outbox"] = status.get("outbox", {})
+        result["quant_live_queued"] = status.get("quant_live_queued", [])
     except Exception as e:
         result["approvals"] = []
         result["failed"] = []
         result["blocked"] = []
         result["queued"] = []
         result["outbox"] = {"error": str(e)}
+        result["quant_live_queued"] = []
 
     # 4. Recent promoted outputs (from promote_output)
     try:
@@ -237,6 +239,13 @@ body {
   font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .approval-text { font-size: 13px; color: var(--text); margin-bottom: 8px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.live-badge { font-size: 10px; padding: 1px 7px; border-radius: 10px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.live-approved { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+.live-pending { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+.live-no_request { background: var(--orange-bg); color: var(--orange); border: 1px solid var(--orange-border); }
+.live-revoked { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+.live-expired { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
 
 /* --- Buttons --- */
 .btn {
@@ -341,9 +350,11 @@ function renderStrip(data) {
   const failed = (data.failed || []).length;
   const queued = (data.queued || []).length;
   const blocked = (data.blocked || []).length;
+  const liveQueued = (data.quant_live_queued || []).length;
   return `<div class="status-strip">
     <div class="stat ${verdictCls}"><div class="stat-value">${esc(h.verdict || '?')}</div><div class="stat-label">Health</div></div>
     <div class="stat ${approvals > 0 ? 'stat-warn' : ''}"><div class="stat-value">${approvals}</div><div class="stat-label">Approvals</div></div>
+    <div class="stat ${liveQueued > 0 ? 'stat-warn' : ''}"><div class="stat-value">${liveQueued}</div><div class="stat-label">Live Queued</div></div>
     <div class="stat ${failed > 0 ? 'stat-fail' : ''}"><div class="stat-value">${failed}</div><div class="stat-label">Failed</div></div>
     <div class="stat"><div class="stat-value">${blocked}</div><div class="stat-label">Blocked</div></div>
     <div class="stat"><div class="stat-value">${queued}</div><div class="stat-label">Queued</div></div>
@@ -416,6 +427,25 @@ function renderApprovals(items) {
     });
     if (items.length > 10) html += `<div class="overflow">+${items.length - 10} more</div>`;
   }
+  html += `</div></div>`;
+  return html;
+}
+
+/* --- LIVE_QUEUED strategies --- */
+function renderLiveQueued(items) {
+  if (!items || items.length === 0) return '';
+  let html = `<div class="card"><div class="card-header section-toggle" onclick="toggleSection(this)"><span class="icon">&#x1F4B0;</span> LIVE_QUEUED Strategies <span class="chevron">&#x25BC;</span><span class="count">${items.length}</span></div><div class="card-body">`;
+  items.forEach(item => {
+    const sid = item.strategy_id || '';
+    const state = item.approval_state || '?';
+    const badge = state === 'approved' ? 'Ready' : state === 'pending' ? 'Pending' : state === 'no_request' ? 'Needs Request' : state;
+    const cls = state === 'approved' ? 'btn-approve' : state === 'pending' ? 'btn-copy' : 'btn-retry';
+    html += `<div class="approval-row">`;
+    html += `<div class="approval-meta"><span class="approval-id">${esc(sid)}</span><span class="live-badge live-${state}">${esc(badge)}</span></div>`;
+    html += `<div class="approval-text">${esc(item.label || '')}</div>`;
+    html += `<div class="row-actions">${copyBtn(item.action || '', badge === 'Ready' ? 'Execute' : 'Action', cls)}</div>`;
+    html += `</div>`;
+  });
   html += `</div></div>`;
   return html;
 }
@@ -505,6 +535,7 @@ function render(data) {
   html += renderHealth(data.health || {});
   html += renderNext(data.next_actions || []);
   html += renderApprovals(data.approvals || []);
+  html += renderLiveQueued(data.quant_live_queued || []);
   html += renderFailed(data.failed || []);
   html += renderBlocked(data.blocked || []);
   html += renderQueued(data.queued || []);
