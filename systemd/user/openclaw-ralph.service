@@ -1,5 +1,6 @@
 [Unit]
 Description=OpenClaw Ralph v1 — one bounded autonomy cycle
+Wants=openclaw-gateway.service
 After=network-online.target openclaw-gateway.service
 
 [Service]
