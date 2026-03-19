@@ -1,7 +1,7 @@
 {
   "task_id": "task_7d3a2154e2a7",
   "created_at": "2026-03-09T16:47:42.324509+00:00",
-  "updated_at": "2026-03-09T16:47:42.324529+00:00",
+  "updated_at": "2026-03-19T10:36:56.575794+00:00",
   "source_lane": "intake_smoke",
   "source_channel": "intake_smoke",
   "source_message_id": "intake_smoke",
@@ -12,7 +12,7 @@
   "task_type": "deploy",
   "priority": "normal",
   "risk_level": "high_stakes",
-  "status": "queued",
+  "status": "archived",
   "assigned_role": "executor",
   "assigned_model": "Qwen3.5-122B",
   "review_required": true,
@@ -25,5 +25,6 @@
   "error_count": 0,
   "last_error": "",
   "final_outcome": "",
-  "version": "v1"
+  "version": "v1",
+  "lifecycle_state": "archived"
 }

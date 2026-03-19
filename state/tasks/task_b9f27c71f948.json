@@ -1,7 +1,7 @@
 {
   "task_id": "task_b9f27c71f948",
   "created_at": "2026-03-09T16:28:53.475681+00:00",
-  "updated_at": "2026-03-09T16:28:53.493665+00:00",
+  "updated_at": "2026-03-19T10:36:56.575794+00:00",
   "source_lane": "handoff_smoke",
   "source_channel": "handoff_smoke",
   "source_message_id": "deploy_20260309_112853",
@@ -12,7 +12,7 @@
   "task_type": "deploy",
   "priority": "normal",
   "risk_level": "high_stakes",
-  "status": "waiting_approval",
+  "status": "archived",
   "assigned_role": "executor",
   "assigned_model": "Qwen3.5-122B",
   "review_required": true,
@@ -29,5 +29,6 @@
   "error_count": 0,
   "last_error": "",
   "final_outcome": "",
-  "version": "v1"
+  "version": "v1",
+  "lifecycle_state": "archived"
 }

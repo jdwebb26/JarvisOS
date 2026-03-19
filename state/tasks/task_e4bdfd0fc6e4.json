@@ -1,7 +1,7 @@
 {
   "task_id": "task_e4bdfd0fc6e4",
   "created_at": "2026-03-09T16:59:21.138510+00:00",
-  "updated_at": "2026-03-09T16:59:21.140495+00:00",
+  "updated_at": "2026-03-19T10:36:56.575794+00:00",
   "source_lane": "intake_regression",
   "source_channel": "intake_regression",
   "source_message_id": "code_regression",
@@ -12,7 +12,7 @@
   "task_type": "code",
   "priority": "normal",
   "risk_level": "risky",
-  "status": "waiting_review",
+  "status": "archived",
   "assigned_role": "executor",
   "assigned_model": "Qwen3.5-35B",
   "review_required": true,
@@ -27,5 +27,6 @@
   "error_count": 0,
   "last_error": "",
   "final_outcome": "",
-  "version": "v1"
+  "version": "v1",
+  "lifecycle_state": "archived"
 }
