@@ -91,6 +91,9 @@ _NOISE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\(Caused by \w+Error\(<[^>]*>\s*,\s*"), # nested exception wrappers
     re.compile(r"'\)\)$"),                              # trailing quote-paren from exceptions
     re.compile(r"\(\)"),                                # empty parens left by removals
+    # LLM reviewer preamble noise (model name + timing)
+    re.compile(r"Archimedes auto-review \([^)]+\):\s*"),  # "Archimedes auto-review (qwen3.5-35b-a3b, 8.29s): "
+    re.compile(r"\w+ auto-review \([^)]+\):\s*"),        # any agent auto-review preamble
 ]
 
 # Emoji prefix per event kind — drives the glanceable visual shape
@@ -352,6 +355,11 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
 
     if kind == "approval_requested":
         title = payload.get("title") or clean or short_tid
+        # Clean up developer-jargon prefixes in title
+        for _prefix in ("Quant paper_trade: ", "Quant live_trade: ", "Quant pulse_downstream: "):
+            if title.startswith(_prefix):
+                title = title[len(_prefix):]
+                break
         approval_id = payload.get("approval_id", "")
         source_lane = payload.get("source_lane", "")
         task_type = payload.get("task_type", "")
@@ -360,12 +368,19 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
         who = reviewer or "operator"
 
         lines = [f"{e} **Approval needed** \u2014 {title}"]
-        meta = f"**ID**: `{task_id}`"
+        # Build ID line — omit empty task_id (quant approvals have none)
+        id_parts: list[str] = []
+        if task_id:
+            id_parts.append(f"`{task_id}`")
         if approval_id:
-            meta += f" / `{approval_id}`"
-        meta += f"  |  **Type**: {task_type}" if task_type else ""
-        meta += f"  |  **Lane**: {source_lane}" if source_lane else ""
-        lines.append(meta)
+            id_parts.append(f"`{approval_id}`")
+        meta = f"**ID**: {' / '.join(id_parts)}" if id_parts else ""
+        if task_type:
+            meta += f"  |  **Type**: {task_type}" if meta else f"**Type**: {task_type}"
+        if source_lane:
+            meta += f"  |  **Lane**: {source_lane}" if meta else f"**Lane**: {source_lane}"
+        if meta:
+            lines.append(meta)
         lines.append(f"**Approver**: {who}  |  **Source**: {agent}")
         if clean and clean != title:
             lines.append(f"> {clean}")
@@ -388,18 +403,21 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
             decision = decision_match.group(1).upper()
             reason = _clean_detail(decision_match.group(2))
             d_emoji = "\u2705" if decision == "APPROVED" else "\u274c"
-            headline = title or short_tid
+            headline = title or (f"`{task_id}`" if task_id else f"`{approval_id}`" if approval_id else "unknown")
             line = f"{d_emoji} **{decision}** \u2014 {headline}"
-            meta = f"`{task_id}`"
+            id_parts: list[str] = []
+            if task_id:
+                id_parts.append(f"`{task_id}`")
             if approval_id:
-                meta += f" / `{approval_id}`"
-            meta += f"  |  **By**: {who}"
+                id_parts.append(f"`{approval_id}`")
+            meta = " / ".join(id_parts) if id_parts else ""
+            meta += f"  |  **By**: {who}" if meta else f"**By**: {who}"
             if source_lane:
                 meta += f"  |  **Lane**: {source_lane}"
             line += f"\n{meta}"
             return f"{line}\n> {reason}" if reason else line
-        headline = title or short_tid
-        line = f"{e} **Approval complete** \u2014 {headline}\n`{task_id}`  |  **By**: {who}"
+        headline = title or (f"`{task_id}`" if task_id else "approval")
+        line = f"{e} **Approval complete** \u2014 {headline}\n**By**: {who}"
         return f"{line}\n> {clean}" if clean else line
 
     # --- Artifacts ---
@@ -540,7 +558,9 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
             approval_ref = payload.get("approval_ref", "")
             notes = payload.get("notes", "")
 
-            lines = [f"\U0001f4dd **Pulse proposal needs approval** \u2014 {strategy or 'setup'} ({symbol})"]
+            # Use strategy_id if present, else short thesis, else generic
+            _pulse_headline = strategy or (thesis[:50] + "..." if len(thesis) > 53 else thesis) or "pulse proposal"
+            lines = [f"\U0001f4dd **Pulse proposal needs approval** \u2014 {_pulse_headline} ({symbol})"]
             lines.append(f"**Source**: Pulse (discretionary alerts)  |  **Lane**: quant")
             if thesis:
                 lines.append(f"**Thesis**: {_clean_detail(thesis)}")

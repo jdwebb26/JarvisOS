@@ -145,13 +145,13 @@ def emit_quant_approval_request(
     return emit_event(
         kind="approval_requested",
         agent_id="kitt",
-        detail=f"Quant {approval_type}: {strategy_id}. {detail}",
+        detail=detail,
         extra={
             "approval_id": approval_ref,
             "approval_type": approval_type,
             "strategy_id": strategy_id,
             "source_lane": "quant",
-            "title": f"Quant {approval_type}: {strategy_id}",
+            "title": f"{approval_type.replace('_', ' ').title()}: {strategy_id}",
             "task_type": "quant",
             "risk_level": "high",
         },
