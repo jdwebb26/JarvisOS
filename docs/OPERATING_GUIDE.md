@@ -53,6 +53,43 @@ Everything below describes what is **actually running right now** and how to ope
 | OpenAI / GPT | `openai_executor` | **WIRED (inactive)** | Adapter + dispatch + model registry wired. Requires `OPENAI_API_KEY` with funded billing. **A ChatGPT subscription does NOT fund API usage.** Check: `python3 scripts/check_openai_provider.py` |
 | Anthropic / Claude | gateway config only | **BLOCKED** | `ANTHROPIC_API_KEY=REPLACE_ME`. No Python-track adapter exists — gateway config only |
 
+### Preflight (before deploys / upgrades)
+
+Run the unified preflight to check both OpenClaw substrate and Jarvis runtime:
+
+```bash
+bash scripts/preflight.sh            # standard check
+bash scripts/preflight.sh --strict   # treat warnings as blockers
+bash scripts/preflight.sh --backup   # create+verify backup first (recommended before upgrades)
+```
+
+This checks: openclaw config validity, update status, gateway, secrets, security audit, then Jarvis validate.py and runtime_doctor.py.
+
+### Post-deploy verification
+
+After any deploy, upgrade, or config change:
+
+```bash
+bash scripts/postdeploy.sh
+```
+
+This checks: gateway health, openclaw doctor, smoke_test.py, runtime_doctor.py, systemd drift, and HTTP endpoint probes.
+
+### OpenClaw substrate commands (standalone)
+
+These are useful independently of the preflight/postdeploy wrappers:
+
+```bash
+openclaw status                    # channel health + session summary
+openclaw doctor                    # health checks + quick fixes
+openclaw doctor --fix              # apply recommended repairs
+openclaw security audit            # security foot-gun scan
+openclaw secrets audit             # plaintext / unresolved secret scan
+openclaw update status             # check for available updates
+openclaw backup create --verify    # backup + verify (before risky changes)
+openclaw gateway status            # gateway service + RPC probe
+```
+
 ### Daily operator commands
 
 Open the dashboard in a browser:
