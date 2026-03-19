@@ -87,8 +87,14 @@ def _do_ingest_update():
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
-def run_weekly(n_candidates=10):
+def run_weekly(n_candidates=10, extended_intraday=False):
     """Execute a full weekly research cycle.
+
+    Args:
+        n_candidates: candidates per family per run.
+        extended_intraday: if True, also run NQ_15m and NQ_4h datasets
+            in addition to the default NQ_daily + NQ_hourly workload.
+            Default False — the standard weekly remains unchanged.
 
     Calls pipeline functions in-process (no subprocess shelling).
     Returns the forward_validation dict.
@@ -118,6 +124,13 @@ def run_weekly(n_candidates=10):
         ("NQ_daily", "breakout", "daily / breakout"),
         ("NQ_hourly", None, "hourly / all"),
     ]
+    if extended_intraday:
+        run_specs += [
+            ("NQ_4h", None, "4h / all"),
+            ("NQ_15m", None, "15m / all"),
+        ]
+        print("  (extended intraday mode: including NQ_4h and NQ_15m)")
+        print()
     for dataset, family, label in run_specs:
         print(f"  [{label}]")
         try:

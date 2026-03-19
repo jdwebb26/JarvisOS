@@ -112,6 +112,27 @@ FOLD_PROFILES = {
         "n_folds": 8,
         "minimum_any_fold_trades": 5,
     },
+    "exploratory_4h": {  # 4h real — sparse bars (~300 from 60d hourly)
+        # 100 bars train, 50 bars test, purge >= max_feature_lookback (26)
+        # With cadence=50: fold0 train [0:100], purge [100:130], test [130:180]
+        # fold1 starts at 50, etc.  3 folds needs ~280 bars.
+        "mode": "rolling",
+        "train_len": 100,
+        "test_len": 50,
+        "purge_len": 30,
+        "retrain_cadence": 50,
+        "n_folds": 3,
+        "minimum_any_fold_trades": 1,
+    },
+    "exploratory_15m": {  # 15m real — ~1500 bars from 60d fetch
+        "mode": "rolling",
+        "train_len": 600,
+        "test_len": 200,
+        "purge_len": 30,
+        "retrain_cadence": 200,
+        "n_folds": 4,
+        "minimum_any_fold_trades": 5,
+    },
     "execution_grade": {  # intraday real
         "mode": "rolling",
         "train_len": 5000,
@@ -154,6 +175,20 @@ GATE_PROFILES = {
         "sharpe_floor": 0.5,
         "sortino_floor": 1.0,
     },
+    "exploratory_4h": {  # 4h real — sparse data, relaxed like research
+        "pf_floor": 1.2,
+        "min_trades_per_oos_fold": 1,
+        "max_drawdown_proxy": 2000.0,
+        "sharpe_floor": 0.3,
+        "sortino_floor": 0.5,
+    },
+    "exploratory_15m": {  # 15m real — decent bar count, moderate gates
+        "pf_floor": 1.2,
+        "min_trades_per_oos_fold": 5,
+        "max_drawdown_proxy": 1500.0,
+        "sharpe_floor": 0.5,
+        "sortino_floor": 1.0,
+    },
     "execution_grade": {  # intraday real — strictest
         "pf_floor": 1.2,
         "min_trades_per_oos_fold": 50,
@@ -172,10 +207,10 @@ GATE_PROFILES = {
 # NO_TRADES rejections that waste compute and clutter history.
 
 FAMILY_DATASET_COMPAT = {
-    "ema_crossover":    {"daily", "1h", "1min_bar", "5m", "synthetic"},
-    "ema_crossover_cd": {"daily", "1h", "1min_bar", "5m", "synthetic"},
-    "breakout":         {"daily", "1h", "1min_bar", "5m", "synthetic"},
-    "mean_reversion":   {"1h", "1min_bar", "5m", "synthetic"},
+    "ema_crossover":    {"daily", "1h", "4h", "15m", "1min_bar", "5m", "synthetic"},
+    "ema_crossover_cd": {"daily", "1h", "4h", "15m", "1min_bar", "5m", "synthetic"},
+    "breakout":         {"daily", "1h", "4h", "15m", "1min_bar", "5m", "synthetic"},
+    "mean_reversion":   {"1h", "4h", "15m", "1min_bar", "5m", "synthetic"},
 }
 
 
@@ -210,6 +245,18 @@ KNOWN_DATASETS = {
         "granularity": "1h",
         "instrument": "NQ",
         "description": "NQ=F hourly OHLCV + VIX (accumulated)",
+    },
+    "NQ_4h": {
+        "file_stem": "NQ_4h",
+        "granularity": "4h",
+        "instrument": "NQ",
+        "description": "NQ=F 4-hour OHLCV + VIX (resampled from hourly)",
+    },
+    "NQ_15m": {
+        "file_stem": "NQ_15m",
+        "granularity": "15m",
+        "instrument": "NQ",
+        "description": "NQ=F 15-minute OHLCV + VIX (accumulated)",
     },
 }
 
@@ -317,6 +364,20 @@ EVIDENCE_TIERS = {
         "max_stage": "CANDIDATE",
         "description": "Real hourly bars — exploratory, pre-candidate",
     },
+    "4h_real": {
+        "source_class": "market_data",
+        "evidence_tier": "exploratory_4h",
+        "promotion_eligible": False,
+        "max_stage": "CANDIDATE",
+        "description": "Real 4-hour bars — exploratory, sparse data",
+    },
+    "15m_real": {
+        "source_class": "market_data",
+        "evidence_tier": "exploratory_15m",
+        "promotion_eligible": False,
+        "max_stage": "CANDIDATE",
+        "description": "Real 15-minute bars — exploratory, pre-candidate",
+    },
     "intraday_real": {
         "source_class": "market_data",
         "evidence_tier": "execution_grade",
@@ -346,8 +407,14 @@ def classify_evidence(data_source, data_granularity):
     if gran in ("daily", "1d", "day"):
         return dict(EVIDENCE_TIERS["daily_real"])
 
+    if gran in ("4h", "4hr", "240m", "240min"):
+        return dict(EVIDENCE_TIERS["4h_real"])
+
     if gran in ("1h", "hourly", "60m", "60min"):
         return dict(EVIDENCE_TIERS["hourly_real"])
+
+    if gran in ("15m", "15min"):
+        return dict(EVIDENCE_TIERS["15m_real"])
 
     # Anything ≤ 5 minutes is execution-grade
     if gran in ("1m", "1min", "1min_bar", "5m", "5min", "3m", "3min"):

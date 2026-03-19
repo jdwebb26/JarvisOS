@@ -956,6 +956,8 @@ def main():
                         help="Filter to candidates capped by evidence tier")
     parser.add_argument("--mode", default=None,
                         help="Query mode: rejections, repeated, capped, survivors, latest")
+    parser.add_argument("--extended-intraday", action="store_true",
+                        help="weekly-run: also include NQ_15m and NQ_4h datasets")
     args = parser.parse_args()
 
     if args.command == "run":
@@ -987,7 +989,8 @@ def main():
     elif args.command == "weekly-run":
         from .weekly_runner import run_weekly
         n = int(args.n_candidates) if args.n_candidates else 10
-        run_weekly(n_candidates=n)
+        run_weekly(n_candidates=n,
+                   extended_intraday=getattr(args, "extended_intraday", False))
 
 
 if __name__ == "__main__":
