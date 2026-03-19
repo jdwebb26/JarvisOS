@@ -147,13 +147,25 @@ def request_review(
     )
     rebuild_all_outputs(Path(root or ROOT))
 
-    # Discord side effect
+    # Discord side effect — enriched payload for operator readability
     try:
         from runtime.core.discord_event_router import emit_event as _emit
+        _title = (task.raw_request or task.normalized_request or summary or "")[:80]
+        _artifacts = record.linked_artifact_ids or []
         _emit(
             "review_requested", requested_by,
             task_id=task_id, detail=summary,
             reviewer_id=reviewer_role, root=root,
+            extra={
+                "title": _title,
+                "source_lane": lane,
+                "task_type": task.task_type or "general",
+                "assigned_role": task.assigned_role or "",
+                "execution_backend": task.execution_backend or "",
+                "risk_level": task.risk_level or "normal",
+                "artifact_ids": _artifacts,
+                "review_id": record.review_id,
+            },
         )
     except Exception:
         pass
@@ -314,14 +326,21 @@ def record_review_verdict(
     )
     rebuild_all_outputs(Path(root or ROOT))
 
-    # Discord side effect
+    # Discord side effect — enriched payload for worklog readability
     try:
         from runtime.core.discord_event_router import emit_event as _emit
+        _title = (task.raw_request or task.normalized_request or "")[:80]
         _emit(
             "review_completed", actor,
             task_id=record.task_id,
             detail=f"verdict: {verdict}. {reason}".strip(". "),
             reviewer_id=actor, root=root,
+            extra={
+                "title": _title,
+                "source_lane": lane,
+                "task_type": task.task_type or "general",
+                "review_id": record.review_id,
+            },
         )
     except Exception:
         pass

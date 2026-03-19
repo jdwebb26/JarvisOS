@@ -1,6 +1,6 @@
 {
-  "version": "1.1",
-  "updated": "2026-03-18",
+  "version": "1.2",
+  "updated": "2026-03-19",
   "agents": {
     "jarvis":     { "channel_id": "1478178050133987400", "purpose": "orchestration",   "voice_only": false },
     "hal":        { "channel_id": "1483133691969671289", "purpose": "building",         "voice_only": false },
@@ -62,9 +62,7 @@
   "jarvis_forward_event_kinds": [
     "task_failed",
     "task_blocked",
-    "approval_requested",
     "kitt_brief_failed",
-    "quant_papertrade_request",
     "quant_execution_rejected",
     "quant_alert",
     "factory_weekly_summary",

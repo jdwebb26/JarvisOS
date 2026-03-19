@@ -92,17 +92,35 @@ def emit_quant_event(
     if packet.strategy_id:
         detail = f"[{packet.strategy_id}] {detail}"
 
+    # Build enriched extra fields from packet — richer context for operator messages
+    extra: dict[str, Any] = {
+        "packet_id": packet.packet_id,
+        "packet_type": packet.packet_type,
+        "lane": packet.lane,
+        "source_lane": packet.lane,
+        "strategy_id": packet.strategy_id or "",
+        "priority": packet.priority,
+        "title": packet.thesis[:80] if packet.thesis else "",
+        "confidence": packet.confidence,
+        "action_requested": packet.action_requested or "",
+    }
+    # Quant-specific enrichment for approval-bearing events
+    if kind in ("quant_papertrade_request", "quant_pulse_proposal"):
+        extra["thesis"] = packet.thesis or ""
+        extra["symbol"] = packet.symbol or "NQ"
+        extra["risk_limits"] = packet.risk_limits or {}
+        extra["sizing"] = packet.sizing or {}
+        extra["max_drawdown"] = packet.max_drawdown
+        extra["notes"] = packet.notes or ""
+        extra["approval_ref"] = packet.approval_ref or ""
+    if kind == "quant_pulse_proposal":
+        extra["escalation_level"] = packet.escalation_level or "none"
+
     return emit_event(
         kind=kind,
         agent_id=agent_id,
         detail=detail,
-        extra={
-            "packet_id": packet.packet_id,
-            "packet_type": packet.packet_type,
-            "lane": packet.lane,
-            "strategy_id": packet.strategy_id or "",
-            "priority": packet.priority,
-        },
+        extra=extra,
         root=resolved_root,
     )
 
@@ -132,7 +150,10 @@ def emit_quant_approval_request(
             "approval_id": approval_ref,
             "approval_type": approval_type,
             "strategy_id": strategy_id,
-            "source": "quant_lanes",
+            "source_lane": "quant",
+            "title": f"Quant {approval_type}: {strategy_id}",
+            "task_type": "quant",
+            "risk_level": "high",
         },
         root=resolved_root,
     )

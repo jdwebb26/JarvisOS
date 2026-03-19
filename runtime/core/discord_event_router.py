@@ -144,7 +144,7 @@ _EMOJI: dict[str, str] = {
     "quant_health": "\U0001f3e5",             # 🏥
     "quant_pulse_alert": "\U0001f4a1",       # 💡
     "quant_pulse_cluster": "\U0001f4a1",     # 💡
-    "quant_pulse_proposal": "\U0001f4a1",    # 💡
+    "quant_pulse_proposal": "\U0001f4dd",    # 📝 (needs decision)
     "quant_pulse_learning": "\U0001f4a1",    # 💡
     "factory_weekly_summary": "\U0001f4ca",  # 📊
 }
@@ -295,49 +295,111 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
         return line
 
     # --- Review / Approval ---
+    #
+    # Requests → #review (operator action inbox)
+    # Completions → #worklog (audit trail)
 
     if kind == "review_requested":
-        line = f"{e} **{agent}** needs review on `{short_tid}`"
-        if clean:
-            line += f"\n> {clean}"
-        line += f"\n\U0001f4cc Review in #review"  # 📌
-        return line
+        title = payload.get("title") or clean or short_tid
+        who = reviewer or "Archimedes"
+        source_lane = payload.get("source_lane", "")
+        task_type = payload.get("task_type", "")
+        risk = payload.get("risk_level", "")
+        review_id = payload.get("review_id", "")
+        art_ids = payload.get("artifact_ids", [])
+        backend = payload.get("execution_backend", "")
+
+        lines = [f"{e} **Review needed** \u2014 {title}"]
+        meta = f"**ID**: `{task_id}`"
+        if review_id:
+            meta += f" / `{review_id}`"
+        meta += f"  |  **Type**: {task_type}" if task_type else ""
+        meta += f"  |  **Lane**: {source_lane}" if source_lane else ""
+        lines.append(meta)
+        lines.append(f"**Reviewer**: {who}  |  **Built by**: {agent}" + (f" via {backend}" if backend else ""))
+        if clean and clean != title:
+            lines.append(f"> {clean}")
+        if risk and risk != "normal":
+            lines.append(f"\u26a0\ufe0f Risk: **{risk}**")
+        if art_ids:
+            lines.append(f"\U0001f4e6 Artifact: `{art_ids[0]}`")
+        # Review stage: no approval_id yet. Operator can react with emoji
+        # or approve via CLI after review passes to approval stage.
+        lines.append(f"\u2705 React \u2705 to approve  |  CLI: `python3 scripts/run_ralph_v1.py --approve {task_id}`")
+        return "\n".join(lines)
 
     if kind == "review_completed":
+        title = payload.get("title", "")
         who = reviewer or agent
+        source_lane = payload.get("source_lane", "")
+        task_type = payload.get("task_type", "")
+        review_id = payload.get("review_id", "")
         verdict_match = re.match(r"verdict:\s*(\w+)[.\s]*(.*)", detail, re.IGNORECASE)
         if verdict_match:
             verdict = verdict_match.group(1).upper()
             reason = _clean_detail(verdict_match.group(2))
-            v_emoji = "\u2705" if verdict == "APPROVED" else "\u274c"  # ✅ or ❌
-            line = f"{v_emoji} **{who}** reviewed `{short_tid}` \u2014 {verdict}"
+            v_emoji = "\u2705" if verdict == "APPROVED" else "\u274c"
+            headline = title or short_tid
+            line = f"{v_emoji} **Review {verdict}** \u2014 {headline}"
+            meta = f"`{task_id}`  |  **By**: {who}"
+            if source_lane:
+                meta += f"  |  **Lane**: {source_lane}"
+            line += f"\n{meta}"
             return f"{line}\n> {reason}" if reason else line
-        line = f"{e} **{who}** reviewed `{short_tid}`"
+        headline = title or short_tid
+        line = f"{e} **Review complete** \u2014 {headline}\n`{task_id}`  |  **By**: {who}"
         return f"{line}\n> {clean}" if clean else line
 
     if kind == "approval_requested":
+        title = payload.get("title") or clean or short_tid
         approval_id = payload.get("approval_id", "")
-        line = f"{e} Approval needed for `{short_tid}`"
+        source_lane = payload.get("source_lane", "")
+        task_type = payload.get("task_type", "")
+        risk = payload.get("risk_level", "")
+        art_ids = payload.get("artifact_ids", [])
+        who = reviewer or "operator"
+
+        lines = [f"{e} **Approval needed** \u2014 {title}"]
+        meta = f"**ID**: `{task_id}`"
         if approval_id:
-            line += f" (`{approval_id}`)"
-        if clean:
-            line += f"\n> {clean}"
-        if approval_id:
-            line += f"\n\u2705 `approve {approval_id}`"
-            line += f"\n\u274c `reject {approval_id} [reason]`"
-        else:
-            line += f"\n\U0001f4cc React in #review to approve/reject"  # 📌
-        return line
+            meta += f" / `{approval_id}`"
+        meta += f"  |  **Type**: {task_type}" if task_type else ""
+        meta += f"  |  **Lane**: {source_lane}" if source_lane else ""
+        lines.append(meta)
+        lines.append(f"**Approver**: {who}  |  **Source**: {agent}")
+        if clean and clean != title:
+            lines.append(f"> {clean}")
+        if risk and risk not in ("normal", ""):
+            lines.append(f"\u26a0\ufe0f Risk: **{risk}**")
+        if art_ids:
+            lines.append(f"\U0001f4e6 Artifact: `{art_ids[0]}`")
+        cmd_id = approval_id or task_id
+        lines.append(f"\u2705 `approve {cmd_id}`  \u274c `reject {cmd_id} [reason]`")
+        return "\n".join(lines)
 
     if kind == "approval_completed":
+        title = payload.get("title", "")
+        source_lane = payload.get("source_lane", "")
+        task_type = payload.get("task_type", "")
+        approval_id = payload.get("approval_id", "")
+        who = reviewer or agent or "operator"
         decision_match = re.match(r"decision:\s*(\w+)[.\s]*(.*)", detail, re.IGNORECASE)
         if decision_match:
             decision = decision_match.group(1).upper()
             reason = _clean_detail(decision_match.group(2))
             d_emoji = "\u2705" if decision == "APPROVED" else "\u274c"
-            line = f"{d_emoji} Approval `{short_tid}` \u2014 {decision}"
+            headline = title or short_tid
+            line = f"{d_emoji} **{decision}** \u2014 {headline}"
+            meta = f"`{task_id}`"
+            if approval_id:
+                meta += f" / `{approval_id}`"
+            meta += f"  |  **By**: {who}"
+            if source_lane:
+                meta += f"  |  **Lane**: {source_lane}"
+            line += f"\n{meta}"
             return f"{line}\n> {reason}" if reason else line
-        line = f"{e} Approval `{short_tid}` completed"
+        headline = title or short_tid
+        line = f"{e} **Approval complete** \u2014 {headline}\n`{task_id}`  |  **By**: {who}"
         return f"{line}\n> {clean}" if clean else line
 
     # --- Artifacts ---
@@ -423,11 +485,40 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
             line = f"{e} **Sigma** paper-trade candidate{strat_tag}"
             return f"{line}\n> {clean}" if clean else line
         if kind == "quant_papertrade_request":
-            line = f"{e} **Kitt** requesting paper-trade approval{strat_tag}"
-            if clean:
-                line += f"\n> {clean}"
-            line += f"\n\U0001f4cc Approve in #review"
-            return line
+            thesis = payload.get("thesis", "")
+            symbol = payload.get("symbol", "NQ")
+            risk_limits = payload.get("risk_limits") or {}
+            sizing = payload.get("sizing") or {}
+            max_dd = payload.get("max_drawdown")
+            approval_ref = payload.get("approval_ref", "")
+            notes = payload.get("notes", "")
+
+            lines = [f"\U0001f4dd **Paper-trade approval needed** \u2014 {strategy or 'strategy'} ({symbol})"]
+            lines.append(f"**Source**: Kitt (quant lead)  |  **Lane**: quant  |  **Priority**: {payload.get('priority', 'medium')}")
+            if thesis:
+                lines.append(f"**Thesis**: {_clean_detail(thesis)}")
+            elif clean:
+                lines.append(f"> {clean}")
+            # Capital / risk context
+            risk_parts: list[str] = []
+            if max_dd is not None:
+                risk_parts.append(f"MaxDD {max_dd:.1f}%")
+            if risk_limits.get("max_position"):
+                risk_parts.append(f"MaxPos {risk_limits['max_position']}")
+            if risk_limits.get("max_loss_per_trade"):
+                risk_parts.append(f"MaxLoss/trade ${risk_limits['max_loss_per_trade']}")
+            if sizing.get("contracts"):
+                risk_parts.append(f"{sizing['contracts']} contracts")
+            if risk_parts:
+                lines.append(f"\U0001f4b0 **Risk**: {' | '.join(risk_parts)}")
+            lines.append(f"\u26a0\ufe0f Paper-trade uses live capital \u2014 requires explicit operator approval")
+            if notes:
+                lines.append(f"\U0001f4ac {notes}")
+            if approval_ref:
+                lines.append(f"\u2705 `approve {approval_ref}`  \u274c `reject {approval_ref} [reason]`")
+            else:
+                lines.append(f"\U0001f4cc Approve/reject via emoji reaction on this message")
+            return "\n".join(lines)
         if kind == "quant_execution_status":
             line = f"{e} **Executor** fill{strat_tag}"
             return f"{line}\n> {clean}" if clean else line
@@ -440,6 +531,37 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
         if kind == "quant_alert":
             line = f"{e} **Kitt** ALERT{strat_tag}"
             return f"{line}\n> {clean}" if clean else line
+        if kind == "quant_pulse_proposal":
+            thesis = payload.get("thesis", "")
+            symbol = payload.get("symbol", "NQ")
+            action_req = payload.get("action_requested", "")
+            confidence = payload.get("confidence")
+            escalation = payload.get("escalation_level", "none")
+            approval_ref = payload.get("approval_ref", "")
+            notes = payload.get("notes", "")
+
+            lines = [f"\U0001f4dd **Pulse proposal needs approval** \u2014 {strategy or 'setup'} ({symbol})"]
+            lines.append(f"**Source**: Pulse (discretionary alerts)  |  **Lane**: quant")
+            if thesis:
+                lines.append(f"**Thesis**: {_clean_detail(thesis)}")
+            elif clean:
+                lines.append(f"> {clean}")
+            if action_req:
+                lines.append(f"**Action**: {action_req}")
+            meta_parts: list[str] = []
+            if confidence is not None:
+                meta_parts.append(f"Confidence {confidence:.0%}")
+            if escalation and escalation != "none":
+                meta_parts.append(f"Escalation: {escalation}")
+            if meta_parts:
+                lines.append(f"\U0001f4ca {' | '.join(meta_parts)}")
+            if notes:
+                lines.append(f"\U0001f4ac {notes}")
+            if approval_ref:
+                lines.append(f"\u2705 `approve {approval_ref}`  \u274c `reject {approval_ref} [reason]`")
+            else:
+                lines.append(f"\U0001f4cc Approve/reject via emoji reaction on this message")
+            return "\n".join(lines)
         # Generic quant event
         label = kind.replace("quant_", "").replace("_", " ")
         line = f"{e} **{agent}** {label}{strat_tag}"
@@ -454,7 +576,13 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
 # Routing logic
 # ---------------------------------------------------------------------------
 
-_REVIEW_EVENT_KINDS = {"approval_requested", "approval_completed", "review_requested", "review_completed"}
+# Events that need operator action → route to #review (archimedes channel)
+_REVIEW_REQUEST_KINDS = {
+    "approval_requested", "review_requested",
+    "quant_papertrade_request", "quant_pulse_proposal",
+}
+# Events that are completion receipts → route to #worklog, NOT #review
+_REVIEW_COMPLETION_KINDS = {"approval_completed", "review_completed"}
 
 
 def _resolve_owner_channel_id(
@@ -470,11 +598,18 @@ def _resolve_owner_channel_id(
     if kind in voice_only_kinds:
         return agents.get("cadence", {}).get("channel_id")
 
-    # Approval/review events always go to #review (archimedes channel)
-    if kind in _REVIEW_EVENT_KINDS:
+    # Operator-action-needed events → #review (archimedes channel)
+    if kind in _REVIEW_REQUEST_KINDS:
         review_ch = agents.get("archimedes", {}).get("channel_id")
         if review_ch:
             return review_ch
+
+    # Completion receipts → #worklog (not #review)
+    if kind in _REVIEW_COMPLETION_KINDS:
+        logical = channel_map.get("logical_channels", {})
+        wl_ch = logical.get("worklog", {}).get("channel_id")
+        if wl_ch:
+            return wl_ch
 
     # For known agents, use their channel
     entry = agents.get(agent_id, {})
@@ -602,9 +737,9 @@ def emit_event(
     # Write outbox entries
     outbox_entries: list[dict[str, Any]] = []
 
-    # For review events, send directly via bot token to #review channel
+    # For review REQUEST events, send directly via bot token to #review channel
     # (the REVIEW_WEBHOOK_URL may be bound to a different channel)
-    if kind in _REVIEW_EVENT_KINDS and owner_ch:
+    if kind in _REVIEW_REQUEST_KINDS and owner_ch:
         try:
             _scripts = resolved_root / "scripts"
             if str(_scripts) not in sys.path:

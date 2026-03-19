@@ -355,14 +355,25 @@ def request_approval(
     )
     rebuild_all_outputs(Path(root or ROOT))
 
-    # Discord side effect
+    # Discord side effect — enriched payload for operator readability
     try:
         from runtime.core.discord_event_router import emit_event as _emit
+        _title = (task.raw_request or task.normalized_request or summary or "")[:80]
+        _artifacts = record.linked_artifact_ids or []
         _emit(
             "approval_requested", requested_by,
             task_id=task_id, detail=summary,
             reviewer_id=requested_reviewer, root=root,
-            extra={"approval_id": record.approval_id},
+            extra={
+                "approval_id": record.approval_id,
+                "title": _title,
+                "source_lane": lane,
+                "task_type": approval_type or task.task_type or "general",
+                "assigned_role": task.assigned_role or "",
+                "execution_backend": task.execution_backend or "",
+                "risk_level": task.risk_level or "normal",
+                "artifact_ids": _artifacts,
+            },
         )
     except Exception:
         pass
@@ -748,14 +759,21 @@ def record_approval_decision(
     )
     rebuild_all_outputs(Path(root or ROOT))
 
-    # Discord side effect
+    # Discord side effect — enriched payload for worklog readability
     try:
         from runtime.core.discord_event_router import emit_event as _emit
+        _title = (task.raw_request or task.normalized_request or "")[:80]
         _emit(
             "approval_completed", actor,
             task_id=record.task_id,
             detail=f"decision: {decision}. {reason}".strip(". "),
-            root=root,
+            reviewer_id=actor, root=root,
+            extra={
+                "approval_id": record.approval_id,
+                "title": _title,
+                "source_lane": lane,
+                "task_type": record.approval_type or task.task_type or "general",
+            },
         )
     except Exception:
         pass

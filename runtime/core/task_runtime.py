@@ -199,14 +199,19 @@ def _emit_task_status_event(
     final_outcome: str,
     root: Path,
 ) -> None:
-    """Fire-and-forget Discord event emission for task status transitions."""
+    """Fire-and-forget Discord event emission for task status transitions.
+
+    NOTE: review_requested and approval_requested are NOT emitted here.
+    Those events are emitted with enriched payloads by review_store.py and
+    approval_store.py respectively, which call emit_event() directly after
+    creating the review/approval record. Emitting them here too would cause
+    duplicate thin messages in #review.
+    """
     _STATUS_TO_KIND: dict[str, str] = {
         TaskStatus.RUNNING.value:           "task_started",
         TaskStatus.COMPLETED.value:         "task_completed",
         TaskStatus.FAILED.value:            "task_failed",
         TaskStatus.BLOCKED.value:           "task_blocked",
-        TaskStatus.WAITING_REVIEW.value:    "review_requested",
-        TaskStatus.WAITING_APPROVAL.value:  "approval_requested",
     }
     kind = _STATUS_TO_KIND.get(new_status)
     if kind is None:

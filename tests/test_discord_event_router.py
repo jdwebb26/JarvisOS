@@ -51,22 +51,54 @@ def test_task_blocked_has_pin():
     assert "\U0001f4cc" in text  # 📌
 
 
-def test_review_requested_has_pin():
-    text = _render_status_text("review_requested", _payload(agent_id="hal", detail="Review new validation module"))
+def test_review_requested_enriched():
+    text = _render_status_text("review_requested", _payload(
+        agent_id="ralph",
+        detail="EMA crossover signal function — needs code review",
+        reviewer_id="archimedes",
+        title="Write EMA crossover signal function",
+        source_lane="code",
+        task_type="code",
+        risk_level="normal",
+        execution_backend="ralph_adapter",
+        artifact_ids=["art_abc123def456"],
+        review_id="rev_test123",
+    ))
     assert "\U0001f440" in text  # 👀
-    assert "needs review" in text
-    assert "\U0001f4cc" in text  # 📌
+    assert "**Review needed**" in text
+    assert "EMA crossover" in text
+    assert "Archimedes" in text
+    assert "Ralph" in text
+    assert "code" in text
+    assert "art_abc123def456" in text
+    assert "approve" in text.lower()
 
 
-def test_review_completed_approved():
+def test_review_requested_minimal():
+    """Even with no enriched fields, review_requested renders usably."""
+    text = _render_status_text("review_requested", _payload(
+        agent_id="hal",
+        detail="Review new validation module",
+    ))
+    assert "**Review needed**" in text
+    assert "approve" in text.lower()
+
+
+def test_review_completed_approved_enriched():
     text = _render_status_text("review_completed", _payload(
         reviewer_id="archimedes",
         detail="verdict: approved. Clean implementation, good test coverage.",
+        title="Write EMA crossover signal function",
+        source_lane="code",
+        task_type="code",
+        review_id="rev_test123",
     ))
     assert "\u2705" in text  # ✅
-    assert "**Archimedes**" in text
+    assert "Archimedes" in text
     assert "APPROVED" in text
+    assert "EMA crossover" in text
     assert "Clean implementation" in text
+    assert "code" in text
 
 
 def test_review_completed_rejected():
@@ -78,17 +110,51 @@ def test_review_completed_rejected():
     assert "REJECTED" in text
 
 
-def test_approval_requested_has_pin():
-    text = _render_status_text("approval_requested", _payload(detail="Deploy strategy to paper trading"))
+def test_approval_requested_enriched():
+    text = _render_status_text("approval_requested", _payload(
+        agent_id="ralph",
+        detail="Deploy EMA strategy to paper trading",
+        reviewer_id="operator",
+        title="Deploy EMA crossover to paper",
+        source_lane="quant",
+        task_type="deploy",
+        risk_level="high",
+        approval_id="apr_test123456",
+        artifact_ids=["art_abc123def456"],
+    ))
     assert "\U0001f510" in text  # 🔐
-    assert "\U0001f4cc" in text  # 📌
-    assert "approve/reject" in text
+    assert "**Approval needed**" in text
+    assert "EMA crossover" in text or "EMA" in text
+    assert "apr_test123456" in text
+    assert "quant" in text
+    assert "high" in text.lower()
+    assert "approve" in text.lower()
+    assert "reject" in text.lower()
 
 
-def test_approval_completed_approved():
-    text = _render_status_text("approval_completed", _payload(detail="decision: approved. Looks good."))
+def test_approval_requested_minimal():
+    """Even with no enriched fields, approval_requested renders usably."""
+    text = _render_status_text("approval_requested", _payload(
+        detail="Deploy strategy to paper trading",
+    ))
+    assert "**Approval needed**" in text
+    assert "approve" in text.lower()
+
+
+def test_approval_completed_enriched():
+    text = _render_status_text("approval_completed", _payload(
+        detail="decision: approved. Looks good.",
+        reviewer_id="operator",
+        title="Deploy EMA crossover to paper",
+        source_lane="quant",
+        task_type="deploy",
+        approval_id="apr_test123456",
+    ))
     assert "\u2705" in text  # ✅
     assert "APPROVED" in text
+    assert "EMA crossover" in text or "EMA" in text
+    assert "Operator" in text
+    assert "quant" in text
 
 
 def test_browser_result():
@@ -206,6 +272,101 @@ def test_no_old_labels_in_any_kind():
 # ---------------------------------------------------------------------------
 
 from runtime.core.discord_event_router import emit_event, _load_channel_map
+
+
+def test_review_requests_route_to_review_channel(tmp_path):
+    """review_requested and approval_requested must land in #review (archimedes channel)."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    channel_map = _load_channel_map()
+    (config_dir / "agent_channel_map.json").write_text(json.dumps(channel_map))
+    (tmp_path / "state" / "dispatch_events").mkdir(parents=True)
+    (tmp_path / "state" / "discord_outbox").mkdir(parents=True)
+
+    review_ch = channel_map["agents"]["archimedes"]["channel_id"]
+
+    for kind in ["review_requested", "approval_requested"]:
+        result = emit_event(
+            kind, "hal",
+            task_id="task_test123456",
+            detail="test review request",
+            root=tmp_path,
+        )
+        assert result["owner_channel_id"] == review_ch, (
+            f"{kind} did not route to #review"
+        )
+
+
+def test_quant_approval_events_route_to_review_channel(tmp_path):
+    """quant_papertrade_request and quant_pulse_proposal must land in #review."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    channel_map = _load_channel_map()
+    (config_dir / "agent_channel_map.json").write_text(json.dumps(channel_map))
+    (tmp_path / "state" / "dispatch_events").mkdir(parents=True)
+    (tmp_path / "state" / "discord_outbox").mkdir(parents=True)
+
+    review_ch = channel_map["agents"]["archimedes"]["channel_id"]
+
+    for kind in ["quant_papertrade_request", "quant_pulse_proposal"]:
+        result = emit_event(
+            kind, "kitt",
+            task_id="task_test123456",
+            detail="test quant approval",
+            root=tmp_path,
+        )
+        assert result["owner_channel_id"] == review_ch, (
+            f"{kind} did not route to #review"
+        )
+
+
+def test_review_completions_route_to_worklog(tmp_path):
+    """review_completed and approval_completed must land in #worklog, NOT #review."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    channel_map = _load_channel_map()
+    (config_dir / "agent_channel_map.json").write_text(json.dumps(channel_map))
+    (tmp_path / "state" / "dispatch_events").mkdir(parents=True)
+    (tmp_path / "state" / "discord_outbox").mkdir(parents=True)
+
+    worklog_ch = channel_map["logical_channels"]["worklog"]["channel_id"]
+    review_ch = channel_map["agents"]["archimedes"]["channel_id"]
+
+    for kind in ["review_completed", "approval_completed"]:
+        result = emit_event(
+            kind, "archimedes",
+            task_id="task_test123456",
+            detail="verdict: approved. Looks good.",
+            root=tmp_path,
+        )
+        assert result["owner_channel_id"] == worklog_ch, (
+            f"{kind} did not route to #worklog (got {result['owner_channel_id']})"
+        )
+        assert result["owner_channel_id"] != review_ch, (
+            f"{kind} still routes to #review"
+        )
+
+
+def test_approval_requested_does_not_forward_to_jarvis(tmp_path):
+    """approval_requested is routine — must NOT forward to #jarvis."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    channel_map = _load_channel_map()
+    (config_dir / "agent_channel_map.json").write_text(json.dumps(channel_map))
+    (tmp_path / "state" / "dispatch_events").mkdir(parents=True)
+    (tmp_path / "state" / "discord_outbox").mkdir(parents=True)
+
+    result = emit_event(
+        "approval_requested", "hal",
+        task_id="task_test123456",
+        detail="test approval",
+        root=tmp_path,
+    )
+    assert result["jarvis_forwarded"] is False, (
+        "approval_requested still forwarded to #jarvis"
+    )
+    labels = [e["label"] for e in result["outbox_entries"]]
+    assert "jarvis_fwd" not in labels
 
 
 def test_routine_events_skip_jarvis_but_hit_worklog(tmp_path):
