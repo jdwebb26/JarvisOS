@@ -53,6 +53,18 @@ Everything below describes what is **actually running right now** and how to ope
 | OpenAI / GPT | `openai_executor` | **WIRED (inactive)** | Adapter + dispatch + model registry wired. Requires `OPENAI_API_KEY` with funded billing. **A ChatGPT subscription does NOT fund API usage.** Check: `python3 scripts/check_openai_provider.py` |
 | Anthropic / Claude | gateway config only | **BLOCKED** | `ANTHROPIC_API_KEY=REPLACE_ME`. No Python-track adapter exists — gateway config only |
 
+### Health monitor (unified state assessment)
+
+Combines OpenClaw gateway health + Jarvis runtime into a single verdict with state distinction:
+
+```bash
+python3 scripts/health_monitor.py          # terminal summary
+python3 scripts/health_monitor.py --brief  # one-line verdict for scripts/cron
+python3 scripts/health_monitor.py --json   # machine-readable
+```
+
+States: `healthy`, `degraded` (running with issues), `stuck` (frozen queues/stale heartbeats), `disconnected` (services unreachable). Does not emit to #jarvis.
+
 ### Preflight (before deploys / upgrades)
 
 Run the unified preflight to check both OpenClaw substrate and Jarvis runtime:
