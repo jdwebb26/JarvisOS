@@ -421,3 +421,176 @@ class TestBootstrapToCycleTransition:
                       symbol_scope="NQ", confidence=0.45)
         after = len(get_scenario_history(clean_root))
         assert after == before + 1
+
+
+# ---------------------------------------------------------------------------
+# Config-driven cycle runtime (not hardcoded stubs)
+# ---------------------------------------------------------------------------
+
+class TestCycleRuntimeInputs:
+    """Prove normal Lane B cycle uses config-driven inputs, not hardcoded stubs."""
+
+    def test_atlas_cycle_input_from_config(self, clean_root):
+        """Atlas cycle input thesis comes from atlas_sources.json, not hardcoded."""
+        from workspace.quant.run_lane_b_cycle import _build_atlas_cycle_input
+
+        # Needs Hermes evidence (config has require_hermes_evidence=false for tests)
+        result = _build_atlas_cycle_input(clean_root)
+        assert len(result) > 0, "Atlas should produce input from config"
+
+        config_path = clean_root / "workspace" / "quant" / "shared" / "config" / "atlas_sources.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config_theses = {t["thesis"] for t in config["seed_themes"]}
+
+        thesis = result[0]["thesis"]
+        assert thesis in config_theses, f"Thesis '{thesis}' not in config themes"
+
+    def test_atlas_cycle_input_links_hermes(self, clean_root):
+        """Atlas cycle input has evidence_refs to Hermes when available."""
+        from workspace.quant.run_lane_b_cycle import _build_atlas_cycle_input
+
+        # Bootstrap Hermes first
+        bootstrap_hermes(clean_root)
+
+        # Now update atlas config to require hermes evidence
+        config_path = clean_root / "workspace" / "quant" / "shared" / "config" / "atlas_sources.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["require_hermes_evidence"] = True
+        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+        result = _build_atlas_cycle_input(clean_root)
+        assert len(result) > 0
+        refs = result[0].get("evidence_refs") or []
+        assert len(refs) > 0, "Should link Hermes evidence"
+        assert all(r.startswith("hermes-") for r in refs)
+
+    def test_atlas_cycle_input_skips_without_hermes_when_required(self, clean_root):
+        """Atlas returns [] when hermes evidence is required but absent."""
+        from workspace.quant.run_lane_b_cycle import _build_atlas_cycle_input
+
+        config_path = clean_root / "workspace" / "quant" / "shared" / "config" / "atlas_sources.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["require_hermes_evidence"] = True
+        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+        result = _build_atlas_cycle_input(clean_root)
+        assert result == [], "No Hermes evidence → no Atlas input"
+
+    def test_atlas_cycle_input_empty_without_config(self, clean_root):
+        """Atlas returns [] when atlas_sources.json is missing."""
+        from workspace.quant.run_lane_b_cycle import _build_atlas_cycle_input
+        (clean_root / "workspace" / "quant" / "shared" / "config" / "atlas_sources.json").unlink()
+        assert _build_atlas_cycle_input(clean_root) == []
+
+    def test_fish_cycle_input_from_config(self, clean_root):
+        """Fish cycle input thesis comes from fish_bootstrap.json, not hardcoded."""
+        from workspace.quant.run_lane_b_cycle import _build_fish_cycle_input
+
+        result = _build_fish_cycle_input(clean_root)
+        assert len(result) > 0, "Fish should produce input from config"
+
+        config_path = clean_root / "workspace" / "quant" / "shared" / "config" / "fish_bootstrap.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config_theses = {s["thesis"] for s in config["seed_scenarios"]}
+
+        # Strip any [regime: ...] suffix
+        thesis = result[0]["thesis"].split(" [regime:")[0]
+        assert thesis in config_theses, f"Thesis '{thesis}' not in config scenarios"
+
+    def test_fish_cycle_input_enriched_with_regime(self, clean_root):
+        """Fish cycle input incorporates current regime context when available."""
+        from workspace.quant.run_lane_b_cycle import _build_fish_cycle_input
+        from workspace.quant.fish.scenario_lane import emit_regime
+
+        emit_regime(clean_root, "NQ trending bull", regime_label="trending_bull")
+
+        result = _build_fish_cycle_input(clean_root)
+        assert len(result) > 0
+        thesis = result[0]["thesis"]
+        assert "[regime: trending_bull]" in thesis
+
+    def test_fish_cycle_input_empty_without_config(self, clean_root):
+        """Fish returns [] when fish_bootstrap.json is missing."""
+        from workspace.quant.run_lane_b_cycle import _build_fish_cycle_input
+        (clean_root / "workspace" / "quant" / "shared" / "config" / "fish_bootstrap.json").unlink()
+        assert _build_fish_cycle_input(clean_root) == []
+
+    def test_full_cycle_produces_config_driven_packets(self, clean_root):
+        """Full run_cycle produces Atlas/Fish packets from config sources."""
+        from workspace.quant.run_lane_b_cycle import run_cycle
+
+        summary = run_cycle(clean_root, verbose=False)
+
+        # No errors
+        assert summary["errors"] == [], f"Cycle errors: {summary['errors']}"
+
+        # Atlas should have generated (or been bounded/deduped)
+        # Fish should have emitted scenarios
+        # Brief should have been produced
+        assert summary["brief"] is True
+
+        # Check that Atlas candidates on disk come from config themes
+        config_path = clean_root / "workspace" / "quant" / "shared" / "config" / "atlas_sources.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config_theses = {t["thesis"] for t in config["seed_themes"]}
+
+        atlas_pkts = list_lane_packets(clean_root, "atlas", "candidate_packet")
+        for pkt in atlas_pkts:
+            # Strip [adapted: ...] annotation
+            import re
+            base = re.sub(r"\s*\[adapted:.*?\]", "", pkt.thesis)
+            assert base in config_theses, f"Atlas thesis not from config: {pkt.thesis[:60]}"
+
+    def test_cycle_atlas_fish_bounded(self, clean_root):
+        """Cycle produces at most 1 Atlas candidate and 1 Fish scenario per run."""
+        from workspace.quant.run_lane_b_cycle import run_cycle
+
+        summary = run_cycle(clean_root, verbose=False)
+
+        # Atlas: at most governor batch_size (3 in fixture) but builder sends 1
+        assert summary["atlas"]["generated"] <= 1
+
+        # Fish: at most governor batch_size but builder sends 1
+        assert summary["fish"]["emitted"] <= 1
+
+    def test_cycle_dedup_safe_on_repeat(self, clean_root):
+        """Running cycle twice does not create duplicate Hermes research packets."""
+        from workspace.quant.run_lane_b_cycle import run_cycle
+
+        s1 = run_cycle(clean_root, verbose=False)
+        hermes_after_1 = len(list_lane_packets(clean_root, "hermes", "research_packet"))
+
+        s2 = run_cycle(clean_root, verbose=False)
+        hermes_after_2 = len(list_lane_packets(clean_root, "hermes", "research_packet"))
+
+        # Second run should dedup Hermes (same watchlist sources within 24h)
+        assert s2["hermes"]["deduped"] >= 0
+        assert hermes_after_2 == hermes_after_1, (
+            f"Hermes duplicated: {hermes_after_1} -> {hermes_after_2}"
+        )
+
+    def test_tradefloor_changes_with_upstream(self, clean_root):
+        """TradeFloor synthesis output reflects actual upstream lane content."""
+        from workspace.quant.tradefloor.synthesis_lane import synthesize
+
+        # Seed with bullish Hermes + Fish
+        store_packet(clean_root, make_packet(
+            "research_packet", "hermes", "NQ bullish momentum detected",
+            confidence=0.6))
+        store_packet(clean_root, make_packet(
+            "forecast_packet", "fish", "NQ bullish upside expected",
+            confidence=0.6, notes="direction=bullish"))
+
+        tf1 = synthesize(clean_root)
+        text1 = tf1.confidence_weighted_synthesis or ""
+
+        # Change Fish to bearish
+        store_packet(clean_root, make_packet(
+            "forecast_packet", "fish", "NQ bearish downside risk",
+            confidence=0.7, notes="direction=bearish"))
+
+        tf2 = synthesize(clean_root, override_reason="test")
+        text2 = tf2.confidence_weighted_synthesis or ""
+
+        # Synthesis text must differ when upstream changes
+        assert text1 != text2, "TradeFloor should change when Fish changes direction"

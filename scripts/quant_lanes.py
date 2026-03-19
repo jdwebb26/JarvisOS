@@ -510,63 +510,121 @@ def cmd_acceptance(args):
 # ---------------------------------------------------------------------------
 
 def cmd_pulse_status(args):
-    """Pulse lane status."""
-    try:
-        from workspace.quant.shared.packet_store import list_lane_packets
-        alerts = list_lane_packets(ROOT, "pulse", "pulse_alert_packet")
-        clusters = list_lane_packets(ROOT, "pulse", "pulse_cluster_packet")
-        proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
-        print(f"Pulse: {len(alerts)} alerts, {len(clusters)} clusters, {len(proposals)} proposals")
-    except Exception as e:
-        print(f"Pulse status unavailable: {e}")
+    """Pulse lane status — phone-readable."""
+    from workspace.quant.shared.packet_store import list_lane_packets
+    from workspace.quant.shared.discord_bridge import check_delivery_health
+
+    alerts = list_lane_packets(ROOT, "pulse", "pulse_alert_packet")
+    clusters = list_lane_packets(ROOT, "pulse", "pulse_cluster_packet")
+    proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
+    pending = [p for p in proposals if "status=pending" in (p.notes or "")]
+    outcomes = list_lane_packets(ROOT, "pulse", "pulse_outcome_packet")
+
+    dh = check_delivery_health()
+    pulse_delivery = dh.get("pulse", "?")
+
+    print("PULSE STATUS")
+    print("━" * 30)
+    print(f"  Alerts:    {len(alerts)}")
+    print(f"  Clusters:  {len(clusters)}")
+    print(f"  Proposals: {len(proposals)} ({len(pending)} pending)")
+    print(f"  Outcomes:  {len(outcomes)}")
+    if outcomes:
+        hits = sum(1 for o in outcomes if "hit=true" in (o.notes or ""))
+        print(f"  Hit rate:  {hits}/{len(outcomes)}")
+    print(f"  Delivery:  {pulse_delivery}")
+
+    if pending:
+        print("\n  Pending proposals:")
+        for p in pending[-5:]:
+            target = ""
+            for part in (p.notes or "").split(";"):
+                if part.strip().startswith("target="):
+                    target = part.strip().split("=", 1)[1]
+            print(f"    [{target}] {p.thesis[:70]}")
+            print(f"    approve: quant_lanes.py pulse-approve {p.packet_id}")
+
+    if alerts:
+        print("\n  Recent alerts:")
+        for a in alerts[-3:]:
+            print(f"    {a.thesis[:70]}")
 
 
 def cmd_pulse_ingest(args):
     """Ingest a Pulse alert."""
-    try:
-        from workspace.quant.pulse.alert_lane import ingest_alert
-        pkt = ingest_alert(
-            ROOT, text=args.text, level=args.level,
-            direction=args.direction, symbol=args.symbol,
-        )
-        print(f"Ingested: {pkt.packet_id}")
-    except Exception as e:
-        print(f"Pulse ingest failed: {e}")
+    from workspace.quant.pulse.alert_lane import ingest_alert
+    pkt, parsed = ingest_alert(
+        ROOT, text=args.text, level=args.level,
+        direction=args.direction, symbol=args.symbol, source="cli",
+    )
+    print(f"  Ingested: {pkt.packet_id}")
+    print(f"  Thesis:   {pkt.thesis}")
+    if parsed["level"] is not None:
+        print(f"  Level:    {parsed['level']}")
+    if parsed["tags"]:
+        print(f"  Tags:     {', '.join(parsed['tags'])}")
 
 
 def cmd_pulse_proposals(args):
     """Show pending Pulse proposals."""
-    try:
-        from workspace.quant.shared.packet_store import list_lane_packets
-        proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
-        pending = [p for p in proposals if "status=pending" in (p.notes or "")]
-        if not pending:
-            print("No pending Pulse proposals.")
-            return
-        for p in pending:
-            print(f"  {p.packet_id[:40]}  {p.thesis[:80]}")
-    except Exception as e:
-        print(f"Pulse proposals unavailable: {e}")
+    from workspace.quant.shared.packet_store import list_lane_packets
+    proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
+    pending = [p for p in proposals if "status=pending" in (p.notes or "")]
+    if not pending:
+        print("No pending Pulse proposals.")
+        return
+    print(f"PULSE PROPOSALS ({len(pending)} pending)")
+    print("━" * 40)
+    for p in pending:
+        target = ""
+        for part in (p.notes or "").split(";"):
+            if part.strip().startswith("target="):
+                target = part.strip().split("=", 1)[1]
+        print(f"  ID:      {p.packet_id}")
+        print(f"  Target:  {target}")
+        print(f"  Thesis:  {p.thesis[:80]}")
+        print(f"  Approve: quant_lanes.py pulse-approve {p.packet_id}")
+        print()
 
 
 def cmd_pulse_approve(args):
-    """Approve a Pulse proposal."""
-    print(f"Pulse approve {args.proposal_id}: use #review channel or Pulse worker CLI.")
+    """Approve a Pulse proposal for downstream release."""
+    from workspace.quant.pulse.alert_lane import approve_proposal
+    downstream = approve_proposal(ROOT, args.proposal_id)
+    if downstream is None:
+        print(f"  ERROR: proposal {args.proposal_id} not found or invalid target.")
+        return
+    print(f"  Approved → {downstream.lane} {downstream.packet_type}")
+    print(f"  ID:     {downstream.packet_id}")
+    print(f"  Thesis: {downstream.thesis[:80]}")
 
 
 def cmd_pulse_health(args):
-    """Pulse health summary."""
-    try:
-        from workspace.quant.shared.packet_store import list_lane_packets
-        alerts = list_lane_packets(ROOT, "pulse", "pulse_alert_packet")
-        outcomes = list_lane_packets(ROOT, "pulse", "pulse_outcome_packet")
-        learnings = list_lane_packets(ROOT, "pulse", "pulse_learning_packet")
-        print(f"Pulse health: {len(alerts)} alerts, {len(outcomes)} outcomes, {len(learnings)} learnings")
-        if outcomes:
-            hits = sum(1 for o in outcomes if "hit=true" in (o.notes or ""))
-            print(f"  Hit rate: {hits}/{len(outcomes)}")
-    except Exception as e:
-        print(f"Pulse health unavailable: {e}")
+    """Pulse health summary — phone-readable."""
+    from workspace.quant.shared.packet_store import list_lane_packets
+    from workspace.quant.shared.discord_bridge import check_delivery_health
+
+    alerts = list_lane_packets(ROOT, "pulse", "pulse_alert_packet")
+    outcomes = list_lane_packets(ROOT, "pulse", "pulse_outcome_packet")
+    proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
+
+    dh = check_delivery_health()
+
+    print("PULSE HEALTH")
+    print("━" * 30)
+    print(f"  Alerts:    {len(alerts)}")
+    print(f"  Outcomes:  {len(outcomes)}")
+    print(f"  Proposals: {len(proposals)}")
+    print(f"  Delivery:  {dh.get('pulse', '?')}")
+    if outcomes:
+        hits = sum(1 for o in outcomes if "hit=true" in (o.notes or ""))
+        total = len(outcomes)
+        print(f"  Hit rate:  {hits}/{total} ({hits/total:.0%})" if total else "")
+    noise = len(alerts) - len(set(
+        ref for o in outcomes for ref in o.evidence_refs
+    ))
+    if noise > 0:
+        print(f"  Noise:     {noise} alerts without outcomes")
 
 
 # ---------------------------------------------------------------------------

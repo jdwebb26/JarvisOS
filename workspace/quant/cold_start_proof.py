@@ -292,53 +292,96 @@ class Proof:
                     "Bootstrap:" in notes, notes[notes.find("Bootstrap:"):notes.find("Bootstrap:") + 60] if "Bootstrap:" in notes else "not found")
 
     def _prove_lane_b_cycle(self):
-        """Lane B cycle handles cold-start and uses real watchlist."""
-        from workspace.quant.run_lane_b_cycle import run_cycle
+        """Lane B cycle uses config-driven inputs for all lanes."""
+        from workspace.quant.run_lane_b_cycle import (
+            run_cycle, _build_atlas_cycle_input, _build_fish_cycle_input,
+        )
 
         # Use a fresh root to prove cold-start path in cycle
-        fresh = Path(tempfile.mkdtemp(prefix="laneb_proof_"))
+        fresh = _setup_isolated_root()
         try:
-            (fresh / "workspace" / "quant" / "shared" / "latest").mkdir(parents=True)
-            (fresh / "workspace" / "quant" / "shared" / "registries").mkdir(parents=True)
-            (fresh / "workspace" / "quant" / "shared" / "config").mkdir(parents=True)
-            (fresh / "workspace" / "quant" / "shared" / "scheduler").mkdir(parents=True)
-            for lane in ["atlas", "fish", "hermes", "sigma", "kitt", "tradefloor", "executor"]:
-                (fresh / "workspace" / "quant" / lane).mkdir(parents=True)
-
-            config_src = ROOT / "workspace" / "quant" / "shared" / "config"
-            config_dst = fresh / "workspace" / "quant" / "shared" / "config"
-            for name in ["hosts.json", "watch_list.json", "fish_bootstrap.json",
-                         "atlas_sources.json", "governor_state.json",
-                         "review_thresholds.json", "risk_limits.json"]:
-                src = config_src / name
-                if src.exists():
-                    shutil.copy2(src, config_dst / name)
-
-            # Ensure not paused
-            gov_path = config_dst / "governor_state.json"
-            gov = json.loads(gov_path.read_text(encoding="utf-8"))
-            for lane in gov:
-                gov[lane]["paused"] = False
-            gov_path.write_text(json.dumps(gov, indent=2) + "\n", encoding="utf-8")
-
             summary = run_cycle(fresh, verbose=False)
 
-            # After cycle, Hermes packets should exist on disk
-            # (either from bootstrap auto-assist or normal watchlist batch)
             from workspace.quant.shared.packet_store import list_lane_packets as _llp
+
+            # --- Hermes: packets on disk from bootstrap or watchlist ---
             hermes_pkts = _llp(fresh, "hermes", "research_packet")
-            hermes_health = _llp(fresh, "hermes", "health_summary")
-            self.check("lane-b cycle: hermes packets on disk",
+            self.check("cycle: hermes packets on disk",
                         len(hermes_pkts) > 0 or summary["hermes"]["emitted"] > 0,
                         f"packets={len(hermes_pkts)} emitted={summary['hermes']['emitted']}")
 
-            # Brief should have been produced
-            self.check("lane-b cycle: brief produced",
-                        summary["brief"] is True,
-                        f"brief={summary['brief']}")
+            # --- Atlas: config-driven, not hardcoded stub ---
+            atlas_input = _build_atlas_cycle_input(fresh)
+            if atlas_input:
+                # Thesis must come from atlas_sources.json, not a hardcoded string
+                config_path = fresh / "workspace" / "quant" / "shared" / "config" / "atlas_sources.json"
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                config_theses = {t["thesis"] for t in config.get("seed_themes", [])}
+                input_thesis = atlas_input[0]["thesis"]
+                self.check("cycle: atlas input from config",
+                            input_thesis in config_theses,
+                            f"thesis={input_thesis[:60]}")
+                # Evidence refs should link to Hermes if available
+                refs = atlas_input[0].get("evidence_refs") or []
+                self.check("cycle: atlas links hermes evidence",
+                            len(refs) > 0 and all(r.startswith("hermes-") for r in refs),
+                            f"refs={len(refs)}")
+            else:
+                self.check("cycle: atlas input from config",
+                            False, "no atlas input built (missing hermes evidence?)")
+                self.check("cycle: atlas links hermes evidence", False, "skipped")
 
-            # No errors
-            self.check("lane-b cycle: no errors",
+            atlas_pkts = _llp(fresh, "atlas", "candidate_packet")
+            self.check("cycle: atlas candidates on disk",
+                        len(atlas_pkts) > 0 or summary["atlas"]["generated"] > 0,
+                        f"packets={len(atlas_pkts)} generated={summary['atlas']['generated']}")
+
+            # --- Fish: config-driven, not hardcoded stub ---
+            fish_input = _build_fish_cycle_input(fresh)
+            self.check("cycle: fish input is non-empty",
+                        len(fish_input) > 0, f"inputs={len(fish_input)}")
+            if fish_input:
+                config_path = fresh / "workspace" / "quant" / "shared" / "config" / "fish_bootstrap.json"
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                config_theses = {s["thesis"] for s in config.get("seed_scenarios", [])}
+                input_thesis = fish_input[0]["thesis"]
+                # The thesis may have a [regime: ...] suffix appended, so check prefix
+                base_thesis = input_thesis.split(" [regime:")[0]
+                self.check("cycle: fish input from config",
+                            base_thesis in config_theses,
+                            f"thesis={input_thesis[:60]}")
+
+            fish_pkts = _llp(fresh, "fish", "scenario_packet")
+            self.check("cycle: fish scenarios on disk",
+                        len(fish_pkts) > 0 or summary["fish"]["emitted"] > 0,
+                        f"packets={len(fish_pkts)} emitted={summary['fish']['emitted']}")
+
+            # --- TradeFloor: synthesizes from real upstream ---
+            tf_pkts = _llp(fresh, "tradefloor", "tradefloor_packet")
+            if summary["tradefloor"]["ran"]:
+                self.check("cycle: tradefloor synthesized",
+                            len(tf_pkts) > 0, f"packets={len(tf_pkts)}")
+                # Check evidence_refs link to real upstream packets
+                tf = tf_pkts[-1]
+                has_upstream_refs = any(
+                    r.startswith(("hermes-", "atlas-", "fish-"))
+                    for r in (tf.evidence_refs or [])
+                )
+                self.check("cycle: tradefloor refs real upstream",
+                            has_upstream_refs,
+                            f"refs={[r[:30] for r in (tf.evidence_refs or [])]}")
+            else:
+                # Cadence refused is OK — still check that it tried
+                self.check("cycle: tradefloor ran or cadence-gated",
+                            summary["tradefloor"]["cadence_refused"] or summary["tradefloor"]["ran"],
+                            str(summary["tradefloor"]))
+
+            # --- Brief produced ---
+            self.check("cycle: brief produced",
+                        summary["brief"] is True, f"brief={summary['brief']}")
+
+            # --- No errors ---
+            self.check("cycle: no errors",
                         len(summary["errors"]) == 0,
                         f"errors={summary['errors']}" if summary["errors"] else "clean")
 

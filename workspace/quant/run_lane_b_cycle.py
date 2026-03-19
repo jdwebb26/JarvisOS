@@ -53,6 +53,121 @@ def acquire_cycle_lock():
         return None
 
 
+# ---------------------------------------------------------------------------
+# Config-driven cycle input builders
+# ---------------------------------------------------------------------------
+
+def _build_atlas_cycle_input(root: Path) -> list[dict]:
+    """Build Atlas candidate batch input from config + upstream evidence.
+
+    Sources (in priority order):
+      1. atlas_sources.json seed_themes (rotating through them across cycles)
+      2. Recent Hermes research packets as evidence_refs
+
+    Returns a list of candidate dicts for generate_candidate_batch(),
+    or [] if no config-driven input is available.
+    """
+    import hashlib
+    import json
+
+    config_path = root / "workspace" / "quant" / "shared" / "config" / "atlas_sources.json"
+    if not config_path.exists():
+        return []
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+    themes = config.get("seed_themes", [])
+    if not themes:
+        return []
+
+    # Gather Hermes evidence for linkage
+    from workspace.quant.shared.packet_store import list_lane_packets
+    hermes_pkts = list_lane_packets(root, "hermes", "research_packet")
+    hermes_refs = [p.packet_id for p in hermes_pkts[-5:]]
+
+    # If config requires Hermes evidence and none exists, skip
+    if config.get("require_hermes_evidence", False) and not hermes_refs:
+        return []
+
+    # Pick one theme per cycle by rotating based on the current date-hour.
+    # This avoids always hammering the same theme while staying deterministic
+    # within a given cycle window.
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    theme_idx = (now.timetuple().tm_yday * 24 + now.hour) % len(themes)
+    theme = themes[theme_idx]
+
+    prefix = theme.get("strategy_prefix", "atlas-cycle")
+    ts = now.strftime("%Y%m%dT%H%M%S")
+    short = hashlib.sha256(f"{prefix}-{ts}".encode()).hexdigest()[:8]
+
+    return [{
+        "strategy_id": f"{prefix}-{short}",
+        "thesis": theme["thesis"],
+        "symbol_scope": theme.get("symbol_scope", "NQ"),
+        "timeframe_scope": theme.get("timeframe_scope", "15m"),
+        "confidence": theme.get("confidence", 0.4),
+        "evidence_refs": hermes_refs[:3] if hermes_refs else None,
+    }]
+
+
+def _build_fish_cycle_input(root: Path) -> list[dict]:
+    """Build Fish scenario batch input from config + existing lane state.
+
+    Sources (in priority order):
+      1. fish_bootstrap.json seed_scenarios (rotating across cycles)
+      2. Recent Hermes research themes as thesis enrichment
+      3. Current regime context from Fish's own regime packets
+
+    Returns a list of scenario dicts for run_scenario_batch(),
+    or [] if no config-driven input is available.
+    """
+    import json
+
+    config_path = root / "workspace" / "quant" / "shared" / "config" / "fish_bootstrap.json"
+    if not config_path.exists():
+        return []
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+    scenarios = config.get("seed_scenarios", [])
+    if not scenarios:
+        return []
+
+    # Pick one scenario per cycle by rotating based on current date-hour
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    scenario_idx = (now.timetuple().tm_yday * 24 + now.hour) % len(scenarios)
+    scenario = scenarios[scenario_idx]
+
+    # Optionally enrich thesis with current regime context
+    thesis = scenario["thesis"]
+    try:
+        from workspace.quant.shared.packet_store import list_lane_packets
+        regimes = list_lane_packets(root, "fish", "regime_packet")
+        if regimes:
+            latest_regime = regimes[-1]
+            regime_label = ""
+            for part in (latest_regime.notes or "").split(";"):
+                if part.strip().startswith("regime="):
+                    regime_label = part.strip().split("=", 1)[1]
+            if regime_label:
+                thesis = f"{thesis} [regime: {regime_label}]"
+    except Exception:
+        pass
+
+    return [{
+        "thesis": thesis,
+        "symbol_scope": scenario.get("symbol_scope", "NQ"),
+        "timeframe_scope": scenario.get("timeframe_scope", "1D"),
+        "confidence": scenario.get("confidence", 0.4),
+    }]
+
+
 def run_cycle(root: Path, verbose: bool = False) -> dict:
     """Run one Lane B cycle. Returns a summary dict."""
     summary = {
@@ -136,19 +251,17 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
             if verbose:
                 _log("  Atlas paused by governor")
         else:
-            import hashlib
-            batch_id = hashlib.sha256(_ts().encode()).hexdigest()[:8]
-            stubs = [
-                {"strategy_id": f"atlas-cycle-{batch_id}",
-                 "thesis": "NQ mean-reversion with volume confirmation (cycle-generated)"},
-            ]
-            batch_pkt, candidates, info = generate_candidate_batch(root, stubs)
-            summary["atlas"]["generated"] = info.get("generated", 0)
-            summary["atlas"]["skipped"] = not info.get("acquired", True)
-            atlas_health(root, summary["started_at"], _ts(),
-                         packets_produced=len(candidates) + 1,
-                         candidates_generated=len(candidates),
-                         host_used=info.get("host", "NIMO"))
+            candidates_input = _build_atlas_cycle_input(root)
+            if candidates_input:
+                batch_pkt, candidates, info = generate_candidate_batch(root, candidates_input)
+                summary["atlas"]["generated"] = info.get("generated", 0)
+                summary["atlas"]["skipped"] = not info.get("acquired", True)
+                atlas_health(root, summary["started_at"], _ts(),
+                             packets_produced=len(candidates) + 1,
+                             candidates_generated=len(candidates),
+                             host_used=info.get("host", "NIMO"))
+            elif verbose:
+                _log("  Atlas: no config-driven input available this cycle")
     except Exception as e:
         summary["errors"].append(f"atlas: {e}")
 
@@ -163,16 +276,17 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
             if verbose:
                 _log("  Fish paused by governor")
         else:
-            stubs = [
-                {"thesis": "NQ consolidation before next FOMC (cycle scenario)"},
-            ]
-            emitted, info = run_scenario_batch(root, stubs)
-            summary["fish"]["emitted"] = len(emitted)
-            summary["fish"]["skipped"] = not info.get("acquired", True)
-            fish_health(root, summary["started_at"], _ts(),
-                        packets_produced=len(emitted),
-                        scenarios_emitted=len(emitted),
-                        host_used=info.get("host", "SonLM"))
+            scenarios_input = _build_fish_cycle_input(root)
+            if scenarios_input:
+                emitted, info = run_scenario_batch(root, scenarios_input)
+                summary["fish"]["emitted"] = len(emitted)
+                summary["fish"]["skipped"] = not info.get("acquired", True)
+                fish_health(root, summary["started_at"], _ts(),
+                            packets_produced=len(emitted),
+                            scenarios_emitted=len(emitted),
+                            host_used=info.get("host", "SonLM"))
+            elif verbose:
+                _log("  Fish: no config-driven input available this cycle")
     except Exception as e:
         summary["errors"].append(f"fish: {e}")
 
