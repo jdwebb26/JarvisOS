@@ -1195,6 +1195,18 @@ def cmd_proof_promote(args):
     print(f"\n  Next: operator review in #review → approve / reject / rerun")
 
 
+def cmd_proof_reconcile(args):
+    """Create missing paper runs for PAPER_ACTIVE strategies without one."""
+    from workspace.quant.executor.executor_lane import reconcile_paper_runs
+    created = reconcile_paper_runs(ROOT)
+    if not created:
+        print("All PAPER_ACTIVE strategies already have paper runs.")
+        return
+    print(f"Created {len(created)} paper run(s):")
+    for c in created:
+        print(f"  {c['strategy_id']}  horizon={c['horizon_class']}  run={c['paper_run_id']}")
+
+
 def cmd_observe(args):
     """Concise operator observability surface. Phone-readable truth."""
     from workspace.quant.shared.governor import load_governor_state
@@ -1437,6 +1449,7 @@ def main():
     p_pe.add_argument("run_id", help="Paper run ID")
     p_pp = sub.add_parser("proof-promote", help="Create promotion review if proof sufficient")
     p_pp.add_argument("run_id", help="Paper run ID")
+    sub.add_parser("proof-reconcile", help="Create missing paper runs for legacy PAPER_ACTIVE strategies")
 
     # Bootstrap commands
     sub.add_parser("bootstrap-hermes", help="Cold-start Hermes from watchlist")
@@ -1484,6 +1497,7 @@ def main():
         "proof-runs": cmd_proof_runs,
         "proof-evaluate": cmd_proof_evaluate,
         "proof-promote": cmd_proof_promote,
+        "proof-reconcile": cmd_proof_reconcile,
     }
     commands[args.command](args)
 

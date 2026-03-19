@@ -108,25 +108,50 @@ def _record_paper_fill(root: Path, strategy_id: str, fill, side: str) -> dict:
             horizon = _infer_horizon_class(root, strategy_id)
             run = create_paper_run(root, strategy_id, horizon)
 
-        # Compute fill PnL from slippage
-        # slippage is a percentage; positive = adverse (cost), negative = favorable
-        slippage_pct = fill.slippage if hasattr(fill, "slippage") else 0.0
-        fill_pnl = round(-slippage_pct * fill.fill_price / 100, 2)
-        is_winner = fill_pnl >= 0
+        # If proof is already sufficient/ready, skip fill recording and just check promotion
+        if run.proof_status == "sufficient" or run.status == "paper_proof_ready":
+            eval_result = evaluate_proof(root, run.paper_run_id)
+        else:
+            # Compute fill PnL from slippage
+            slippage_pct = fill.slippage if hasattr(fill, "slippage") else 0.0
+            fill_pnl = round(-slippage_pct * fill.fill_price / 100, 2)
+            is_winner = fill_pnl >= 0
 
-        # Record the fill
-        run = record_fill(root, run.paper_run_id, pnl=fill_pnl, is_winner=is_winner)
+            # Record the fill
+            run = record_fill(root, run.paper_run_id, pnl=fill_pnl, is_winner=is_winner)
 
-        # Evaluate proof
-        eval_result = evaluate_proof(root, run.paper_run_id)
+            # Evaluate proof
+            eval_result = evaluate_proof(root, run.paper_run_id)
+
+        # Use the run object from evaluate_proof (it has the updated status)
+        evaluated_run = eval_result["run"]
+
+        # Auto-promote: when proof is sufficient, transition strategy to PAPER_REVIEW.
+        # This acts as Sigma (the validation gatekeeper) recognizing proof is complete.
+        # The operator still must review before any live execution.
+        promoted = False
+        if eval_result["sufficient"] and evaluated_run.status == "paper_proof_ready":
+            try:
+                strategy = get_strategy(root, strategy_id)
+                if strategy and strategy.lifecycle_state == "PAPER_ACTIVE":
+                    transition_strategy(
+                        root, strategy_id, "PAPER_REVIEW", actor="sigma",
+                        note=f"Auto-promoted: paper proof sufficient "
+                             f"({evaluated_run.closed_count} trades, "
+                             f"run={evaluated_run.paper_run_id})",
+                    )
+                    promoted = True
+            except (ValueError, TimeoutError):
+                pass  # Non-fatal — operator can manually promote via proof-promote
 
         return {
-            "paper_run_id": run.paper_run_id,
-            "horizon_class": run.horizon_class,
-            "closed_count": run.closed_count,
-            "proof_status": run.proof_status,
-            "run_status": run.status,
+            "paper_run_id": evaluated_run.paper_run_id,
+            "horizon_class": evaluated_run.horizon_class,
+            "closed_count": evaluated_run.closed_count,
+            "proof_status": evaluated_run.proof_status,
+            "run_status": evaluated_run.status,
             "sufficient": eval_result["sufficient"],
+            "auto_promoted": promoted,
         }
     except Exception as e:
         # Proof tracking is never a reason to fail execution
@@ -485,6 +510,35 @@ def execute_live_trade(
     _emit_pkt(status_pkt)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Reconcile — create missing paper runs for legacy PAPER_ACTIVE strategies
+# ---------------------------------------------------------------------------
+
+def reconcile_paper_runs(root: Path) -> list[dict]:
+    """Create paper runs for PAPER_ACTIVE strategies that don't have one.
+
+    Safe to call repeatedly — skips strategies that already have an active run.
+    Returns a list of {strategy_id, paper_run_id, horizon_class} for each created run.
+    """
+    from workspace.quant.executor.proof_tracker import get_active_run, create_paper_run
+    from workspace.quant.shared.registries.strategy_registry import get_strategies_by_state
+
+    created = []
+    paper_active = get_strategies_by_state(root, "PAPER_ACTIVE")
+    for s in paper_active:
+        existing = get_active_run(root, s.strategy_id)
+        if existing is not None:
+            continue  # Already has a run
+        horizon = _infer_horizon_class(root, s.strategy_id)
+        run = create_paper_run(root, s.strategy_id, horizon)
+        created.append({
+            "strategy_id": s.strategy_id,
+            "paper_run_id": run.paper_run_id,
+            "horizon_class": horizon,
+        })
+    return created
 
 
 # ---------------------------------------------------------------------------
