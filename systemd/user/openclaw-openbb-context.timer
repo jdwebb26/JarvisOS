@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenClaw OpenBB Market Context — every 60 minutes
+
+[Timer]
+OnCalendar=*:00:00
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

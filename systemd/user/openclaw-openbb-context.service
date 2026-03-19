@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenClaw OpenBB Market Context — fetch and write Scout/Hermes packets
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5/workspace/quant_infra/openbb
+ExecStart=/home/rollan/.openclaw/workspace/jarvis-v5/workspace/quant_infra/env/.venv-openbb/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/workspace/quant_infra/openbb/fetch_market_context.py
+Environment=HOME=/home/rollan
+Environment=PATH=/home/rollan/.openclaw/workspace/jarvis-v5/workspace/quant_infra/env/.venv-openbb/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-openbb-context
+TimeoutStartSec=120
