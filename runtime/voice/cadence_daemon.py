@@ -98,6 +98,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.voice.cadence_ingress import route_cadence_utterance
+from runtime.voice.cadence_status import (
+    init_status,
+    record_wake,
+    record_command_window,
+    record_route,
+    record_timeout,
+    record_error,
+)
 from runtime.voice.cues import play_cue
 from runtime.voice.wakeword import validate_wake_phrase
 
@@ -333,6 +341,7 @@ def run_turn(
         f"  text={raw_text!r}",
         file=sys.stderr,
     )
+    record_wake(phrase=wake["wake_phrase_used"])
     play_cue("wake_accept")
 
     remainder = _clean_command(wake["normalized_command"]).strip()
@@ -344,6 +353,7 @@ def run_turn(
         print(f"[cadence] command_captured (inline): {command!r}", file=sys.stderr)
     else:
         # ── Phase 3: command window ──────────────────────────────────────────
+        record_command_window()
         play_cue("command_open")
         print("[cadence] command_window_open", file=sys.stderr)
 
@@ -359,6 +369,7 @@ def run_turn(
 
         if not raw_cmd or _is_garbage_text(raw_cmd):
             print("[cadence] command_timeout", file=sys.stderr)
+            record_timeout()
             return {"phase": "command_timeout", "passive": passive, "wake": wake,
                     "cmd_chunk": cmd_chunk}
 
@@ -383,6 +394,7 @@ def run_turn(
         )
     except Exception as exc:
         print(f"[cadence] routed_error  exc={exc}", file=sys.stderr)
+        record_error(error=str(exc))
         play_cue("error")
         return {"phase": "routed", "route_ok": False, "error": str(exc),
                 "passive": passive, "wake": wake}
@@ -390,6 +402,8 @@ def run_turn(
     intent = route_result.get("intent_result", {}).get("intent", "?")
     routed = route_result.get("routed", False)
     route_ok = routed or not execute
+    record_route(transcript=command, intent=intent, ok=route_ok,
+                 error="" if route_ok else f"intent={intent} routed={routed}")
     if route_ok:
         play_cue("route_ok")
         print(f"[cadence] routed_ok  intent={intent}  routed={routed}", file=sys.stderr)
@@ -460,6 +474,7 @@ def run_live_loop(
         "--command-window", str(command_window_sec),
     ]
 
+    init_status(listener_mode="live", audio_device=resolved_device, root=resolved_root)
     print(
         f"[cadence] standby_start (live)  execute={execute}  "
         f"device={resolved_device}  model={FASTER_WHISPER_MODEL}",
@@ -506,6 +521,7 @@ def run_live_loop(
                     f"[cadence] wake_detected  phrase={phrase!r}  score={score:.2f}",
                     file=sys.stderr,
                 )
+                record_wake(phrase=phrase, score=score)
                 play_cue("wake_accept")
 
             elif etype == "transcript":
@@ -519,6 +535,7 @@ def run_live_loop(
 
                 if not command or _is_garbage_text(command):
                     print("[cadence] command_timeout (empty transcript)", file=sys.stderr)
+                    record_timeout()
                     continue
 
                 print(f"[cadence] command_captured: {command!r}", file=sys.stderr)
@@ -534,6 +551,8 @@ def run_live_loop(
                     intent = route_result.get("intent_result", {}).get("intent", "?")
                     routed = route_result.get("routed", False)
                     route_ok = routed or not execute
+                    record_route(transcript=command, intent=intent, ok=route_ok,
+                                 error="" if route_ok else f"intent={intent}")
                     if route_ok:
                         play_cue("route_ok")
                         print(f"[cadence] routed_ok  intent={intent}", file=sys.stderr)
@@ -541,11 +560,13 @@ def run_live_loop(
                         play_cue("error")
                         print(f"[cadence] routed_error  intent={intent}", file=sys.stderr)
                 except Exception as exc:
+                    record_error(error=str(exc))
                     play_cue("error")
                     print(f"[cadence] routed_error  exc={exc}", file=sys.stderr)
 
             elif etype == "timeout":
                 print("[cadence] command_timeout", file=sys.stderr)
+                record_timeout()
 
             elif etype == "error":
                 msg = event.get("message", "?")
@@ -654,6 +675,7 @@ def run_loop(
             file=sys.stderr,
         )
 
+    init_status(listener_mode="legacy", audio_device=device or "default", root=resolved_root)
     print(f"[cadence] standby_start  execute={execute}  model={model}", file=sys.stderr)
     print(f"[cadence] wake_phrases={WAKE_PHRASES}", file=sys.stderr)
     print(

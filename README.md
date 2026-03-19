@@ -180,7 +180,7 @@ All scripts live in `scripts/` and are run from the repo root.
 ### Dashboard / status
 | Script | What it does |
 |--------|-------------|
-| `dashboard.py` | Serve the operator dashboard (default `:18792`) |
+| `dashboard.py` | Serve the operator dashboard (live service uses `:18793`) |
 | `dashboard.py --json` | Dump dashboard data to stdout |
 | `dashboard.py --snapshot` | Write snapshot to `state/logs/dashboard.json` |
 
