@@ -1,0 +1,16 @@
+{
+  "review_id": "rev_ca54178fe5d3",
+  "task_id": "task_ae965a6b5f1c",
+  "requested_at": "2026-03-17T07:59:36.690463+00:00",
+  "updated_at": "2026-03-19T10:57:12.090919+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "operator",
+  "lane": "kitt",
+  "status": "rejected",
+  "summary": "Review required for task task_ae965a6b5f1c: Summarize the current NQ futures regime based on recent volatility patterns",
+  "details": "Auto-rejected: parent task archived as stale (never executed, no artifacts)",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "schema_version": "v5.1",
+  "version": "v1"
+}

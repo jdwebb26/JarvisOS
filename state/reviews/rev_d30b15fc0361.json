@@ -1,0 +1,16 @@
+{
+  "review_id": "rev_d30b15fc0361",
+  "task_id": "task_83a1306a1492",
+  "requested_at": "2026-03-18T18:59:04.900660+00:00",
+  "updated_at": "2026-03-19T10:57:12.090919+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "operator",
+  "lane": "jarvis",
+  "status": "rejected",
+  "summary": "Review required for task task_83a1306a1492: Write a one-line health check report for each live service",
+  "details": "Auto-rejected: parent task archived as stale (never executed, no artifacts)",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "schema_version": "v5.1",
+  "version": "v1"
+}

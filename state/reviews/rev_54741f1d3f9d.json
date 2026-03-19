@@ -1,0 +1,16 @@
+{
+  "review_id": "rev_54741f1d3f9d",
+  "task_id": "task_3d87da70439f",
+  "requested_at": "2026-03-18T18:56:39.711780+00:00",
+  "updated_at": "2026-03-19T10:57:12.090919+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "operator",
+  "lane": "jarvis",
+  "status": "rejected",
+  "summary": "Review required for task task_3d87da70439f: Summarize the latest Kitt NQ regime brief into a one-paragraph operator digest",
+  "details": "Auto-rejected: parent task archived as stale (never executed, no artifacts)",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "schema_version": "v5.1",
+  "version": "v1"
+}

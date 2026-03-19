@@ -1,0 +1,16 @@
+{
+  "review_id": "rev_31af837877e3",
+  "task_id": "task_986434bef2bc",
+  "requested_at": "2026-03-18T20:00:19.613473+00:00",
+  "updated_at": "2026-03-19T10:57:12.090919+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "operator",
+  "lane": "muse",
+  "status": "rejected",
+  "summary": "Review required for task task_986434bef2bc: Write a creative tagline for OpenClaw, the autonomous multi-agent AI trading system",
+  "details": "Auto-rejected: parent task archived as stale (never executed, no artifacts)",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "schema_version": "v5.1",
+  "version": "v1"
+}

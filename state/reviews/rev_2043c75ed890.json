@@ -1,0 +1,16 @@
+{
+  "review_id": "rev_2043c75ed890",
+  "task_id": "task_0c26c42e6a89",
+  "requested_at": "2026-03-18T19:24:25.043878+00:00",
+  "updated_at": "2026-03-19T10:57:12.090919+00:00",
+  "reviewer_role": "anton",
+  "requested_by": "operator",
+  "lane": "jarvis",
+  "status": "rejected",
+  "summary": "Review required for task task_0c26c42e6a89: Summarize the latest NQ regime brief from Scout memory",
+  "details": "Auto-rejected: parent task archived as stale (never executed, no artifacts)",
+  "linked_artifact_ids": [],
+  "verdict_reason": "",
+  "schema_version": "v5.1",
+  "version": "v1"
+}

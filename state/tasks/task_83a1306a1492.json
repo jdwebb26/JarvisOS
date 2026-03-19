@@ -1,0 +1,211 @@
+{
+  "task_id": "task_83a1306a1492",
+  "created_at": "2026-03-18T18:59:04.840379+00:00",
+  "updated_at": "2026-03-19T10:57:12.090919+00:00",
+  "source_lane": "jarvis",
+  "source_channel": "todo",
+  "source_message_id": "todo_ae971e4819f7",
+  "source_user": "operator",
+  "trigger_type": "explicit_task_colon",
+  "raw_request": "task: Write a one-line health check report for each live service",
+  "normalized_request": "Write a one-line health check report for each live service",
+  "task_type": "deploy",
+  "priority": "normal",
+  "risk_level": "high_stakes",
+  "status": "archived",
+  "lifecycle_state": "archived",
+  "assigned_role": "executor",
+  "assigned_model": "Qwen3.5-122B",
+  "backend_assignment_id": "bassign_afa59fe86650",
+  "execution_backend": "qwen_planner",
+  "backend_run_id": null,
+  "backend_metadata": {
+    "routing_policy": "provider_agnostic_qwen_first",
+    "routing": {
+      "routing_request_id": "rreq_5db71d593fa0",
+      "routing_decision_id": "rdec_481b76136754",
+      "provider_adapter_result_id": "pres_ce5f9a0658d0",
+      "backend_assignment_id": "bassign_afa59fe86650",
+      "provider_id": "qwen",
+      "model_name": "Qwen3.5-122B",
+      "selected_node_role": "primary",
+      "selected_host_name": null,
+      "model_registry_entry_id": "model_qwen3_5_122b",
+      "capability_profile_id": "cap_highstakes_qwen",
+      "workload_type": "general",
+      "required_capabilities": [
+        "deployment_planning",
+        "general_reasoning",
+        "high_stakes_reasoning",
+        "reviewable_candidate"
+      ],
+      "policy_constraints": {
+        "default_family": "qwen3.5",
+        "allowed_families": [
+          "qwen3.5"
+        ],
+        "provider_policy": "qwen_only",
+        "routing_policy_id": "routing_policy_default",
+        "lane_override_family": null,
+        "active_override_ids": [],
+        "latest_override_id": null,
+        "enabled_input_modalities": [
+          "text"
+        ],
+        "multimodal_runtime_enabled": false,
+        "disabled_provider_ids": [],
+        "disabled_execution_backends": [],
+        "workload_type": "general",
+        "agent_id": "jarvis",
+        "channel": "todo",
+        "authority_class": "approval_required",
+        "context_estimate": {
+          "token_estimate": 240,
+          "request_token_count": 10,
+          "bucket": "small"
+        },
+        "latency_preference": "balanced",
+        "preferred_provider": "qwen",
+        "preferred_model": "Qwen3.5-35B",
+        "preferred_host_role": "primary",
+        "allowed_host_roles": [
+          "primary"
+        ],
+        "forbidden_host_roles": [
+          "burst"
+        ],
+        "burst_allowed": false,
+        "local_only": false,
+        "allowed_fallbacks": [
+          "Qwen3.5-9B",
+          "Qwen3.5-122B"
+        ],
+        "ignored_overrides": [],
+        "active_degradation_modes": [],
+        "active_lease_id": null,
+        "eligible_provider_ids": [
+          "qwen"
+        ],
+        "selection_context": {
+          "authority_class": "approval_required",
+          "minimum_tier": "heavy_reasoning",
+          "context_estimate": {
+            "token_estimate": 240,
+            "request_token_count": 10,
+            "bucket": "small"
+          },
+          "latency_preference": "balanced",
+          "active_degradation_modes": [],
+          "active_lease_id": null,
+          "selected_candidate": {
+            "model_name": "Qwen3.5-122B",
+            "provider_id": "qwen",
+            "execution_backend": "qwen_planner",
+            "host_role": "primary",
+            "host_name": null,
+            "tier": "heavy_reasoning",
+            "backend_health_status": "unknown",
+            "node_health_status": "healthy",
+            "lease_reason": "no_active_lease",
+            "rerouted_from_preferred_model": true,
+            "degradation_reasons": [],
+            "legality_findings": [],
+            "score": [
+              1,
+              4,
+              0,
+              1,
+              1,
+              0,
+              1,
+              1,
+              2,
+              1,
+              4,
+              1,
+              0,
+              10
+            ]
+          },
+          "candidate_evaluations": [
+            {
+              "model_name": "Qwen3.5-122B",
+              "provider_id": "qwen",
+              "execution_backend": "qwen_planner",
+              "host_role": "primary",
+              "host_name": null,
+              "tier": "heavy_reasoning",
+              "allowed": true,
+              "backend_health_status": "unknown",
+              "node_health_status": "healthy",
+              "current_task_count": null,
+              "lease_ready": true,
+              "lease_reason": "no_active_lease",
+              "degradation_reasons": [],
+              "legality_findings": [],
+              "covers_task_type": true,
+              "covers_risk": true,
+              "matched_capabilities": 4,
+              "score": [
+                1,
+                4,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                2,
+                1,
+                4,
+                1,
+                0,
+                10
+              ]
+            }
+          ]
+        },
+        "route_legality_status": "legal",
+        "route_resolution_state": "rerouted",
+        "fallback_attempted": true,
+        "fallback_blocked_for_safety": false,
+        "blocked_route_reason": ""
+      }
+    }
+  },
+  "review_required": true,
+  "approval_required": true,
+  "autonomy_mode": "step_mode",
+  "task_envelope": {},
+  "parent_task_id": null,
+  "child_task_ids": [],
+  "speculative_downstream": false,
+  "related_artifact_ids": [],
+  "candidate_artifact_ids": [],
+  "promoted_artifact_id": null,
+  "demoted_artifact_ids": [],
+  "revoked_artifact_ids": [],
+  "impacted_output_ids": [],
+  "blocked_dependency_refs": [],
+  "dependency_block_reason": "",
+  "related_review_ids": [
+    "rev_d30b15fc0361"
+  ],
+  "related_approval_ids": [],
+  "checkpoint_summary": "",
+  "error_count": 0,
+  "last_error": "",
+  "final_outcome": "",
+  "publish_readiness_status": "pending",
+  "publish_readiness_reason": "No promoted artifact is currently available.",
+  "home_runtime_workspace": "jarvis_v5_runtime",
+  "target_workspace_id": "jarvis_v5_runtime",
+  "allowed_workspace_ids": [
+    "jarvis_v5_runtime"
+  ],
+  "touched_workspace_ids": [
+    "jarvis_v5_runtime"
+  ],
+  "schema_version": "v5.1",
+  "version": "v1"
+}
