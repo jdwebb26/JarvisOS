@@ -32,3 +32,17 @@ workspace/work/
 
 runtime/core/qwen_approval_state.json
 runtime/core/qwen_live_state.json
+
+# Quant infrastructure
+workspace/quant_infra/env/.venv-openbb/
+workspace/quant_infra/warehouse/quant.duckdb
+workspace/quant_infra/warehouse/quant.duckdb.wal
+workspace/quant_infra/warehouse/snapshots/*.json
+workspace/quant_infra/logs/*.txt
+workspace/quant_infra/research/kitt_briefs/brief_*.md
+workspace/quant_infra/research/fish_scenarios/scenario_*.md
+workspace/quant_infra/research/environment/latest.md
+workspace/quant_infra/packets/*/latest.json
+workspace/quant_infra/packets/*/*_*.json
+workspace/quant_infra/experiments/atlas/aex-*.json
+workspace/quant_infra/experiments/sigma/svl-*.json
