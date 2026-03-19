@@ -58,6 +58,7 @@ AGENT_SKILL_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "ralph": ("ordercli", "session-logs"),
     "kitt": ("session-logs", "model-usage"),
     "fish": ("session-logs", "model-usage"),
+    "atlas": ("session-logs", "model-usage"),
 }
 
 AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
@@ -206,6 +207,16 @@ AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
         "sessions_history",
     ),
     "fish": (
+        "read",
+        "process",
+        "memory_search",
+        "memory_get",
+        "message",
+        "session_status",
+        "sessions_list",
+        "sessions_history",
+    ),
+    "atlas": (
         "read",
         "process",
         "memory_search",
@@ -586,6 +597,40 @@ CANONICAL_AGENT_ROSTER: dict[str, dict[str, Any]] = {
         "preferred_skill_backends": ["salmon_adapter", "qwen_executor"],
         "preferred_channels": ["fish"],
     },
+    "atlas": {
+        "agent_id": "atlas",
+        "display_name": "Atlas",
+        "role": "experiment design — candidate mutation, hypothesis generation, sweep proposals",
+        "status": "wired",
+        "kind": "specialist",
+        "responsibilities": [
+            "design experiment configurations with testable hypotheses",
+            "suggest parameter mutations for strategy families",
+            "generate new candidate hypotheses from market context and prior results",
+            "propose parameter sweep ranges and granularities",
+            "analyze failure patterns to suggest corrective mutations",
+        ],
+        "avoid": [
+            "strategy validation (Sigma's job)",
+            "trade execution (Executor's job)",
+            "scenario generation (Fish's job)",
+            "code implementation (HAL's job)",
+            "general operator chat (Jarvis's job)",
+            "auto-promotion without operator approval",
+        ],
+        "task_classes": ["quant", "research"],
+        "routing_intent": {
+            "preferred_model": "Qwen3.5-35B",
+            "fallbacks": ["Qwen3.5-9B"],
+            "primary_backend": "atlas_surface",
+        },
+        "allowed_tool_categories": ["coordination", "repo_read", "general"],
+        "denied_tool_categories": ["browser", "engineering", "maintenance", "voice", "creative"],
+        "denied_tool_name_tokens": ["exec", "shell", "bash", "write", "edit", "patch", "clawhub", "weather"],
+        "preferred_skill_task_classes": ["quant", "research"],
+        "preferred_skill_backends": ["atlas_surface", "qwen_executor"],
+        "preferred_channels": ["atlas"],
+    },
 }
 
 
@@ -677,6 +722,7 @@ AGENT_RUNTIME_TYPES: dict[str, str] = {
     "qwen":       "embedded",
     "kitt":       "embedded",
     "fish":       "embedded",
+    "atlas":      "embedded",
 }
 
 

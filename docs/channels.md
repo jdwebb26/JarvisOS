@@ -127,7 +127,7 @@ The live system uses one Discord channel per agent. Each channel has:
 
 The canonical mapping is in `config/agent_channel_map.json`. The gateway bindings are in `~/.openclaw/openclaw.json`.
 
-**Quant lane channels** (sigma, atlas, pulse) have outbound webhooks and gateway allowlist entries, but their inbound binding routes to **jarvis as a temporary fallback** — they do not have dedicated OpenClaw agent definitions. Fish has been promoted to a full agent with its own binding and identity (see agent_roster.md).
+**Quant lane channels** (sigma, pulse) have outbound webhooks and gateway allowlist entries, but their inbound binding routes to **jarvis as a temporary fallback** — they do not have dedicated OpenClaw agent definitions. Fish and Atlas have been promoted to full agents with their own bindings and identities (see agent_roster.md).
 
 See `config/agent_channel_map.json` and `runtime/core/discord_outbox_sender.py` for the live channel→webhook→env var mapping.
 
