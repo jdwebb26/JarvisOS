@@ -190,3 +190,160 @@ def execute_approved_paper_trade(
         quantity=quantity,
         simulated_price=simulated_price,
     )
+
+
+# ---------------------------------------------------------------------------
+# Live trade approval flow
+# ---------------------------------------------------------------------------
+
+
+def request_live_trade_approval(
+    root: Path,
+    strategy_id: str,
+    symbols: list[str],
+    max_position_size: int = 1,
+    max_loss_per_trade: float = 500.0,
+    max_total_drawdown: float = 2000.0,
+    valid_days: int = 7,
+    conditions: str = "Operator must monitor first session. Kill switch accessible.",
+) -> dict:
+    """Request operator approval for live trading a LIVE_QUEUED strategy.
+
+    Creates a live_trade approval object and posts to #review.
+    The strategy must be in LIVE_QUEUED state (promotion already approved).
+
+    Returns dict with:
+        - approval_ref: str
+        - strategy_id: str
+        - discord_event: dict (emit_event result)
+        - error: str or None
+    """
+    result = {"approval_ref": None, "strategy_id": strategy_id, "discord_event": None, "error": None}
+
+    strategy = get_strategy(root, strategy_id)
+    if strategy is None:
+        result["error"] = f"Strategy {strategy_id} not found"
+        return result
+    if strategy.lifecycle_state != "LIVE_QUEUED":
+        result["error"] = f"Strategy {strategy_id} is in {strategy.lifecycle_state}, not LIVE_QUEUED"
+        return result
+
+    now = datetime.now(timezone.utc)
+    actions = ApprovedActions(
+        execution_mode="live",
+        symbols=symbols,
+        max_position_size=max_position_size,
+        max_loss_per_trade=max_loss_per_trade,
+        max_total_drawdown=max_total_drawdown,
+        slippage_tolerance=0.05,
+        valid_from=now.isoformat(),
+        valid_until=(now + timedelta(days=valid_days)).isoformat(),
+        broker_target="live_adapter",
+    )
+
+    approval = create_approval(
+        root=root,
+        strategy_id=strategy_id,
+        approval_type="live_trade",
+        approved_actions=actions,
+        conditions=conditions,
+    )
+    result["approval_ref"] = approval.approval_ref
+
+    detail = (
+        f"LIVE trade {strategy_id} on {', '.join(symbols)}. "
+        f"Max pos {max_position_size}, max loss/trade ${max_loss_per_trade}, "
+        f"max DD ${max_total_drawdown}. Valid {valid_days} days. "
+        f"Conditions: {conditions}"
+    )
+    discord_result = emit_quant_approval_request(
+        strategy_id=strategy_id,
+        approval_type="live_trade",
+        approval_ref=approval.approval_ref,
+        detail=detail,
+        root=root,
+    )
+    result["discord_event"] = discord_result
+
+    return result
+
+
+def approve_live_trade(
+    root: Path,
+    strategy_id: str,
+    approval_ref: Optional[str] = None,
+) -> dict:
+    """Operator approves live trade.
+
+    Validates the approval exists and is a live_trade type.
+    Does NOT transition strategy state — strategy stays LIVE_QUEUED
+    until execute_live_trade() succeeds and transitions to LIVE_ACTIVE.
+
+    Returns dict with:
+        - success: bool
+        - approval_ref: str
+        - strategy_id: str
+        - error: str or None
+    """
+    from workspace.quant.shared.registries.approval_registry import load_all_approvals
+
+    result = {"success": False, "approval_ref": None, "strategy_id": strategy_id, "error": None}
+
+    if approval_ref:
+        approval = get_approval(root, approval_ref)
+    else:
+        approvals = [a for a in load_all_approvals(root)
+                     if a.strategy_id == strategy_id and not a.revoked
+                     and a.approval_type == "live_trade"]
+        approval = approvals[-1] if approvals else None
+
+    if approval is None:
+        result["error"] = f"No live_trade approval found for {strategy_id}"
+        return result
+
+    if approval.approval_type != "live_trade":
+        result["error"] = f"Approval {approval.approval_ref} is {approval.approval_type}, not live_trade"
+        return result
+
+    result["approval_ref"] = approval.approval_ref
+
+    valid, reason = approval.is_valid()
+    if not valid:
+        result["error"] = f"Approval invalid: {reason}"
+        return result
+
+    # Verify strategy is LIVE_QUEUED
+    strategy = get_strategy(root, strategy_id)
+    if strategy is None:
+        result["error"] = f"Strategy {strategy_id} not found"
+        return result
+    if strategy.lifecycle_state != "LIVE_QUEUED":
+        result["error"] = f"Strategy {strategy_id} is {strategy.lifecycle_state}, not LIVE_QUEUED"
+        return result
+
+    result["success"] = True
+    return result
+
+
+def execute_approved_live_trade(
+    root: Path,
+    strategy_id: str,
+    approval_ref: str,
+    symbol: str = "NQ",
+    side: str = "long",
+    quantity: int = 1,
+) -> dict:
+    """Execute a live trade for an approved strategy.
+
+    This calls the Executor lane with full pre-flight checks.
+    Requires a valid live_trade approval (not paper_trade, not promotion).
+    """
+    from workspace.quant.executor.executor_lane import execute_live_trade
+    return execute_live_trade(
+        root=root,
+        strategy_id=strategy_id,
+        approval_ref=approval_ref,
+        symbol=symbol,
+        side=side,
+        quantity=quantity,
+    )

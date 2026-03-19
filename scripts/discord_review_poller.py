@@ -157,6 +157,10 @@ def _handle_quant_approval(
 
     Quant approvals (qpt_xxx) are handled directly via the quant approval
     bridge, not through the Jarvis /operator/approval endpoint.
+
+    Routes based on approval_type:
+      - paper_trade → approve_paper_trade() → PAPER_QUEUED
+      - live_trade  → approve_live_trade() (validates only, no state change)
     """
     try:
         from workspace.quant.shared.registries.approval_registry import get_approval
@@ -164,12 +168,20 @@ def _handle_quant_approval(
         if approval is None:
             return {"ok": False, "error": f"quant approval {approval_ref} not found"}
         if decision == "approved":
-            from workspace.quant.shared.approval_bridge import approve_paper_trade
-            result = approve_paper_trade(ROOT, approval.strategy_id, approval_ref=approval_ref)
-            if result["error"]:
-                return {"ok": False, "error": result["error"]}
-            return {"ok": True, "approval_id": approval_ref, "strategy_id": approval.strategy_id,
-                    "decision": "approved", "strategy_state": result["strategy_state"]}
+            if approval.approval_type == "live_trade":
+                from workspace.quant.shared.approval_bridge import approve_live_trade
+                result = approve_live_trade(ROOT, approval.strategy_id, approval_ref=approval_ref)
+                if result["error"]:
+                    return {"ok": False, "error": result["error"]}
+                return {"ok": True, "approval_id": approval_ref, "strategy_id": approval.strategy_id,
+                        "decision": "approved", "approval_type": "live_trade"}
+            else:
+                from workspace.quant.shared.approval_bridge import approve_paper_trade
+                result = approve_paper_trade(ROOT, approval.strategy_id, approval_ref=approval_ref)
+                if result["error"]:
+                    return {"ok": False, "error": result["error"]}
+                return {"ok": True, "approval_id": approval_ref, "strategy_id": approval.strategy_id,
+                        "decision": "approved", "strategy_state": result["strategy_state"]}
         elif decision == "rejected":
             from workspace.quant.shared.registries.approval_registry import revoke_approval
             revoke_approval(ROOT, approval_ref)

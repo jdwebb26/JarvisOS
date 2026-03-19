@@ -1226,6 +1226,81 @@ def cmd_promotion_decide(args):
         print(f"  ERROR: {result['error']}")
 
 
+def cmd_request_live(args):
+    """Request live trade approval — posts to #review in Discord."""
+    from workspace.quant.shared.approval_bridge import request_live_trade_approval
+    symbols = args.symbols.split(",") if args.symbols else ["NQ"]
+    result = request_live_trade_approval(
+        ROOT, args.strategy_id, symbols=symbols,
+        max_position_size=args.max_pos,
+        max_loss_per_trade=args.max_loss,
+        max_total_drawdown=args.max_dd,
+        valid_days=args.valid_days,
+    )
+    if result["error"]:
+        print(f"ERROR: {result['error']}")
+        return
+    print(f"Live approval requested: {result['approval_ref']}")
+    print(f"Strategy: {result['strategy_id']}")
+    print(f"Posted to #review — operator must approve before execution")
+    if result["discord_event"]:
+        evt = result["discord_event"]
+        ch = evt.get("owner_channel_id", "unknown")
+        print(f"Discord event: {evt.get('event_id', 'N/A')} -> channel {ch}")
+        if evt.get("outbox_entries"):
+            print(f"Outbox entries: {len(evt['outbox_entries'])} (pending delivery)")
+
+
+def cmd_approve_live(args):
+    """Approve live trade for a strategy (validation only, no state change)."""
+    from workspace.quant.shared.approval_bridge import approve_live_trade
+    result = approve_live_trade(ROOT, args.strategy_id, approval_ref=args.approval_ref)
+    if result["error"]:
+        print(f"ERROR: {result['error']}")
+        return
+    print(f"Live approval validated: {result['approval_ref']}")
+    print(f"Strategy {result['strategy_id']} is ready for execute-live")
+
+
+def cmd_execute_live(args):
+    """Execute live trade for an approved strategy."""
+    from workspace.quant.shared.approval_bridge import execute_approved_live_trade
+    from workspace.quant.shared.registries.approval_registry import load_all_approvals
+    from workspace.quant.shared.discord_bridge import emit_quant_event
+    from workspace.quant.shared.schemas.packets import QuantPacket
+
+    approval_ref = args.approval_ref
+    if not approval_ref:
+        approvals = [a for a in load_all_approvals(ROOT)
+                     if a.strategy_id == args.strategy_id and not a.revoked
+                     and a.approval_type == "live_trade"]
+        if not approvals:
+            print(f"ERROR: No live_trade approval found for {args.strategy_id}")
+            print(f"  Run: quant_lanes.py request-live {args.strategy_id}")
+            return
+        approval_ref = approvals[-1].approval_ref
+
+    result = execute_approved_live_trade(
+        ROOT, args.strategy_id, approval_ref,
+        symbol=args.symbol, side=args.side,
+        quantity=args.quantity,
+    )
+
+    if result["success"]:
+        print(f"Live trade executed successfully")
+        print(f"  Fill: {result['fill']['fill_price']} (slippage: {result['fill']['slippage']})")
+        for pkt_dict in result["packets"]:
+            pkt = QuantPacket.from_dict(pkt_dict)
+            emit_quant_event(pkt, root=ROOT)
+    else:
+        print(f"Execution rejected: {result['rejection_reason']}")
+        if result.get("broker_error"):
+            print(f"  Broker: {result['broker_error']}")
+        for pkt_dict in result["packets"]:
+            pkt = QuantPacket.from_dict(pkt_dict)
+            emit_quant_event(pkt, root=ROOT)
+
+
 def cmd_observe(args):
     """Concise operator observability surface. Phone-readable truth."""
     from workspace.quant.shared.governor import load_governor_state
@@ -1475,6 +1550,26 @@ def main():
                        help="Decision: approved, rejected, or rerun_paper")
     p_pd.add_argument("reason", nargs="?", default="", help="Optional reason")
 
+    # Live trade commands
+    p_rl = sub.add_parser("request-live", help="Request live trade approval")
+    p_rl.add_argument("strategy_id")
+    p_rl.add_argument("--symbols", default="NQ", help="Comma-separated symbols")
+    p_rl.add_argument("--max-pos", type=int, default=1)
+    p_rl.add_argument("--max-loss", type=float, default=500.0)
+    p_rl.add_argument("--max-dd", type=float, default=2000.0)
+    p_rl.add_argument("--valid-days", type=int, default=7)
+
+    p_al = sub.add_parser("approve-live", help="Approve live trade")
+    p_al.add_argument("strategy_id")
+    p_al.add_argument("--approval-ref", default=None)
+
+    p_el = sub.add_parser("execute-live", help="Execute live trade")
+    p_el.add_argument("strategy_id")
+    p_el.add_argument("--approval-ref", default=None)
+    p_el.add_argument("--symbol", default="NQ")
+    p_el.add_argument("--side", default="long")
+    p_el.add_argument("--quantity", type=int, default=1)
+
     # Bootstrap commands
     sub.add_parser("bootstrap-hermes", help="Cold-start Hermes from watchlist")
     sub.add_parser("bootstrap-fish", help="Cold-start Fish from seed config")
@@ -1523,6 +1618,9 @@ def main():
         "proof-promote": cmd_proof_promote,
         "proof-reconcile": cmd_proof_reconcile,
         "promotion-decide": cmd_promotion_decide,
+        "request-live": cmd_request_live,
+        "approve-live": cmd_approve_live,
+        "execute-live": cmd_execute_live,
     }
     commands[args.command](args)
 
