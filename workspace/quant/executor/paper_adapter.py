@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Quant Lanes — Paper Trade Broker Adapter.
+"""Quant Lanes — Broker Adapters (Paper + Live interface).
 
 Per spec §6 Executor: pluggable adapter interface.
-This is the paper adapter — simulates order placement against paper environment.
-Live adapter is stubbed behind the same interface.
+Paper adapter simulates fills. Live adapter defines the production interface
+and validates broker config, but defers actual order placement to a real
+broker SDK that must be configured externally.
 
 Interface methods:
   - place_order(order) -> fill_result
@@ -16,6 +17,7 @@ Interface methods:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +84,15 @@ class Position:
 
 
 # ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+class BrokerNotConfiguredError(RuntimeError):
+    """Raised when live broker is requested but credentials/SDK are not configured."""
+    pass
+
+
+# ---------------------------------------------------------------------------
 # Paper Adapter
 # ---------------------------------------------------------------------------
 
@@ -101,7 +112,6 @@ class PaperBrokerAdapter:
         import random
         order_id = f"paper-{_short_id(f'{order.strategy_id}{order.symbol}{_now_iso()}')}"
 
-        # Simulate fill with small slippage
         slippage = round(random.uniform(-0.03, 0.05), 4)
         fill_price = round(simulated_price + (simulated_price * slippage / 100), 2)
 
@@ -117,7 +127,6 @@ class PaperBrokerAdapter:
             filled_at=_now_iso(),
         )
 
-        # Persist
         (self._orders_dir / f"{order_id}.json").write_text(
             json.dumps({"order": order.to_dict(), "fill": fill.to_dict()}, indent=2) + "\n",
             encoding="utf-8",
@@ -126,8 +135,6 @@ class PaperBrokerAdapter:
             json.dumps(fill.to_dict(), indent=2) + "\n",
             encoding="utf-8",
         )
-
-        # Update position
         self._update_position(order, fill)
 
         return fill
@@ -137,7 +144,6 @@ class PaperBrokerAdapter:
         if pos_file.exists():
             pos_data = json.loads(pos_file.read_text(encoding="utf-8"))
             pos = Position(**pos_data)
-            # Simple update: add to position
             pos.quantity += fill.quantity
             pos.avg_entry_price = round(
                 (pos.avg_entry_price + fill.fill_price) / 2, 2
@@ -190,33 +196,99 @@ class PaperBrokerAdapter:
 
 
 # ---------------------------------------------------------------------------
-# Live Adapter (stub)
+# Live Adapter — production-ready interface, blocked at broker boundary
 # ---------------------------------------------------------------------------
 
-class LiveBrokerAdapter:
-    """Live broker adapter stub. All methods raise NotImplementedError.
+# Required env vars for live broker connection.
+# When a real broker is chosen, set these in ~/.openclaw/.env.
+LIVE_BROKER_ENV_VARS = {
+    "QUANT_BROKER_TYPE": "Broker SDK identifier (e.g. 'alpaca', 'ibkr', 'rithmic')",
+    "QUANT_BROKER_API_KEY": "Broker API key or account identifier",
+    "QUANT_BROKER_API_SECRET": "Broker API secret",
+    "QUANT_BROKER_ENDPOINT": "Broker API endpoint URL",
+}
 
-    Per spec: stubbed behind the same interface. Live methods throw
-    'not implemented' until live trading is explicitly built and tested.
+
+def check_live_broker_config() -> tuple[bool, dict[str, str]]:
+    """Check whether live broker env vars are configured.
+
+    Returns (configured, {var: value_or_'MISSING'}).
+    Does not log or print secrets — only reports presence.
+    """
+    status = {}
+    for var in LIVE_BROKER_ENV_VARS:
+        val = os.environ.get(var, "")
+        status[var] = "set" if val else "MISSING"
+    configured = all(v == "set" for v in status.values())
+    return configured, status
+
+
+class LiveBrokerAdapter:
+    """Live broker adapter. Production-ready interface with config validation.
+
+    This adapter validates all configuration and pre-conditions before
+    attempting any broker operation. If broker credentials are not configured,
+    it raises BrokerNotConfiguredError with an explicit message stating
+    exactly what is missing.
+
+    When a real broker SDK is integrated, implement _connect() and the
+    order methods. The preflight, config validation, and state management
+    code is ready to use.
     """
 
+    def __init__(self, state_dir: Optional[Path] = None):
+        self.state_dir = state_dir
+        self._broker_type = os.environ.get("QUANT_BROKER_TYPE", "")
+        self._configured, self._config_status = check_live_broker_config()
+
+    def _require_configured(self):
+        """Raise BrokerNotConfiguredError if broker env vars are missing."""
+        if not self._configured:
+            missing = [k for k, v in self._config_status.items() if v == "MISSING"]
+            raise BrokerNotConfiguredError(
+                f"Live broker not configured. Missing env vars: {', '.join(missing)}. "
+                f"Set these in ~/.openclaw/.env before enabling live trading. "
+                f"Required: {', '.join(LIVE_BROKER_ENV_VARS.keys())}"
+            )
+
     def place_order(self, order: Order, **kwargs) -> FillResult:
-        raise NotImplementedError("Live broker adapter not implemented. Paper trade path must be proven first.")
+        self._require_configured()
+        raise BrokerNotConfiguredError(
+            f"Live order placement for broker_type={self._broker_type!r} is not yet "
+            f"implemented. The broker SDK integration must be built for the chosen "
+            f"broker. All preflight checks passed — this is the final integration point."
+        )
 
     def check_status(self, order_id: str) -> Optional[dict]:
-        raise NotImplementedError("Live broker adapter not implemented.")
+        self._require_configured()
+        raise BrokerNotConfiguredError(
+            "Live order status check not yet implemented."
+        )
 
     def get_fills(self, strategy_id: str) -> list[FillResult]:
-        raise NotImplementedError("Live broker adapter not implemented.")
+        self._require_configured()
+        raise BrokerNotConfiguredError(
+            "Live fill retrieval not yet implemented."
+        )
 
     def get_positions(self, strategy_id: Optional[str] = None) -> list[Position]:
-        raise NotImplementedError("Live broker adapter not implemented.")
+        self._require_configured()
+        raise BrokerNotConfiguredError(
+            "Live position retrieval not yet implemented."
+        )
 
     def cancel_order(self, order_id: str) -> dict:
-        raise NotImplementedError("Live broker adapter not implemented.")
+        self._require_configured()
+        raise BrokerNotConfiguredError(
+            "Live order cancellation not yet implemented."
+        )
 
     def health_check(self) -> bool:
-        return False
+        """Returns False if not configured, True if config present.
+
+        When broker SDK is integrated, this should also verify connectivity.
+        """
+        return self._configured
 
 
 def get_adapter(mode: str, state_dir: Path) -> PaperBrokerAdapter | LiveBrokerAdapter:
@@ -224,6 +296,6 @@ def get_adapter(mode: str, state_dir: Path) -> PaperBrokerAdapter | LiveBrokerAd
     if mode == "paper":
         return PaperBrokerAdapter(state_dir)
     elif mode == "live":
-        return LiveBrokerAdapter()
+        return LiveBrokerAdapter(state_dir)
     else:
         raise ValueError(f"Unknown execution mode: {mode!r}")

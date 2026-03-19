@@ -33,7 +33,9 @@ from workspace.quant.shared.registries.approval_registry import (
 from workspace.quant.shared.registries.strategy_registry import (
     get_strategy, transition_strategy,
 )
-from workspace.quant.executor.paper_adapter import get_adapter, Order
+from workspace.quant.executor.paper_adapter import (
+    get_adapter, Order, BrokerNotConfiguredError, check_live_broker_config,
+)
 
 
 def _load_json(path: Path) -> dict:
@@ -211,6 +213,196 @@ def execute_paper_trade(
 
     # Emit Discord events for execution packets
     _emit_pkt(intent)
+    _emit_pkt(status_pkt)
+
+    return result
+
+
+def execute_live_trade(
+    root: Path,
+    strategy_id: str,
+    approval_ref: str,
+    symbol: str,
+    side: str,
+    order_type: str = "market",
+    quantity: int = 1,
+) -> dict:
+    """Execute a live trade with full pre-flight checks.
+
+    Identical preflight to paper path, but uses live adapter and
+    execution_mode="live". Raises BrokerNotConfiguredError at the broker
+    boundary if credentials are not set.
+
+    Returns dict with:
+      - success: bool
+      - packets: list of emitted packet dicts
+      - fill: fill result dict (if successful)
+      - rejection_reason: str (if failed)
+      - broker_error: str (if broker not configured)
+    """
+    result = {"success": False, "packets": [], "fill": None,
+              "rejection_reason": None, "broker_error": None}
+
+    def _emit_pkt(pkt):
+        try:
+            from workspace.quant.shared.discord_bridge import emit_quant_event
+            emit_quant_event(pkt, root=root)
+        except Exception:
+            pass
+
+    def _reject(pkt, reason):
+        store_packet(root, pkt)
+        result["packets"].append(pkt.to_dict())
+        result["rejection_reason"] = reason
+        _emit_pkt(pkt)
+        return result
+
+    # Pre-flight 1: Kill switch
+    if _kill_switch_engaged(root):
+        return _reject(make_packet(
+            "execution_rejection_packet", "executor",
+            f"Live execution refused for {strategy_id}: kill switch engaged",
+            priority="critical", strategy_id=strategy_id,
+            execution_rejection_reason="kill_switch_engaged",
+            execution_rejection_detail="Kill switch is currently engaged. All execution halted.",
+            order_details={"symbol": symbol, "side": side, "quantity": quantity},
+        ), "kill_switch_engaged")
+
+    # Pre-flight 2-4: Approval validation (must be live_trade approval)
+    valid, reason = validate_approval_for_execution(
+        root, approval_ref, strategy_id, "live", symbol,
+    )
+    if not valid:
+        rej_reason = "invalid_approval"
+        if "expired" in reason:
+            rej_reason = "expired_approval"
+        elif "revoked" in reason:
+            rej_reason = "revoked_approval"
+        elif "mode_mismatch" in reason:
+            rej_reason = "mode_mismatch"
+        elif "symbol_not_approved" in reason:
+            rej_reason = "symbol_not_approved"
+
+        return _reject(make_packet(
+            "execution_rejection_packet", "executor",
+            f"Live execution refused for {strategy_id}: {reason}",
+            priority="high", strategy_id=strategy_id,
+            execution_rejection_reason=rej_reason, execution_rejection_detail=reason,
+            order_details={"symbol": symbol, "side": side, "quantity": quantity,
+                           "approval_ref": approval_ref},
+        ), rej_reason)
+
+    # Pre-flight 5: Risk limits
+    risk_ok, risk_reason = _check_risk_limits(root, strategy_id, symbol, quantity)
+    if not risk_ok:
+        return _reject(make_packet(
+            "execution_rejection_packet", "executor",
+            f"Live execution refused for {strategy_id}: {risk_reason}",
+            priority="high", strategy_id=strategy_id,
+            execution_rejection_reason="strategy_limit_breach",
+            execution_rejection_detail=risk_reason,
+            order_details={"symbol": symbol, "side": side, "quantity": quantity},
+        ), "strategy_limit_breach")
+
+    # Pre-flight 6: Broker health
+    state_dir = root / "state" / "quant" / "executor"
+    adapter = get_adapter("live", state_dir)
+    if not adapter.health_check():
+        # Distinguish between "not configured" and "configured but unhealthy"
+        configured, config_status = check_live_broker_config()
+        if not configured:
+            missing = [k for k, v in config_status.items() if v == "MISSING"]
+            detail = (
+                f"Live broker not configured. Missing env vars: {', '.join(missing)}. "
+                f"All preflight checks passed — broker config is the final blocker."
+            )
+            result["broker_error"] = detail
+            return _reject(make_packet(
+                "execution_rejection_packet", "executor",
+                f"Live execution refused for {strategy_id}: broker not configured",
+                priority="critical", strategy_id=strategy_id,
+                execution_rejection_reason="broker_unhealthy",
+                execution_rejection_detail=detail,
+                order_details={"symbol": symbol, "side": side, "quantity": quantity},
+            ), "broker_unhealthy")
+        else:
+            return _reject(make_packet(
+                "execution_rejection_packet", "executor",
+                f"Live execution refused for {strategy_id}: broker unhealthy",
+                priority="critical", strategy_id=strategy_id,
+                execution_rejection_reason="broker_unhealthy",
+                execution_rejection_detail="Live broker health check failed",
+                order_details={"symbol": symbol, "side": side, "quantity": quantity},
+            ), "broker_unhealthy")
+
+    # Emit execution intent
+    intent = make_packet(
+        "execution_intent_packet", "executor",
+        f"Live trade intent: {side} {quantity} {symbol} for {strategy_id}",
+        priority="critical",
+        strategy_id=strategy_id,
+        execution_mode="live",
+        symbol=symbol,
+        side=side,
+        order_type=order_type,
+        approval_ref=approval_ref,
+        sizing={"method": "fixed", "contracts": quantity},
+    )
+    store_packet(root, intent)
+    result["packets"].append(intent.to_dict())
+    _emit_pkt(intent)
+
+    # Execute via live adapter
+    order = Order(
+        strategy_id=strategy_id,
+        symbol=symbol,
+        side=side,
+        order_type=order_type,
+        quantity=quantity,
+        approval_ref=approval_ref,
+    )
+    try:
+        fill = adapter.place_order(order)
+    except BrokerNotConfiguredError as e:
+        result["broker_error"] = str(e)
+        return _reject(make_packet(
+            "execution_rejection_packet", "executor",
+            f"Live execution failed for {strategy_id}: {e}",
+            priority="critical", strategy_id=strategy_id,
+            execution_rejection_reason="broker_unhealthy",
+            execution_rejection_detail=str(e),
+            order_details={"symbol": symbol, "side": side, "quantity": quantity},
+        ), "broker_unhealthy")
+
+    # Emit execution status
+    status_pkt = make_packet(
+        "execution_status_packet", "executor",
+        f"Live trade filled: {side} {quantity} {symbol} at {fill.fill_price}",
+        priority="high",
+        strategy_id=strategy_id,
+        execution_mode="live",
+        symbol=symbol,
+        approval_ref=approval_ref,
+        execution_status=fill.status,
+        fill_price=fill.fill_price,
+        slippage=fill.slippage,
+    )
+    store_packet(root, status_pkt)
+    result["packets"].append(status_pkt.to_dict())
+
+    # Transition strategy
+    try:
+        strategy = get_strategy(root, strategy_id)
+        if strategy and strategy.lifecycle_state == "LIVE_QUEUED":
+            transition_strategy(
+                root, strategy_id, "LIVE_ACTIVE", actor="executor",
+                note=f"Live orders placed: {fill.order_id}",
+            )
+    except (ValueError, TimeoutError):
+        pass
+
+    result["success"] = True
+    result["fill"] = fill.to_dict()
     _emit_pkt(status_pkt)
 
     return result

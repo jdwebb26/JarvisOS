@@ -76,8 +76,9 @@ def test_paper_adapter_positions(tmp_path):
 
 
 def test_live_adapter_raises(tmp_path):
+    from workspace.quant.executor.paper_adapter import BrokerNotConfiguredError
     adapter = LiveBrokerAdapter()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(BrokerNotConfiguredError):
         adapter.place_order(Order("test", "NQ", "long", "market"))
     assert adapter.health_check() is False
 
