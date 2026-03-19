@@ -21,47 +21,11 @@ from workspace.quant.shared.schemas.packets import make_packet, QuantPacket
 from workspace.quant.shared.packet_store import store_packet, get_latest, get_all_latest
 from workspace.quant.shared.registries.strategy_registry import load_all_strategies
 from workspace.quant.shared.registries.approval_registry import load_all_approvals
+from workspace.quant.shared.live_approval_state import (
+    resolve_live_approval_state as _live_approval_state,
+)
 
 _PROOF_MARKERS = ("proof", "smoke", "phase0", "test-", "la-001", "bad-001")
-
-
-def _live_approval_state(strategy_id: str, approvals) -> dict:
-    """Resolve live-approval state for a LIVE_QUEUED strategy.
-
-    Returns {state, approval_ref, action, label}.
-    """
-    live_approvals = [a for a in approvals
-                      if a.strategy_id == strategy_id
-                      and a.approval_type == "live_trade"]
-    if not live_approvals:
-        return {
-            "state": "no_request",
-            "approval_ref": None,
-            "action": f"request-live {strategy_id}",
-            "label": "needs live_trade approval request",
-        }
-    latest = live_approvals[-1]
-    if latest.revoked:
-        return {
-            "state": "revoked",
-            "approval_ref": latest.approval_ref,
-            "action": f"request-live {strategy_id}",
-            "label": f"live approval revoked ({latest.approval_ref})",
-        }
-    valid, reason = latest.is_valid()
-    if not valid:
-        return {
-            "state": "expired",
-            "approval_ref": latest.approval_ref,
-            "action": f"request-live {strategy_id}",
-            "label": f"live approval expired ({latest.approval_ref})",
-        }
-    return {
-        "state": "approved",
-        "approval_ref": latest.approval_ref,
-        "action": f"execute-live {strategy_id}",
-        "label": f"live-approved, ready for execute-live ({latest.approval_ref})",
-    }
 
 
 def _is_proof_artifact(strategy_id: str) -> bool:

@@ -172,58 +172,22 @@ def _quant_live_queued() -> list[dict[str, Any]]:
         from workspace.quant.shared.registries.approval_registry import (
             load_all_approvals,
         )
+        from workspace.quant.shared.live_approval_state import (
+            resolve_live_approval_state,
+        )
         strategies = load_all_strategies(ROOT)
         approvals = load_all_approvals(ROOT)
         for sid, s in strategies.items():
             if s.lifecycle_state != "LIVE_QUEUED":
                 continue
-            live_apprs = [a for a in approvals
-                          if a.strategy_id == sid
-                          and a.approval_type == "live_trade"]
-            if not live_apprs:
-                results.append({
-                    "strategy_id": sid,
-                    "approval_state": "no_request",
-                    "approval_ref": None,
-                    "action": f"request-live {sid}",
-                    "label": "needs live_trade approval request",
-                })
-                continue
-            latest = live_apprs[-1]
-            if latest.revoked:
-                results.append({
-                    "strategy_id": sid,
-                    "approval_state": "revoked",
-                    "approval_ref": latest.approval_ref,
-                    "action": f"request-live {sid}",
-                    "label": f"live approval revoked ({latest.approval_ref})",
-                })
-            elif getattr(latest, "decision_status", None) == "pending":
-                results.append({
-                    "strategy_id": sid,
-                    "approval_state": "pending",
-                    "approval_ref": latest.approval_ref,
-                    "action": f"approve {latest.approval_ref}",
-                    "label": f"live approval pending review ({latest.approval_ref})",
-                })
-            else:
-                valid, reason = latest.is_valid()
-                if not valid:
-                    results.append({
-                        "strategy_id": sid,
-                        "approval_state": "expired",
-                        "approval_ref": latest.approval_ref,
-                        "action": f"request-live {sid}",
-                        "label": f"live approval expired ({latest.approval_ref})",
-                    })
-                else:
-                    results.append({
-                        "strategy_id": sid,
-                        "approval_state": "approved",
-                        "approval_ref": latest.approval_ref,
-                        "action": f"execute-live {sid} --approval-ref {latest.approval_ref}",
-                        "label": f"live-approved, ready for execute-live ({latest.approval_ref})",
-                    })
+            la = resolve_live_approval_state(sid, approvals)
+            results.append({
+                "strategy_id": sid,
+                "approval_state": la["state"],
+                "approval_ref": la["approval_ref"],
+                "action": la["action"],
+                "label": la["label"],
+            })
     except Exception:
         pass  # Quant lanes may not be initialized
     return results

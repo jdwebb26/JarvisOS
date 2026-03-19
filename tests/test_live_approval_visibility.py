@@ -111,7 +111,74 @@ def _setup_live_queued(root, sid):
 
 
 # ---------------------------------------------------------------------------
-# 1. _live_approval_state in quant_lanes.py
+# 0. Shared helper: resolve_live_approval_state
+# ---------------------------------------------------------------------------
+
+class TestSharedHelper:
+    """Verify the single source of truth directly."""
+
+    def test_returns_no_request(self, clean_root):
+        _setup_live_queued(clean_root, "sh-001")
+        approvals = load_all_approvals(clean_root)
+        from workspace.quant.shared.live_approval_state import resolve_live_approval_state
+        la = resolve_live_approval_state("sh-001", approvals)
+        assert la["state"] == "no_request"
+        assert la["approval_ref"] is None
+        assert "request-live" in la["action"]
+
+    def test_returns_approved(self, clean_root):
+        _setup_live_queued(clean_root, "sh-002")
+        from workspace.quant.shared.approval_bridge import request_live_trade_approval
+        request_live_trade_approval(clean_root, "sh-002", symbols=["NQ"])
+        approvals = load_all_approvals(clean_root)
+        from workspace.quant.shared.live_approval_state import resolve_live_approval_state
+        la = resolve_live_approval_state("sh-002", approvals)
+        assert la["state"] == "approved"
+        assert la["approval_ref"] is not None
+        assert "execute-live" in la["action"]
+
+    def test_returns_revoked(self, clean_root):
+        _setup_live_queued(clean_root, "sh-003")
+        from workspace.quant.shared.approval_bridge import request_live_trade_approval
+        result = request_live_trade_approval(clean_root, "sh-003", symbols=["NQ"])
+        revoke_approval(clean_root, result["approval_ref"])
+        approvals = load_all_approvals(clean_root)
+        from workspace.quant.shared.live_approval_state import resolve_live_approval_state
+        la = resolve_live_approval_state("sh-003", approvals)
+        assert la["state"] == "revoked"
+        assert "request-live" in la["action"]
+
+    def test_returns_expired(self, clean_root):
+        _setup_live_queued(clean_root, "sh-004")
+        now = datetime.now(timezone.utc)
+        actions = ApprovedActions(
+            execution_mode="live", symbols=["NQ"],
+            valid_from=(now - timedelta(days=10)).isoformat(),
+            valid_until=(now - timedelta(days=1)).isoformat(),
+            broker_target="live_adapter",
+        )
+        create_approval(clean_root, "sh-004", "live_trade", approved_actions=actions)
+        approvals = load_all_approvals(clean_root)
+        from workspace.quant.shared.live_approval_state import resolve_live_approval_state
+        la = resolve_live_approval_state("sh-004", approvals)
+        assert la["state"] == "expired"
+        assert "request-live" in la["action"]
+
+    def test_quant_lanes_delegates(self, clean_root):
+        """quant_lanes._live_approval_state is the shared helper."""
+        import scripts.quant_lanes as ql
+        from workspace.quant.shared.live_approval_state import resolve_live_approval_state
+        assert ql._live_approval_state is resolve_live_approval_state
+
+    def test_brief_producer_delegates(self, clean_root):
+        """brief_producer._live_approval_state is the shared helper."""
+        from workspace.quant.kitt.brief_producer import _live_approval_state
+        from workspace.quant.shared.live_approval_state import resolve_live_approval_state
+        assert _live_approval_state is resolve_live_approval_state
+
+
+# ---------------------------------------------------------------------------
+# 1. _live_approval_state in quant_lanes.py (now delegating to shared helper)
 # ---------------------------------------------------------------------------
 
 class TestLiveApprovalStateHelper:

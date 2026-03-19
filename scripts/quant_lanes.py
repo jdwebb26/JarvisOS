@@ -85,56 +85,12 @@ def _get_proof_summary(root: Path, strategy_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Live approval state resolution — single source of truth for all surfaces
+# Live approval state resolution — delegates to shared helper
 # ---------------------------------------------------------------------------
 
-def _live_approval_state(strategy_id: str, approvals) -> dict:
-    """Resolve the live-approval state for a LIVE_QUEUED strategy.
-
-    Returns {
-        state: "no_request" | "pending" | "approved" | "revoked" | "expired",
-        approval_ref: str | None,
-        action: str,          # phone-readable next action
-        label: str,           # phone-readable one-liner
-    }
-    """
-    live_approvals = [a for a in approvals
-                      if a.strategy_id == strategy_id
-                      and a.approval_type == "live_trade"]
-    if not live_approvals:
-        return {
-            "state": "no_request",
-            "approval_ref": None,
-            "action": f"request-live {strategy_id}",
-            "label": "needs live_trade approval request",
-        }
-
-    latest = live_approvals[-1]
-    if latest.revoked:
-        return {
-            "state": "revoked",
-            "approval_ref": latest.approval_ref,
-            "action": f"request-live {strategy_id}  (previous revoked)",
-            "label": f"live approval revoked ({latest.approval_ref})",
-        }
-
-    valid, reason = latest.is_valid()
-    if not valid:
-        return {
-            "state": "expired",
-            "approval_ref": latest.approval_ref,
-            "action": f"request-live {strategy_id}  (previous expired)",
-            "label": f"live approval expired ({latest.approval_ref})",
-        }
-
-    # Valid and not revoked — check if operator has confirmed it
-    # (approval exists and is valid = approved, ready for execution)
-    return {
-        "state": "approved",
-        "approval_ref": latest.approval_ref,
-        "action": f"execute-live {strategy_id}  --approval-ref {latest.approval_ref}",
-        "label": f"live-approved, ready for execute-live ({latest.approval_ref})",
-    }
+from workspace.quant.shared.live_approval_state import (
+    resolve_live_approval_state as _live_approval_state,
+)
 
 
 # Human-readable stage descriptions for operator surfaces
