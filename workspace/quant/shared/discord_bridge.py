@@ -142,6 +142,14 @@ def emit_quant_approval_request(
     """
     resolved_root = Path(root or ROOT).resolve()
 
+    # Live_trade approvals start as pending review; paper_trade are immediate
+    if approval_type == "live_trade":
+        title = f"Live Trade Approval (pending): {strategy_id}"
+        risk = "critical"
+    else:
+        title = f"{approval_type.replace('_', ' ').title()}: {strategy_id}"
+        risk = "high"
+
     return emit_event(
         kind="approval_requested",
         agent_id="kitt",
@@ -151,9 +159,9 @@ def emit_quant_approval_request(
             "approval_type": approval_type,
             "strategy_id": strategy_id,
             "source_lane": "quant",
-            "title": f"{approval_type.replace('_', ' ').title()}: {strategy_id}",
+            "title": title,
             "task_type": "quant",
-            "risk_level": "high",
+            "risk_level": risk,
         },
         root=resolved_root,
     )

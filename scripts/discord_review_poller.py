@@ -186,7 +186,7 @@ def _handle_quant_approval(
             from workspace.quant.shared.registries.approval_registry import revoke_approval
             revoke_approval(ROOT, approval_ref)
             return {"ok": True, "approval_id": approval_ref, "strategy_id": approval.strategy_id,
-                    "decision": "rejected"}
+                    "decision": "rejected", "approval_type": approval.approval_type}
         else:
             return {"ok": False, "error": f"unsupported decision: {decision}"}
     except Exception as exc:
@@ -290,6 +290,47 @@ def _post_review_confirmation(text: str) -> None:
         print(f"[discord_review_poller] confirmation send failed: {exc}", flush=True)
 
 
+def _format_approve_confirm(approval_id: str, result: dict, author: str) -> str:
+    """Format approval confirmation with type-aware context."""
+    atype = result.get("approval_type", "")
+    sid = result.get("strategy_id", "")
+    if atype == "live_trade":
+        return (f"\u2705 **Live trade approved** `{approval_id}` (by {author})\n"
+                f"Strategy `{sid}` ready for `execute-live {sid}`")
+    if approval_id.startswith("promo_"):
+        ns = result.get("new_state", "?")
+        return (f"\u2705 **Promotion approved** `{approval_id}` (by {author})\n"
+                f"Strategy `{sid}` \u2192 {ns}")
+    ss = result.get("strategy_state", "")
+    if ss:
+        return f"\u2705 Approved `{approval_id}` (by {author}) \u2192 {ss}"
+    return f"\u2705 Approved `{approval_id}` (by {author})"
+
+
+def _format_reject_confirm(approval_id: str, result: dict, author: str, reason: str) -> str:
+    """Format rejection confirmation with type-aware context."""
+    atype = result.get("approval_type", "")
+    sid = result.get("strategy_id", "")
+    if atype == "live_trade":
+        base = f"\u274c **Live trade rejected** `{approval_id}` (by {author})"
+        if sid:
+            base += f" | strategy `{sid}`"
+        if reason:
+            base += f"\n> {reason}"
+        return base
+    if approval_id.startswith("promo_"):
+        ns = result.get("new_state", "?")
+        base = f"\u274c **Promotion rejected** `{approval_id}` (by {author})"
+        if sid:
+            base += f" | `{sid}` \u2192 {ns}"
+        if reason:
+            base += f"\n> {reason}"
+        return base
+    if reason:
+        return f"\u274c Rejected `{approval_id}` (by {author}): {reason}"
+    return f"\u274c Rejected `{approval_id}` (by {author})"
+
+
 # ---------------------------------------------------------------------------
 # Process messages
 # ---------------------------------------------------------------------------
@@ -314,7 +355,7 @@ def _process_text_command(msg: dict, state: dict) -> bool:
         result = call_approval_endpoint(approval_id, "approved", actor=f"operator:{author}", reason=reason)
         state.setdefault("processed_message_ids", []).append(msg_id)
         if result.get("ok"):
-            _post_review_confirmation(f"\u2705 Approved `{approval_id}` (by {author})")
+            _post_review_confirmation(_format_approve_confirm(approval_id, result, author))
         else:
             _post_review_confirmation(f"\u26a0\ufe0f Approval failed for `{approval_id}`: {result.get('error', 'unknown')}")
         return True
@@ -329,7 +370,7 @@ def _process_text_command(msg: dict, state: dict) -> bool:
         result = call_approval_endpoint(approval_id, "rejected", actor=f"operator:{author}", reason=reason)
         state.setdefault("processed_message_ids", []).append(msg_id)
         if result.get("ok"):
-            _post_review_confirmation(f"\u274c Rejected `{approval_id}` (by {author}): {reason}" if reason else f"\u274c Rejected `{approval_id}` (by {author})")
+            _post_review_confirmation(_format_reject_confirm(approval_id, result, author, reason))
         else:
             _post_review_confirmation(f"\u26a0\ufe0f Rejection failed for `{approval_id}`: {result.get('error', 'unknown')}")
         return True
