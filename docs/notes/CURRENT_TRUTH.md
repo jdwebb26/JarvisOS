@@ -34,8 +34,15 @@ Updated by proven facts only. Supersedes narrative in older trackers.
 
 ## 2. Discord Delivery
 
-All 12 webhooks verified HTTP 200 on 2026-03-18:
+12 original webhooks verified HTTP 200 on 2026-03-18:
 JARVIS, REVIEW, COUNCIL, BOWSER, HAL, KITT, WORKLOG, SCOUT, CADENCE, HERMES, MUSE, QWEN.
+
+Quant lane Discord delivery verified 2026-03-18:
+- **Kitt (#kitt)**: delivered — briefs, execution results
+- **#review**: delivered — approval requests with `approve qpt_xxx` / `reject qpt_xxx` instructions
+- **Worklog**: delivered — mirrors for promotions, execution, approvals
+- **Jarvis forward**: delivered — approval requests forwarded
+- **Sigma (#sigma)**: **BLOCKED** — `JARVIS_DISCORD_WEBHOOK_SIGMA` not configured. Events create outbox entries but sender skips with `skipped_no_webhook`. Worklog mirror delivers the same content.
 
 Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner channel + worklog mirror + Jarvis forward as configured in `config/agent_channel_map.json`.
 
@@ -121,10 +128,15 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Review poller integration**: `qpt_` approval IDs matched by review poller, routed to quant approval bridge. Operator types `approve qpt_xxx` in #review
 - **Operator CLI**: `scripts/quant_lanes.py` — status, brief, request-paper, approve-paper, execute, strategies, approvals
 
+### Live Discord delivery (verified 2026-03-18)
+- Kitt briefs → #kitt: **delivered**
+- Approval requests → #review: **delivered** (with approve/reject commands)
+- Worklog mirrors: **delivered**
+- Sigma → #sigma: **skipped** (webhook not configured — content still reaches worklog)
+
 ### Operator actions required
-1. Add `JARVIS_DISCORD_WEBHOOK_SIGMA` to `~/.openclaw/secrets.env`
-2. Restart outbox sender after adding webhook
-3. Test real approval flow in #review
+1. Add `JARVIS_DISCORD_WEBHOOK_SIGMA` to `~/.openclaw/secrets.env` (optional — worklog mirror covers the same content)
+2. Restart outbox sender after adding: `systemctl --user restart openclaw-discord-outbox`
 
 ### Proven live (64 tests + 26-check live proof)
 - Candidate → Sigma validation → promotion (Discord event to #sigma + worklog + jarvis)
