@@ -22,6 +22,13 @@ from workspace.quant.shared.packet_store import store_packet, get_latest, get_al
 from workspace.quant.shared.registries.strategy_registry import load_all_strategies
 from workspace.quant.shared.registries.approval_registry import load_all_approvals
 
+_PROOF_MARKERS = ("proof", "smoke", "phase0", "test-", "la-001", "bad-001")
+
+
+def _is_proof_artifact(strategy_id: str) -> bool:
+    sid = strategy_id.lower()
+    return any(m in sid for m in _PROOF_MARKERS)
+
 
 def _now_ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -31,6 +38,8 @@ def _strategies_by_state(root: Path) -> dict[str, list[str]]:
     strategies = load_all_strategies(root)
     by_state: dict[str, list[str]] = {}
     for sid, s in strategies.items():
+        if _is_proof_artifact(sid):
+            continue
         by_state.setdefault(s.lifecycle_state, []).append(sid)
     return by_state
 
@@ -74,7 +83,8 @@ def _exec_section(latest: dict[str, QuantPacket]) -> Optional[str]:
     pkt = None
     for key, p in latest.items():
         if p.packet_type == "execution_status_packet":
-            pkt = p
+            if not (p.strategy_id and _is_proof_artifact(p.strategy_id)):
+                pkt = p
     if pkt is None:
         return None
     sid = pkt.strategy_id or "?"
@@ -91,8 +101,12 @@ def _top_signal(latest: dict[str, QuantPacket]) -> str:
                    "paper_review_packet", "papertrade_candidate_packet"]:
         for key, pkt in latest.items():
             if pkt.packet_type == ptype:
+                if pkt.strategy_id and _is_proof_artifact(pkt.strategy_id):
+                    continue
                 return f"[{pkt.lane}] {pkt.thesis[:140]}"
-    high = [p for p in latest.values() if p.priority in {"high", "critical"}]
+    high = [p for p in latest.values()
+            if p.priority in {"high", "critical"}
+            and not (p.strategy_id and _is_proof_artifact(p.strategy_id))]
     if high:
         top = max(high, key=lambda p: (p.priority == "critical", p.created_at))
         return f"[{top.lane}] {top.thesis[:140]}"
@@ -102,7 +116,9 @@ def _top_signal(latest: dict[str, QuantPacket]) -> str:
 def _lane_activity(latest: dict[str, QuantPacket]) -> str:
     lines = []
     for lane in ["sigma", "atlas", "hermes", "fish"]:
-        pkts = [(k, p) for k, p in latest.items() if p.lane == lane]
+        pkts = [(k, p) for k, p in latest.items()
+                if p.lane == lane
+                and not (p.strategy_id and _is_proof_artifact(p.strategy_id))]
         if pkts:
             _, best = max(pkts, key=lambda x: x[1].created_at)
             label = best.packet_type.replace("_packet", "").replace("_", " ")
@@ -168,6 +184,17 @@ PIPELINE
     dh_problems = [k for k, v in dh.items() if v != "ok"]
     delivery_line = "  Delivery: all channels ok" if not dh_problems else f"  Delivery: {', '.join(dh_problems)} missing webhook (worklog mirror active)"
 
+    # Governor status
+    from workspace.quant.shared.governor import load_governor_state
+    gov = load_governor_state(root)
+    paused_lanes = [k for k, v in gov.items() if v.get("paused")]
+    if paused_lanes:
+        governor_line = f"  Governor: active, paused: {', '.join(paused_lanes)}"
+    elif gov:
+        governor_line = f"  Governor: active ({len(gov)} lanes)"
+    else:
+        governor_line = "  Governor: no state"
+
     brief_text += f"""
 
 LANES
@@ -176,7 +203,7 @@ LANES
 HEALTH
   Active: {', '.join(lanes) if lanes else 'none'}
 {delivery_line}
-  Governor: not yet active
+{governor_line}
 
 OPERATOR ACTION NEEDED
 {_operator_actions(by_state, root)}"""

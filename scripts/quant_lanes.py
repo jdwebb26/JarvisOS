@@ -12,6 +12,8 @@ Commands:
     python3 scripts/quant_lanes.py approve-paper <id>       — approve paper trade for strategy
     python3 scripts/quant_lanes.py execute <id>             — execute paper trade for approved strategy
     python3 scripts/quant_lanes.py live-proof               — run end-to-end live runtime proof
+    python3 scripts/quant_lanes.py doctor                    — operator health check (phone-readable)
+    python3 scripts/quant_lanes.py acceptance                — non-destructive acceptance test
     python3 scripts/quant_lanes.py phase0                   — run Phase 0 vertical slice proof
 """
 from __future__ import annotations
@@ -29,6 +31,19 @@ from workspace.quant.shared.registries.approval_registry import load_all_approva
 from workspace.quant.shared.packet_store import get_all_latest, list_lane_packets
 
 
+# ---------------------------------------------------------------------------
+# Proof/smoke artifact filter — keep operator surfaces clean
+# ---------------------------------------------------------------------------
+
+_PROOF_MARKERS = ("proof", "smoke", "phase0", "test-", "la-001", "bad-001")
+
+
+def _is_proof_artifact(strategy_id: str) -> bool:
+    """Return True if strategy_id looks like a proof/smoke run, not real work."""
+    sid = strategy_id.lower()
+    return any(m in sid for m in _PROOF_MARKERS)
+
+
 def cmd_status(args):
     """Phone-scannable pipeline + action items."""
     strategies = load_all_strategies(ROOT)
@@ -36,6 +51,8 @@ def cmd_status(args):
     latest = get_all_latest(ROOT)
     by_state: dict[str, list[str]] = {}
     for sid, s in strategies.items():
+        if _is_proof_artifact(sid):
+            continue
         by_state.setdefault(s.lifecycle_state, []).append(sid)
 
     paper = by_state.get("PAPER_ACTIVE", [])
@@ -72,12 +89,13 @@ def cmd_status(args):
     exec_pkt = None
     for key, pkt in latest.items():
         if pkt.packet_type == "execution_status_packet":
-            exec_pkt = pkt
+            if not (pkt.strategy_id and _is_proof_artifact(pkt.strategy_id)):
+                exec_pkt = pkt
     if exec_pkt:
         fill = f"@ {exec_pkt.fill_price}" if exec_pkt.fill_price else ""
         print(f"\nLAST FILL  {exec_pkt.strategy_id} {exec_pkt.execution_mode} {exec_pkt.execution_status} {fill}")
 
-    active_appr = [a for a in approvals if not a.revoked]
+    active_appr = [a for a in approvals if not a.revoked and not _is_proof_artifact(a.strategy_id)]
     if active_appr:
         print(f"\nAPPROVALS  {len(active_appr)} active")
         for a in active_appr[-3:]:
@@ -320,6 +338,173 @@ def cmd_live_proof(args):
     sys.exit(result.returncode)
 
 
+# ---------------------------------------------------------------------------
+# doctor — operator health surface
+# ---------------------------------------------------------------------------
+
+def cmd_doctor(args):
+    """Concise, phone-readable health check of load-bearing quant infrastructure."""
+    import subprocess
+    from workspace.quant.shared.discord_bridge import check_delivery_health
+    from workspace.quant.shared.restart import check_latest_coherence
+    from workspace.quant.shared.governor import load_governor_state
+
+    checks: list[tuple[str, str, str]] = []  # (name, status, detail)
+
+    # 1. Lane-B timer
+    try:
+        r = subprocess.run(
+            ["systemctl", "--user", "is-active", "quant-lane-b-cycle.timer"],
+            capture_output=True, text=True, timeout=5,
+        )
+        active = r.stdout.strip() == "active"
+        checks.append(("lane-b timer", "PASS" if active else "FAIL", r.stdout.strip()))
+    except Exception as e:
+        checks.append(("lane-b timer", "FAIL", str(e)))
+
+    # 2. Review poller
+    try:
+        r = subprocess.run(
+            ["systemctl", "--user", "is-active", "openclaw-review-poller.timer"],
+            capture_output=True, text=True, timeout=5,
+        )
+        active = r.stdout.strip() == "active"
+        checks.append(("review poller", "PASS" if active else "WARN", r.stdout.strip()))
+    except Exception as e:
+        checks.append(("review poller", "WARN", str(e)))
+
+    # 3. Webhook/delivery health
+    dh = check_delivery_health()
+    missing = [k for k, v in dh.items() if v != "ok"]
+    if missing:
+        checks.append(("delivery", "FAIL", f"missing: {', '.join(missing)}"))
+    else:
+        checks.append(("delivery", "PASS", f"{len(dh)} channels ok"))
+
+    # 4. Latest state coherence
+    coherent, issues = check_latest_coherence(ROOT)
+    if coherent:
+        checks.append(("latest state", "PASS", "coherent"))
+    else:
+        checks.append(("latest state", "FAIL", "; ".join(issues[:3])))
+
+    # 5. Governor state readable
+    try:
+        gov = load_governor_state(ROOT)
+        paused = [k for k, v in gov.items() if v.get("paused")]
+        if paused:
+            checks.append(("governor", "WARN", f"paused: {', '.join(paused)}"))
+        else:
+            checks.append(("governor", "PASS", f"{len(gov)} lanes configured"))
+    except Exception as e:
+        checks.append(("governor", "FAIL", str(e)))
+
+    # 6. Kill switch
+    ks_path = ROOT / "workspace" / "quant" / "shared" / "config" / "kill_switch.json"
+    try:
+        if ks_path.exists():
+            import json as _json
+            ks = _json.loads(ks_path.read_text(encoding="utf-8"))
+            if ks.get("engaged"):
+                checks.append(("kill switch", "FAIL", f"ENGAGED by {ks.get('engaged_by', '?')}"))
+            else:
+                checks.append(("kill switch", "PASS", "disengaged"))
+        else:
+            checks.append(("kill switch", "PASS", "not present (default off)"))
+    except Exception as e:
+        checks.append(("kill switch", "WARN", str(e)))
+
+    # Print results
+    worst = "OK"
+    reasons = []
+    for name, status, detail in checks:
+        tag = {"PASS": "PASS", "WARN": "WARN", "FAIL": "FAIL"}[status]
+        print(f"  {tag:4s}  {name:16s}  {detail}")
+        if status == "FAIL":
+            worst = "FAIL"
+            reasons.append(name)
+        elif status == "WARN" and worst != "FAIL":
+            worst = "WARN"
+            reasons.append(name)
+
+    summary = f"OVERALL  {worst}"
+    if reasons:
+        summary += f"  {', '.join(reasons)}"
+    print(f"\n{summary}")
+
+
+# ---------------------------------------------------------------------------
+# acceptance — non-destructive verification pass
+# ---------------------------------------------------------------------------
+
+def cmd_acceptance(args):
+    """Non-destructive acceptance test of quant system readiness."""
+    results: list[tuple[str, bool, str]] = []  # (name, passed, detail)
+
+    # 1. Delivery health readable
+    try:
+        from workspace.quant.shared.discord_bridge import check_delivery_health
+        dh = check_delivery_health()
+        ok = all(v == "ok" for v in dh.values())
+        results.append(("delivery health", ok, f"{sum(v == 'ok' for v in dh.values())}/{len(dh)} ok"))
+    except Exception as e:
+        results.append(("delivery health", False, str(e)))
+
+    # 2. lane-b-cycle importable and callable
+    try:
+        from workspace.quant.run_lane_b_cycle import run_cycle  # noqa: F401
+        results.append(("lane-b-cycle import", True, "module loads"))
+    except Exception as e:
+        results.append(("lane-b-cycle import", False, str(e)))
+
+    # 3. Review approval path callable (dry import)
+    try:
+        from workspace.quant.shared.approval_bridge import (
+            request_paper_trade_approval, approve_paper_trade,  # noqa: F401
+        )
+        results.append(("approval path", True, "imports ok"))
+    except Exception as e:
+        results.append(("approval path", False, str(e)))
+
+    # 4. Brief generation works
+    try:
+        from workspace.quant.kitt.brief_producer import produce_brief
+        brief = produce_brief(ROOT, market_read="Acceptance test — no market data.")
+        has_sections = all(s in (brief.notes or "") for s in ["PIPELINE", "HEALTH", "OPERATOR ACTION"])
+        results.append(("brief generation", has_sections, f"{len(brief.notes or '')} chars"))
+    except Exception as e:
+        results.append(("brief generation", False, str(e)))
+
+    # 5. Registries readable
+    try:
+        strats = load_all_strategies(ROOT)
+        appr = load_all_approvals(ROOT)
+        results.append(("registries", True, f"{len(strats)} strategies, {len(appr)} approvals"))
+    except Exception as e:
+        results.append(("registries", False, str(e)))
+
+    # 6. Latest state coherent
+    try:
+        from workspace.quant.shared.restart import check_latest_coherence
+        coherent, issues = check_latest_coherence(ROOT)
+        results.append(("latest coherence", coherent, "; ".join(issues[:2]) if issues else "ok"))
+    except Exception as e:
+        results.append(("latest coherence", False, str(e)))
+
+    # 7. Outbox directory exists
+    outbox = ROOT / "state" / "discord_outbox"
+    results.append(("outbox dir", outbox.is_dir(), str(outbox)))
+
+    # Print
+    passed = sum(1 for _, ok, _ in results if ok)
+    total = len(results)
+    for name, ok, detail in results:
+        tag = "PASS" if ok else "FAIL"
+        print(f"  {tag}  {name:24s}  {detail}")
+
+    print(f"\nACCEPTANCE  {passed}/{total} pass")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Quant Lanes — Operator CLI")
     sub = parser.add_subparsers(dest="command")
@@ -371,6 +556,8 @@ def main():
     s_hb.add_argument("--source", default=None)
 
     sub.add_parser("live-proof", help="Run live runtime proof")
+    sub.add_parser("doctor", help="Operator health check")
+    sub.add_parser("acceptance", help="Non-destructive acceptance test")
 
     args = parser.parse_args()
     if not args.command:
@@ -393,6 +580,8 @@ def main():
         "fish-batch": cmd_fish_batch,
         "hermes-batch": cmd_hermes_batch,
         "live-proof": cmd_live_proof,
+        "doctor": cmd_doctor,
+        "acceptance": cmd_acceptance,
     }
     commands[args.command](args)
 

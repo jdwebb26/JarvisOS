@@ -128,7 +128,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Kitt brief producer**: reads shared/latest, shows pipeline/execution/approvals/operator actions. Spec §7 format. `workspace/quant/kitt/brief_producer.py`
 - **Discord routing**: 15 quant event kinds routed through `emit_event()`. Atlas → #atlas, Fish → #fish, Sigma → #sigma, execution → #kitt, approvals → #review, briefs → #kitt. Worklog mirror + Jarvis forward for key events
 - **Review poller integration**: `qpt_` approval IDs matched by review poller, routed to quant approval bridge. Operator types `approve qpt_xxx` in #review
-- **Operator CLI**: `scripts/quant_lanes.py` — status, brief, request-paper, approve-paper, execute, strategies, approvals
+- **Operator CLI**: `scripts/quant_lanes.py` — status, brief, doctor, acceptance, request-paper, approve-paper, execute, strategies, approvals. Proof/smoke artifacts auto-filtered from operator surfaces (status, brief)
 
 ### Live Discord delivery (verified 2026-03-19)
 - Kitt briefs → #kitt: **delivered**
