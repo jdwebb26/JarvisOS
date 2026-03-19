@@ -70,6 +70,7 @@ def create_promotion_if_needed(root: Path, paper_run_id: str) -> Optional[dict]:
 
     Idempotent: if the paper run already has a promotion_id, returns None.
     Only creates the review if proof is sufficient.
+    Emits an approval_requested event to #review so the operator sees it.
     Returns {promotion_id, packet_id} or None.
     """
     try:
@@ -85,6 +86,20 @@ def create_promotion_if_needed(root: Path, paper_run_id: str) -> Optional[dict]:
             return None  # Not ready
 
         promo, pkt = create_promotion_review(root, paper_run_id)
+
+        # Emit to #review so the operator sees the promotion review request
+        try:
+            from workspace.quant.shared.discord_bridge import emit_quant_approval_request
+            emit_quant_approval_request(
+                strategy_id=promo.strategy_id,
+                approval_type="promotion_review",
+                approval_ref=promo.promotion_id,
+                detail=f"Paper proof complete: {promo.summary}",
+                root=root,
+            )
+        except Exception:
+            pass  # Discord delivery is best-effort
+
         return {"promotion_id": promo.promotion_id, "packet_id": pkt.packet_id}
     except (ValueError, Exception):
         return None  # Non-fatal
@@ -544,6 +559,80 @@ def execute_live_trade(
     result["success"] = True
     result["fill"] = fill.to_dict()
     _emit_pkt(status_pkt)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Promotion decision — links proof_tracker decision to strategy lifecycle
+# ---------------------------------------------------------------------------
+
+def handle_promotion_decision(
+    root: Path,
+    promotion_id: str,
+    decision: str,
+    reason: str = "",
+) -> dict:
+    """Process an operator decision on a promotion review.
+
+    Calls decide_promotion() to update the proof record, then transitions
+    the strategy registry to the correct lifecycle state.
+
+    decision values:
+      "approved"     → PAPER_REVIEW → LIVE_QUEUED (actor=kitt, approval_ref=promotion_id)
+      "rejected"     → PAPER_REVIEW → PAPER_KILLED (actor=kitt)
+      "rerun_paper"  → PAPER_REVIEW → ITERATE (actor=sigma)
+
+    Returns {ok, promotion_id, decision, strategy_id, new_state, error}.
+    """
+    from workspace.quant.executor.proof_tracker import decide_promotion, load_paper_run
+
+    result = {"ok": False, "promotion_id": promotion_id, "decision": decision,
+              "strategy_id": None, "new_state": None, "error": None}
+
+    try:
+        promo = decide_promotion(root, promotion_id, decision, reason)
+    except ValueError as e:
+        result["error"] = str(e)
+        return result
+
+    result["strategy_id"] = promo.strategy_id
+
+    # Transition strategy registry
+    try:
+        strategy = get_strategy(root, promo.strategy_id)
+        if strategy is None:
+            result["error"] = f"Strategy {promo.strategy_id} not found in registry"
+            return result
+        if strategy.lifecycle_state != "PAPER_REVIEW":
+            result["error"] = (f"Strategy {promo.strategy_id} is {strategy.lifecycle_state}, "
+                               f"expected PAPER_REVIEW")
+            return result
+
+        if decision == "approved":
+            transition_strategy(
+                root, promo.strategy_id, "LIVE_QUEUED", actor="kitt",
+                approval_ref=promotion_id,
+                note=f"Promotion approved: {reason}" if reason else "Promotion approved",
+            )
+            result["new_state"] = "LIVE_QUEUED"
+        elif decision == "rejected":
+            transition_strategy(
+                root, promo.strategy_id, "PAPER_KILLED", actor="kitt",
+                note=f"Promotion rejected: {reason}" if reason else "Promotion rejected",
+            )
+            result["new_state"] = "PAPER_KILLED"
+        elif decision == "rerun_paper":
+            transition_strategy(
+                root, promo.strategy_id, "ITERATE", actor="sigma",
+                iteration_guidance=reason or "Rerun paper trading with adjustments",
+                note="Promotion review: rerun paper",
+            )
+            result["new_state"] = "ITERATE"
+
+        result["ok"] = True
+    except (ValueError, TimeoutError) as e:
+        result["error"] = str(e)
 
     return result
 
