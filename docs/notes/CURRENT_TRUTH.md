@@ -44,7 +44,7 @@ Quant lane Discord delivery verified 2026-03-19:
 - **#review**: delivered — approval requests with `approve qpt_xxx` / `reject qpt_xxx` instructions
 - **Worklog**: delivered — mirrors for promotions, execution, approvals
 - **Jarvis forward**: delivered — approval requests forwarded
-- **Sigma (#sigma)**: **BLOCKED** — `JARVIS_DISCORD_WEBHOOK_SIGMA` not configured. Events create outbox entries but sender skips with `skipped_no_webhook`. Worklog mirror delivers the same content.
+- **Sigma (#sigma)**: delivered — promotion, rejection, validation events
 
 Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner channel + worklog mirror + Jarvis forward as configured in `config/agent_channel_map.json`.
 
@@ -136,13 +136,9 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - Fish scenarios → #fish: **delivered** (was previously skipped — no event mapping)
 - Approval requests → #review: **delivered** (with approve/reject commands)
 - Worklog mirrors: **delivered**
-- Sigma → #sigma: **skipped** (webhook not configured — content still reaches worklog)
+- Sigma promotions/rejections → #sigma: **delivered**
 
-### Operator actions required
-1. Add `JARVIS_DISCORD_WEBHOOK_SIGMA` to `~/.openclaw/secrets.env` (optional — worklog mirror covers the same content)
-2. Restart outbox sender after adding: `systemctl --user restart openclaw-discord-outbox`
-
-### Proven live (64 tests + 26-check live proof)
+### Proven live (36 tests + 32-check live proof)
 - Candidate → Sigma validation → promotion (Discord event to #sigma + worklog + jarvis)
 - Kitt papertrade request → approval_requested to #review (with approve/reject instructions)
 - Operator approval via review poller path → PAPER_QUEUED

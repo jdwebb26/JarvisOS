@@ -62,7 +62,7 @@ def clean_prior_run():
     if latest_dir.exists():
         for f in latest_dir.glob("*.json"):
             f.unlink()
-    for lane in ["hermes", "atlas", "sigma", "kitt", "executor"]:
+    for lane in ["hermes", "atlas", "fish", "sigma", "kitt", "executor"]:
         lane_dir = ROOT / "workspace" / "quant" / lane
         if lane_dir.exists():
             for f in lane_dir.glob("*.json"):
@@ -123,6 +123,43 @@ def main():
     transition_strategy(ROOT, STRATEGY_ID, "CANDIDATE", actor="atlas")
     transition_strategy(ROOT, STRATEGY_ID, "VALIDATING", actor="sigma")
     ok("Strategy → VALIDATING, candidate_packet stored")
+
+    # =========================================================================
+    # Step 1b: Atlas/Fish owner-channel routing
+    # =========================================================================
+    section("1b. [LIVE] Atlas/Fish Owner-Channel Routing")
+
+    # Atlas: candidate_packet must route to #atlas, not #kitt
+    atlas_evt = emit_quant_event(candidate, root=ROOT)
+    if atlas_evt.get("owner_channel_id") == "1483916149573025793":
+        ok("candidate_packet → #atlas (1483916149573025793)")
+    else:
+        fail(f"candidate_packet routed to {atlas_evt.get('owner_channel_id')}, expected #atlas")
+
+    atlas_outbox = [e for e in atlas_evt.get("outbox_entries", []) if e["channel_id"] == "1483916149573025793"]
+    if atlas_outbox:
+        ok(f"Atlas outbox entry created (label={atlas_outbox[0]['label']})")
+    else:
+        fail("No Atlas outbox entry for candidate_packet")
+
+    # Fish: scenario_packet must route to #fish, not skip
+    fish_pkt = make_packet("scenario_packet", "fish",
+        "NQ consolidation breakout scenario (proof run)",
+        symbol_scope="NQ", timeframe_scope="1h")
+    store_packet(ROOT, fish_pkt)
+    fish_evt = emit_quant_event(fish_pkt, root=ROOT)
+    if fish_evt.get("skipped"):
+        fail(f"scenario_packet skipped: {fish_evt.get('reason')}")
+    elif fish_evt.get("owner_channel_id") == "1483916169672130754":
+        ok("scenario_packet → #fish (1483916169672130754)")
+    else:
+        fail(f"scenario_packet routed to {fish_evt.get('owner_channel_id')}, expected #fish")
+
+    fish_outbox = [e for e in fish_evt.get("outbox_entries", []) if e["channel_id"] == "1483916169672130754"]
+    if fish_outbox:
+        ok(f"Fish outbox entry created (label={fish_outbox[0]['label']})")
+    else:
+        fail("No Fish outbox entry for scenario_packet")
 
     # =========================================================================
     # Step 2: Sigma validation → promotion (now emits Discord internally)
@@ -271,6 +308,8 @@ def main():
     section("7. [LIVE] Outbox + Dispatch Verification")
 
     event_kinds = [
+        ("quant_candidate_submitted", "#atlas"),
+        ("quant_scenario_submitted", "#fish"),
         ("quant_strategy_promoted", "#sigma"),
         ("quant_execution_intent", "#kitt"),
         ("quant_execution_status", "#kitt"),
@@ -309,11 +348,15 @@ def main():
 
     print(f"\n  WHAT IS TRULY LIVE:")
     print(f"    emit_event() routing: quant packets → dispatch_events + outbox entries")
-    print(f"    Channel mapping: sigma→1483916191046041811, kitt→1483320979185733722, review→1483132981177618482")
+    print(f"    Channel mapping:")
+    print(f"      atlas→1483916149573025793, fish→1483916169672130754")
+    print(f"      sigma→1483916191046041811, kitt→1483320979185733722, review→1483132981177618482")
+    print(f"    Atlas: candidate_packet → #atlas owner channel (verified)")
+    print(f"    Fish: scenario_packet → #fish owner channel (verified)")
     print(f"    Worklog mirror: promotions, execution events")
-    print(f"    Jarvis forward: promotions, execution events, alerts")
+    print(f"    Jarvis forward: failures, alerts, approval requests")
     print(f"    Approval message: includes 'approve qpt_xxx' / 'reject qpt_xxx' instructions")
-    print(f"    Review poller: updated to match qpt_ prefix, routes to quant approval bridge")
+    print(f"    Review poller: matches qpt_ prefix, routes to quant approval bridge")
     print(f"    Executor: emits Discord events directly on fill/reject")
     print(f"    Sigma: emits Discord events directly on promote/reject")
     print(f"    Kitt brief: reads shared/latest, produces spec §7 format")
@@ -324,9 +367,8 @@ def main():
     print(f"    Market data: none consumed")
 
     print(f"\n  OPERATOR ACTIONS REQUIRED:")
-    print(f"    1. Add JARVIS_DISCORD_WEBHOOK_SIGMA to ~/.openclaw/secrets.env")
-    print(f"    2. Verify outbox delivery: systemctl --user restart openclaw-outbox-sender")
-    print(f"    3. Test real approval: type 'approve {approval_ref}' in #review")
+    print(f"    1. Verify outbox delivery: systemctl --user restart openclaw-discord-outbox")
+    print(f"    2. Test real approval: type 'approve {approval_ref}' in #review")
 
     print()
     if FAIL == 0:
