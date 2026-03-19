@@ -90,6 +90,25 @@ openclaw backup create --verify    # backup + verify (before risky changes)
 openclaw gateway status            # gateway service + RPC probe
 ```
 
+### Cron / session alignment
+
+Current cron is systemd-based. The OpenClaw cron scheduler (`openclaw cron`) offers session-bound, agent-aware, light-context jobs. To audit migration readiness:
+
+```bash
+python3 scripts/cron_migration_audit.py        # terminal table
+python3 scripts/cron_migration_audit.py --json  # machine-readable
+```
+
+**Migration candidates** (agent-turn jobs that benefit from session binding):
+- Ralph timer → `--session-key agent:ralph:main --light-context`
+- Operator status → `--session isolated --light-context --no-deliver`
+- Factory weekly → `--session-key agent:hal:factory-weekly`
+- Quant lane B → `--session-key agent:kitt:quant-lane-b --light-context`
+
+**Keep as systemd** (fast-poll or non-agent jobs): review poller, todo intake, outbox sender.
+
+Session reset alignment: OpenClaw resets at hour 4 with 120min idle (`session.reset` in openclaw.json). Jarvis session hygiene (`session_hygiene.py`) rotates oversized transcripts before context build. Both use the `agent:{name}:main` key convention.
+
 ### Daily operator commands
 
 Open the dashboard in a browser:
