@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenClaw Salmon Adapter Timer — every 10 minutes (staggered +2m from Kitt)
+
+[Timer]
+OnBootSec=420s
+OnUnitActiveSec=600s
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
