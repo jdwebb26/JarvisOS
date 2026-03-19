@@ -44,6 +44,11 @@ _PACKET_TO_EVENT_KIND: dict[str, str] = {
     "candidate_packet": "quant_candidate_submitted",
     # Fish outputs → #fish
     "scenario_packet": "quant_scenario_submitted",
+    # Pulse outputs → #pulse
+    "pulse_alert_packet": "quant_pulse_alert",
+    "pulse_cluster_packet": "quant_pulse_cluster",
+    "pulse_review_proposal_packet": "quant_pulse_proposal",
+    "pulse_learning_packet": "quant_pulse_learning",
     # Health → owner channel
     "health_summary": "quant_health",
 }
@@ -57,6 +62,7 @@ _LANE_TO_AGENT_ID: dict[str, str] = {
     "hermes": "hermes",
     "executor": "kitt",     # Executor has no standalone channel per spec §19
     "tradefloor": "kitt",   # TradeFloor routes through Kitt
+    "pulse": "pulse",       # Pulse owns #pulse channel
 }
 
 
@@ -144,6 +150,7 @@ _QUANT_DELIVERY_CHANNELS = {
     "fish":    "JARVIS_DISCORD_WEBHOOK_FISH",
     "review":  "REVIEW_WEBHOOK_URL",
     "worklog": "JARVIS_DISCORD_WEBHOOK_WORKLOG",
+    "pulse":   "JARVIS_DISCORD_WEBHOOK_PULSE",
 }
 
 

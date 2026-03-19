@@ -142,6 +142,10 @@ _EMOJI: dict[str, str] = {
     "quant_alert": "\U0001f6a8",              # 🚨
     "quant_setup": "\U0001f3af",              # 🎯
     "quant_health": "\U0001f3e5",             # 🏥
+    "quant_pulse_alert": "\U0001f4a1",       # 💡
+    "quant_pulse_cluster": "\U0001f4a1",     # 💡
+    "quant_pulse_proposal": "\U0001f4a1",    # 💡
+    "quant_pulse_learning": "\U0001f4a1",    # 💡
     "factory_weekly_summary": "\U0001f4ca",  # 📊
 }
 

@@ -505,6 +505,90 @@ def cmd_acceptance(args):
     print(f"\nACCEPTANCE  {passed}/{total} pass")
 
 
+def cmd_bootstrap_hermes(args):
+    """Bootstrap Hermes from its configured watchlist."""
+    from workspace.quant.bootstrap import bootstrap_hermes
+    result = bootstrap_hermes(ROOT)
+    if result.get("already_bootstrapped"):
+        print("Hermes: already bootstrapped (dedup caught all sources)")
+    elif result.get("skipped_reason"):
+        print(f"Hermes: skipped ({result['skipped_reason']})")
+    else:
+        print(f"Hermes: {result['emitted']} research packets emitted, "
+              f"{result['deduped']} deduped, {result['watchlist_entries']} watchlist entries")
+
+
+def cmd_bootstrap_fish(args):
+    """Bootstrap Fish from its seed config."""
+    from workspace.quant.bootstrap import bootstrap_fish
+    result = bootstrap_fish(ROOT)
+    if result.get("already_bootstrapped"):
+        print("Fish: already bootstrapped (scenarios/regimes exist)")
+    elif result.get("skipped_reason"):
+        print(f"Fish: skipped ({result['skipped_reason']})")
+    else:
+        print(f"Fish: {result['regimes_emitted']} regimes, "
+              f"{result['scenarios_emitted']} scenarios, "
+              f"{result['risk_maps_emitted']} risk maps emitted")
+        cal = result.get("calibration_state", {})
+        print(f"  Calibration: {cal.get('total_calibrations', 0)} calibrations, "
+              f"trend={cal.get('trend', 'N/A')}")
+
+
+def cmd_bootstrap_atlas(args):
+    """Bootstrap Atlas from seed themes + Hermes evidence."""
+    from workspace.quant.bootstrap import bootstrap_atlas
+    result = bootstrap_atlas(ROOT)
+    if result.get("already_bootstrapped"):
+        print("Atlas: already bootstrapped (real strategies exist)")
+    elif result.get("skipped_reason"):
+        print(f"Atlas: skipped ({result['skipped_reason']})")
+    else:
+        print(f"Atlas: {result['candidates_generated']} candidates generated, "
+              f"{result['dedup_blocked']} dedup-blocked")
+        if result.get("errors"):
+            for e in result["errors"]:
+                print(f"  ERROR: {e}")
+
+
+def cmd_bootstrap_all(args):
+    """Bootstrap all quant lanes in dependency order."""
+    from workspace.quant.bootstrap import bootstrap_all
+    results = bootstrap_all(ROOT)
+    for lane, result in results.items():
+        if result.get("already_bootstrapped"):
+            print(f"  {lane:12s} already bootstrapped")
+        elif result.get("skipped_reason"):
+            print(f"  {lane:12s} skipped: {result['skipped_reason']}")
+        else:
+            # Summarize what was produced
+            parts = []
+            for key, val in result.items():
+                if key.endswith("_emitted") and isinstance(val, int) and val > 0:
+                    parts.append(f"{key.replace('_emitted', '')}={val}")
+                elif key == "candidates_generated" and val > 0:
+                    parts.append(f"candidates={val}")
+                elif key == "synthesized" and val:
+                    parts.append(f"tier={result.get('tier', '?')}")
+            print(f"  {lane:12s} {' '.join(parts) if parts else 'no output'}")
+
+
+def cmd_bootstrap_status(args):
+    """Show bootstrap status for each quant lane."""
+    from workspace.quant.bootstrap import get_all_bootstrap_status
+    status = get_all_bootstrap_status(ROOT)
+    print("BOOTSTRAP STATUS")
+    print("━" * 40)
+    for lane, state in status.items():
+        tag = {
+            "not_started": "NOT STARTED",
+            "bootstrapped": "BOOTSTRAPPED",
+            "active": "ACTIVE",
+            "stale": "STALE",
+        }.get(state, state)
+        print(f"  {lane:12s} {tag}")
+
+
 def cmd_observe(args):
     """Concise operator observability surface. Phone-readable truth."""
     from workspace.quant.shared.governor import load_governor_state
@@ -516,6 +600,24 @@ def cmd_observe(args):
 
     print("QUANT OBSERVE")
     print("━" * 40)
+
+    # Bootstrap status
+    try:
+        from workspace.quant.bootstrap import get_all_bootstrap_status
+        bs = get_all_bootstrap_status(ROOT)
+        tags = []
+        for lane, state in bs.items():
+            if state == "not_started":
+                tags.append(f"{lane}=NOT_STARTED")
+            elif state == "stale":
+                tags.append(f"{lane}=STALE")
+        if tags:
+            print(f"  Bootstrap: {', '.join(tags)}")
+        else:
+            print(f"  Bootstrap: all lanes active or bootstrapped")
+    except Exception:
+        pass
+    print()
 
     # Governor
     gov = load_governor_state(ROOT)
@@ -663,9 +765,28 @@ def main():
     s_hb.add_argument("--source", default=None)
 
     sub.add_parser("live-proof", help="Run live runtime proof")
+
+    sub.add_parser("pulse-status", help="Pulse lane status")
+    p_pi = sub.add_parser("pulse-ingest", help="Ingest a Pulse alert")
+    p_pi.add_argument("text", nargs="?", default="", help="Alert text")
+    p_pi.add_argument("--level", type=float, default=None)
+    p_pi.add_argument("--direction", default=None)
+    p_pi.add_argument("--symbol", default="NQ")
+    sub.add_parser("pulse-proposals", help="Show pending Pulse proposals")
+    p_pa = sub.add_parser("pulse-approve", help="Approve a Pulse proposal")
+    p_pa.add_argument("proposal_id")
+    sub.add_parser("pulse-health", help="Pulse health summary")
+
     sub.add_parser("observe", help="Operator observability surface")
     sub.add_parser("doctor", help="Operator health check")
     sub.add_parser("acceptance", help="Non-destructive acceptance test")
+
+    # Bootstrap commands
+    sub.add_parser("bootstrap-hermes", help="Cold-start Hermes from watchlist")
+    sub.add_parser("bootstrap-fish", help="Cold-start Fish from seed config")
+    sub.add_parser("bootstrap-atlas", help="Cold-start Atlas from seed themes")
+    sub.add_parser("bootstrap-all", help="Bootstrap all quant lanes")
+    sub.add_parser("bootstrap-status", help="Show bootstrap status per lane")
 
     args = parser.parse_args()
     if not args.command:
@@ -688,9 +809,19 @@ def main():
         "fish-batch": cmd_fish_batch,
         "hermes-batch": cmd_hermes_batch,
         "live-proof": cmd_live_proof,
+        "pulse-status": cmd_pulse_status,
+        "pulse-ingest": cmd_pulse_ingest,
+        "pulse-proposals": cmd_pulse_proposals,
+        "pulse-approve": cmd_pulse_approve,
+        "pulse-health": cmd_pulse_health,
         "observe": cmd_observe,
         "doctor": cmd_doctor,
         "acceptance": cmd_acceptance,
+        "bootstrap-hermes": cmd_bootstrap_hermes,
+        "bootstrap-fish": cmd_bootstrap_fish,
+        "bootstrap-atlas": cmd_bootstrap_atlas,
+        "bootstrap-all": cmd_bootstrap_all,
+        "bootstrap-status": cmd_bootstrap_status,
     }
     commands[args.command](args)
 
