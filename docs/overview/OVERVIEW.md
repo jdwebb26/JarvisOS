@@ -75,6 +75,7 @@ Jarvis OS coordinates a fleet of specialized AI agents that receive work through
 | **Claude** | External model agent (Anthropic) | Claude Sonnet 4.6 | Embedded |
 | **Fish** | Scenario modeling & forecasting (powered by Salmon Adapter) | Qwen 3.5 35B | Embedded |
 | **Atlas** | Experiment design — candidate mutation, hypothesis generation | Qwen 3.5 35B | Embedded |
+| **Sigma** | Strategy validation — gate enforcement, candidate reject/accept | Qwen 3.5 35B | Embedded |
 
 ### Quant lane services (temporary fallback)
 
@@ -82,7 +83,6 @@ These have Discord channels for outbound event delivery but are **not** fully se
 
 | Service | Channel | Purpose |
 |---------|---------|---------|
-| Sigma | `#sigma` | Strategy validation gates |
 | Pulse | `#pulse` | Discretionary NQ alerts & proposals |
 
 ---
@@ -115,9 +115,9 @@ These have Discord channels for outbound event delivery but are **not** fully se
 
 | Channel | What goes there | Interactive? |
 |---------|----------------|-------------|
-| `#sigma` | Validation events | Outbound only (jarvis fallback) |
-| `#atlas` | Discovery events | Outbound only (jarvis fallback) |
-| `#fish` | Scenario events | Outbound only (jarvis fallback) |
+| `#sigma` | Validation events | Yes — Sigma responds |
+| `#atlas` | Discovery events | Yes — Atlas responds |
+| `#fish` | Scenario events | Yes — Fish responds (powered by Salmon Adapter) |
 | `#pulse` | Alert events | Outbound only (jarvis fallback) |
 
 ---
@@ -217,7 +217,7 @@ Commands: `openclaw status`, `openclaw doctor`, `openclaw security audit`
 |------|--------|----------------|
 | Cadence voice | PARTIAL | Live mic blocked on WSL2. Proven in replay only. `win_capture.py` workaround exists but not wired into daemon. |
 | Bowser browser | BOUNDED | Request/result protocol live, full external browser lane not proven e2e. |
-| Sigma/Pulse agents | FALLBACK | Outbound-only channel presence. No dedicated interactive agents — inbound routes to Jarvis. Fish and Atlas are now full agents. |
+| Pulse agent | FALLBACK | Outbound-only channel presence. No dedicated interactive agent — inbound routes to Jarvis. Fish, Atlas, and Sigma are now full agents. |
 | `#todo` intake | DEAD | `lobster-todo-intake` service has no timer and is not running. Task intake via cron executor only. |
 | OpenAI / GPT | SCAFFOLD | Adapter wired but requires funded API billing to activate. |
 | v5.2 multi-model routing | SCAFFOLD | Scaffolding exists but not active in production. |

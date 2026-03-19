@@ -200,16 +200,31 @@ It does not claim a second hidden orchestration mesh. It records the real repo-a
   - fallback `Qwen3.5-9B`
 - Constraints: exec denied, write/edit denied — read/process/message only
 
+### Sigma
+
+- Role: strategy validation — gate enforcement, candidate reject/accept
+- Runtime truth: wired as OpenClaw agent
+- Channel: `#sigma` (`1483916191046041811`)
+- Owns:
+  - evaluate strategy candidates against gate thresholds (PF, Sharpe, Sortino, drawdown, trade count)
+  - compare walk-forward validation results across evidence tiers
+  - reject weak candidates with clear reasoning
+  - surface promotion-eligible candidates with evidence
+- Backend: **Sigma validation surface** (`workspace/quant_infra/sigma/`)
+- Routing intent:
+  - preferred model `Qwen3.5-35B`
+  - fallback `Qwen3.5-9B`
+- Constraints: exec denied, write/edit denied — read/process/message only
+
 ### Quant lane services (not interactive agents)
 
 The following are quant pipeline services that emit events to dedicated Discord channels via webhooks. They do NOT have interactive OpenClaw agent definitions — inbound messages to their channels are currently routed to Jarvis as a **temporary fallback**.
 
 | Service | Channel | Purpose | Has OpenClaw agent? |
 |---------|---------|---------|---------------------|
-| **Sigma** | `#sigma` (`1483916191046041811`) | Strategy validation gates | No — jarvis fallback |
 | **Pulse** | `#pulse` (`1484088366155698176`) | Discretionary NQ alerts | No — jarvis fallback |
 
-> **Temporary architecture**: These channels are in the gateway guild allowlist and bound to jarvis for inbound routing. This is a fallback — the operator can message in these channels and jarvis will respond, but there is no dedicated agent personality or context for sigma/pulse. When dedicated agents are needed, add them to `agents.list` in `openclaw.json` and create agent dirs in `~/.openclaw/agents/`. Fish and Atlas have been promoted to full agents (see above).
+> **Temporary architecture**: These channels are in the gateway guild allowlist and bound to jarvis for inbound routing. This is a fallback — the operator can message in these channels and jarvis will respond, but there is no dedicated agent personality or context for pulse. When dedicated agents are needed, add them to `agents.list` in `openclaw.json` and create agent dirs in `~/.openclaw/agents/`. Fish, Atlas, and Sigma have been promoted to full agents (see above).
 
 ## Review hierarchy
 
@@ -254,6 +269,7 @@ Verify current state with: `python3 scripts/verify_openclaw_bootstrap_runtime.py
 | **ralph** | embedded | `cron`, `memory_get`, `memory_search`, `process`, `session_status`, `sessions_history`, `sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_yield` | `ordercli`, `session-logs` |
 | **fish** | embedded | `memory_get`, `memory_search`, `message`, `process`, `read`, `session_status`, `sessions_history`, `sessions_list` | `session-logs`, `model-usage` |
 | **atlas** | embedded | `memory_get`, `memory_search`, `message`, `process`, `read`, `session_status`, `sessions_history`, `sessions_list` | `session-logs`, `model-usage` |
+| **sigma** | embedded | `memory_get`, `memory_search`, `message`, `process`, `read`, `session_status`, `sessions_history`, `sessions_list` | `session-logs`, `model-usage` |
 
 **Delegation**: jarvis → hal (implementation), hal → archimedes (review), archimedes → anton (supreme review)<br>
 **Denied globally**: `clawhub`, `weather`, `gog` (in `COMMON_DENIED_SKILL_NAMES`)
@@ -349,6 +365,7 @@ All agents run **embedded** by default — their turns are handled inline inside
 | ralph      | embedded    | |
 | fish       | embedded    | Read/research/scenario only; exec denied |
 | atlas      | embedded    | Read/process/message only; exec denied |
+| sigma      | embedded    | Read/process/message only; exec denied |
 
 ### Why Jarvis stays embedded
 

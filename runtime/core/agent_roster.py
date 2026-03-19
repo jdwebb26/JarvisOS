@@ -59,6 +59,7 @@ AGENT_SKILL_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "kitt": ("session-logs", "model-usage"),
     "fish": ("session-logs", "model-usage"),
     "atlas": ("session-logs", "model-usage"),
+    "sigma": ("session-logs", "model-usage"),
 }
 
 AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
@@ -217,6 +218,16 @@ AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
         "sessions_history",
     ),
     "atlas": (
+        "read",
+        "process",
+        "memory_search",
+        "memory_get",
+        "message",
+        "session_status",
+        "sessions_list",
+        "sessions_history",
+    ),
+    "sigma": (
         "read",
         "process",
         "memory_search",
@@ -631,6 +642,39 @@ CANONICAL_AGENT_ROSTER: dict[str, dict[str, Any]] = {
         "preferred_skill_backends": ["atlas_surface", "qwen_executor"],
         "preferred_channels": ["atlas"],
     },
+    "sigma": {
+        "agent_id": "sigma",
+        "display_name": "Sigma",
+        "role": "strategy validation — gate enforcement, candidate reject/accept",
+        "status": "wired",
+        "kind": "specialist",
+        "responsibilities": [
+            "evaluate strategy candidates against gate thresholds",
+            "compare walk-forward validation results across evidence tiers",
+            "reject weak candidates with clear reasoning",
+            "surface promotion-eligible candidates with evidence",
+            "track validation history and gate pass/fail ratios",
+        ],
+        "avoid": [
+            "trade execution (Executor's job)",
+            "scenario generation (Fish's job)",
+            "code implementation (HAL's job)",
+            "general operator chat (Jarvis's job)",
+            "auto-promotion without operator approval",
+        ],
+        "task_classes": ["quant", "review"],
+        "routing_intent": {
+            "preferred_model": "Qwen3.5-35B",
+            "fallbacks": ["Qwen3.5-9B"],
+            "primary_backend": "sigma_surface",
+        },
+        "allowed_tool_categories": ["coordination", "repo_read", "general"],
+        "denied_tool_categories": ["browser", "engineering", "maintenance", "voice", "creative"],
+        "denied_tool_name_tokens": ["exec", "shell", "bash", "write", "edit", "patch", "clawhub", "weather"],
+        "preferred_skill_task_classes": ["quant", "review"],
+        "preferred_skill_backends": ["sigma_surface", "qwen_executor"],
+        "preferred_channels": ["sigma"],
+    },
 }
 
 
@@ -723,6 +767,7 @@ AGENT_RUNTIME_TYPES: dict[str, str] = {
     "kitt":       "embedded",
     "fish":       "embedded",
     "atlas":      "embedded",
+    "sigma":      "embedded",
 }
 
 
