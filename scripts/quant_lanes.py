@@ -577,26 +577,38 @@ def cmd_pulse_proposals(args):
     print("━" * 40)
     for p in pending:
         target = ""
+        approval_ref = ""
         for part in (p.notes or "").split(";"):
-            if part.strip().startswith("target="):
-                target = part.strip().split("=", 1)[1]
-        print(f"  ID:      {p.packet_id}")
+            part = part.strip()
+            if part.startswith("target="):
+                target = part.split("=", 1)[1]
+            elif part.startswith("approval_ref="):
+                approval_ref = part.split("=", 1)[1]
         print(f"  Target:  {target}")
+        print(f"  Ref:     {approval_ref}")
         print(f"  Thesis:  {p.thesis[:80]}")
-        print(f"  Approve: quant_lanes.py pulse-approve {p.packet_id}")
+        print(f"  #review: approve {approval_ref}")
         print()
 
 
 def cmd_pulse_approve(args):
-    """Approve a Pulse proposal for downstream release."""
-    from workspace.quant.pulse.alert_lane import approve_proposal
-    downstream = approve_proposal(ROOT, args.proposal_id)
-    if downstream is None:
-        print(f"  ERROR: proposal {args.proposal_id} not found or invalid target.")
+    """Check status of a Pulse proposal. Approval must go through #review."""
+    from workspace.quant.pulse.alert_lane import get_proposal_by_ref
+    state = get_proposal_by_ref(ROOT, args.proposal_id)
+    if state is None:
+        print(f"  Proposal {args.proposal_id} not found.")
         return
-    print(f"  Approved → {downstream.lane} {downstream.packet_type}")
-    print(f"  ID:     {downstream.packet_id}")
-    print(f"  Thesis: {downstream.thesis[:80]}")
+    print(f"  Proposal:   {state['approval_ref']}")
+    print(f"  Target:     {state['target']}")
+    print(f"  Status:     {state['status']}")
+    print(f"  Thesis:     {state['thesis'][:80]}")
+    if state["status"] == "pending":
+        print(f"\n  To approve: type 'approve {state['approval_ref']}' in #review")
+        print(f"  To reject:  type 'reject {state['approval_ref']}' in #review")
+    elif state["status"] == "approved":
+        print(f"  Downstream: {state.get('downstream_packet_id', '?')}")
+    elif state["status"] == "rejected":
+        print(f"  Rejected at: {state.get('rejected_at', '?')}")
 
 
 def cmd_pulse_health(args):

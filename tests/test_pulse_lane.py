@@ -24,10 +24,19 @@ from workspace.quant.shared.packet_store import store_packet, list_lane_packets
 from workspace.quant.pulse.alert_lane import (
     parse_alert, ingest_alert, cluster_alerts, check_alert_cooldown,
     record_outcome, build_learning_state,
-    propose_downstream, approve_proposal,
+    propose_downstream, approve_proposal, handle_pulse_review,
     emit_health_summary, PROPOSAL_TARGETS,
     _MAX_PROPOSALS_PER_CLUSTER_24H, _MAX_ATLAS_SEEDS_24H, _MAX_FISH_INJECTIONS_24H,
 )
+
+
+def _extract_ref(pkt) -> str:
+    """Extract approval_ref from proposal packet notes."""
+    for part in (pkt.notes or "").split(";"):
+        part = part.strip()
+        if part.startswith("approval_ref="):
+            return part.split("=", 1)[1]
+    return ""
 
 
 @pytest.fixture
@@ -251,35 +260,41 @@ class TestReviewGatedProposals:
         fish_pkts = list_lane_packets(clean_root, "fish")
         assert len(fish_pkts) == 0
 
-    def test_approve_creates_downstream(self, clean_root):
+    def test_review_approve_creates_downstream(self, clean_root):
         proposal = propose_downstream(
             clean_root, "fish_scenario",
             "NQ sweep cluster downside scenario", symbol="NQ",
         )
-        downstream = approve_proposal(clean_root, proposal.packet_id)
-        assert downstream is not None
-        assert downstream.packet_type == "scenario_packet"
-        assert downstream.lane == "fish"
-        assert "[from Pulse]" in downstream.thesis
-        assert "source=pulse_approved" in downstream.notes
+        ref = _extract_ref(proposal)
+        result = handle_pulse_review(clean_root, ref, "approved")
+        assert result["ok"] is True
+        fish = list_lane_packets(clean_root, "fish")
+        assert len(fish) == 1
+        assert fish[0].packet_type == "scenario_packet"
+        assert "[from Pulse]" in fish[0].thesis
+        assert "source=pulse_approved" in fish[0].notes
 
-    def test_approve_hermes_research(self, clean_root):
+    def test_review_approve_hermes_research(self, clean_root):
         proposal = propose_downstream(
             clean_root, "hermes_research",
             "Research NQ gap fill patterns", symbol="NQ",
         )
-        downstream = approve_proposal(clean_root, proposal.packet_id)
-        assert downstream.packet_type == "research_request_packet"
-        assert downstream.lane == "hermes"
+        ref = _extract_ref(proposal)
+        handle_pulse_review(clean_root, ref, "approved")
+        hermes = list_lane_packets(clean_root, "hermes")
+        assert len(hermes) == 1
+        assert hermes[0].packet_type == "research_request_packet"
 
-    def test_approve_atlas_seed(self, clean_root):
+    def test_review_approve_atlas_seed(self, clean_root):
         proposal = propose_downstream(
             clean_root, "atlas_seed",
             "Seed NQ liquidity sweep strategy", symbol="NQ",
         )
-        downstream = approve_proposal(clean_root, proposal.packet_id)
-        assert downstream.packet_type == "idea_packet"
-        assert downstream.lane == "atlas"
+        ref = _extract_ref(proposal)
+        handle_pulse_review(clean_root, ref, "approved")
+        atlas = list_lane_packets(clean_root, "atlas")
+        assert len(atlas) == 1
+        assert atlas[0].packet_type == "idea_packet"
 
     def test_invalid_target_raises(self, clean_root):
         with pytest.raises(ValueError):
@@ -371,16 +386,17 @@ class TestCoreQuantAutonomy:
             pkts = list_lane_packets(clean_root, lane)
             assert len(pkts) == 0, f"Unapproved proposal leaked into {lane}"
 
-    def test_only_approval_releases_downstream(self, clean_root):
-        """Only approve_proposal should create packets in target lanes."""
+    def test_only_review_approval_releases_downstream(self, clean_root):
+        """Only #review approval should create packets in target lanes."""
         proposal = propose_downstream(
             clean_root, "fish_scenario", "Scenario test", symbol="NQ",
         )
         # Before approval: fish is empty
         assert len(list_lane_packets(clean_root, "fish")) == 0
 
-        # After approval: fish has exactly one packet
-        approve_proposal(clean_root, proposal.packet_id)
+        # After review approval: fish has exactly one packet
+        ref = _extract_ref(proposal)
+        handle_pulse_review(clean_root, ref, "approved")
         assert len(list_lane_packets(clean_root, "fish")) == 1
 
 
@@ -467,16 +483,16 @@ class TestEndToEnd:
         assert len(list_lane_packets(clean_root, "fish")) == 0
 
         # Step 7: Operator approves via #review
-        downstream = approve_proposal(clean_root, proposal.packet_id)
-        assert downstream is not None
-        assert downstream.lane == "fish"
-        assert downstream.packet_type == "scenario_packet"
-        assert "[from Pulse]" in downstream.thesis
+        ref = _extract_ref(proposal)
+        result = handle_pulse_review(clean_root, ref, "approved")
+        assert result["ok"] is True
+        assert result["downstream_packet_id"] is not None
 
         # Step 8: Fish now has exactly one packet (from approved proposal)
         fish_pkts = list_lane_packets(clean_root, "fish")
         assert len(fish_pkts) == 1
         assert "pulse_approved" in fish_pkts[0].notes
+        assert "[from Pulse]" in fish_pkts[0].thesis
 
         # Step 9: Verify Kitt brief shows Pulse separately
         from workspace.quant.kitt.brief_producer import produce_brief

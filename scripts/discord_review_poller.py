@@ -32,17 +32,17 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 REVIEW_CHANNEL_ID = "1483132981177618482"
 
-# Approval ID pattern: apr_ or qpt_ followed by hex
-APPROVAL_ID_PATTERN = re.compile(r"\b(?:apr|qpt)_[a-f0-9]{8,}\b", re.IGNORECASE)
+# Approval ID pattern: apr_ or qpt_ or pulse_ followed by hex
+APPROVAL_ID_PATTERN = re.compile(r"\b(?:apr|qpt|pulse)_[a-f0-9]{8,}\b", re.IGNORECASE)
 
 # Text command patterns (case-insensitive)
-# Matches both Jarvis approvals (apr_xxx) and quant approvals (qpt_xxx)
+# Matches Jarvis approvals (apr_xxx), quant approvals (qpt_xxx), and Pulse proposals (pulse_xxx)
 APPROVE_PATTERN = re.compile(
-    r"^\s*(?:approve|approved|yes|lgtm|ship\s*it)\s+((?:apr|qpt)_[a-f0-9]+)\s*(.*)?$",
+    r"^\s*(?:approve|approved|yes|lgtm|ship\s*it)\s+((?:apr|qpt|pulse)_[a-f0-9]+)\s*(.*)?$",
     re.IGNORECASE,
 )
 REJECT_PATTERN = re.compile(
-    r"^\s*(?:reject|rejected|no|nack)\s+((?:apr|qpt)_[a-f0-9]+)\s*(.*)?$",
+    r"^\s*(?:reject|rejected|no|nack)\s+((?:apr|qpt|pulse)_[a-f0-9]+)\s*(.*)?$",
     re.IGNORECASE,
 )
 
@@ -176,6 +176,22 @@ def _handle_quant_approval(
         return {"ok": False, "error": str(exc)}
 
 
+def _handle_pulse_approval(
+    approval_ref: str,
+    decision: str,
+) -> dict[str, Any]:
+    """Handle a Pulse downstream proposal approval/rejection.
+
+    pulse_xxx IDs are Pulse review proposals — approving releases a downstream
+    packet into the target quant lane. Rejecting prevents release.
+    """
+    try:
+        from workspace.quant.pulse.alert_lane import handle_pulse_review
+        return handle_pulse_review(ROOT, approval_ref, decision)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def call_approval_endpoint(
     approval_id: str,
     decision: str,
@@ -185,9 +201,12 @@ def call_approval_endpoint(
 ) -> dict[str, Any]:
     """Route approval to the correct handler.
 
+    - pulse_xxx: Pulse proposal (handled locally via Pulse lane)
     - qpt_xxx: quant lane approval (handled locally)
     - apr_xxx: Jarvis approval (handled via inbound server)
     """
+    if approval_id.startswith("pulse_"):
+        return _handle_pulse_approval(approval_id, decision)
     if approval_id.startswith("qpt_"):
         return _handle_quant_approval(approval_id, decision)
 

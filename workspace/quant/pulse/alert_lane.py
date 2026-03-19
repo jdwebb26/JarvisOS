@@ -13,6 +13,7 @@ Pulse is auxiliary evidence, not the main driver.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -449,6 +450,56 @@ def _count_recent_cluster_proposals(root: Path, cluster_level: float,
     return count
 
 
+def _make_pulse_approval_ref(proposal_id: str) -> str:
+    """Generate a pulse_ prefixed approval ref for #review governance."""
+    short = hashlib.sha256(proposal_id.encode()).hexdigest()[:12]
+    return f"pulse_{short}"
+
+
+# ---------------------------------------------------------------------------
+# Proposal state — filesystem-backed, auditable
+# ---------------------------------------------------------------------------
+
+def _proposals_state_path(root: Path) -> Path:
+    d = root / "workspace" / "quant" / "pulse" / "proposals"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _save_proposal_state(root: Path, approval_ref: str, state: dict):
+    path = _proposals_state_path(root) / f"{approval_ref}.json"
+    path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+
+def _load_proposal_state(root: Path, approval_ref: str) -> Optional[dict]:
+    path = _proposals_state_path(root) / f"{approval_ref}.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def get_proposal_by_ref(root: Path, approval_ref: str) -> Optional[dict]:
+    """Load a Pulse proposal state by its approval_ref."""
+    return _load_proposal_state(root, approval_ref)
+
+
+def list_pending_proposals(root: Path) -> list[dict]:
+    """List all pending Pulse proposals."""
+    d = _proposals_state_path(root)
+    results = []
+    for f in sorted(d.glob("pulse_*.json")):
+        try:
+            state = json.loads(f.read_text(encoding="utf-8"))
+            if state.get("status") == "pending":
+                results.append(state)
+        except (json.JSONDecodeError, OSError):
+            continue
+    return results
+
+
 def propose_downstream(
     root: Path,
     target: str,
@@ -460,7 +511,14 @@ def propose_downstream(
 ) -> Optional[QuantPacket]:
     """Create a review-gated proposal for downstream quant lane injection.
 
-    target must be one of: fish_scenario, hermes_research, atlas_seed
+    Creates:
+    1. A pulse_review_proposal_packet stored in Pulse lane
+    2. A proposal state file with a pulse_xxx approval_ref
+    3. An approval_requested event posted to #review
+
+    The operator must approve via #review (approve pulse_xxx / reject pulse_xxx).
+    No downstream packet is emitted until review approval is received.
+
     Returns the proposal packet, or None if rate-limited.
     """
     if target not in PROPOSAL_TARGETS:
@@ -470,7 +528,7 @@ def propose_downstream(
     if cluster_level is not None:
         cluster_count = _count_recent_cluster_proposals(root, cluster_level, symbol)
         if cluster_count >= _MAX_PROPOSALS_PER_CLUSTER_24H:
-            return None  # Rate limited
+            return None
 
     # Check per-target caps
     if target == "atlas_seed":
@@ -495,76 +553,176 @@ def propose_downstream(
         evidence_refs=evidence_refs or [],
         action_requested=f"Approve to release as {target} to core quant lanes",
         escalation_level="operator_review",
-        notes=f"target={target}"
-              + (f"; cluster_level={cluster_level}" if cluster_level is not None else "")
-              + "; status=pending",
     )
+
+    # Generate approval ref for #review governance
+    approval_ref = _make_pulse_approval_ref(pkt.packet_id)
+    pkt.notes = (
+        f"target={target}; approval_ref={approval_ref}; status=pending"
+        + (f"; cluster_level={cluster_level}" if cluster_level is not None else "")
+    )
+
     store_packet(root, pkt)
+
+    # Save auditable proposal state
+    _save_proposal_state(root, approval_ref, {
+        "approval_ref": approval_ref,
+        "proposal_packet_id": pkt.packet_id,
+        "target": target,
+        "thesis": thesis,
+        "symbol": symbol,
+        "confidence": confidence,
+        "status": "pending",
+        "created_at": pkt.created_at,
+        "approved_at": None,
+        "rejected_at": None,
+        "downstream_packet_id": None,
+    })
+
+    # Emit to #pulse
     _emit_discord(pkt, root)
+
+    # Emit approval_requested to #review so the operator sees it
+    try:
+        from workspace.quant.shared.discord_bridge import emit_quant_approval_request
+        emit_quant_approval_request(
+            strategy_id=f"pulse:{target}",
+            approval_type="pulse_downstream",
+            approval_ref=approval_ref,
+            detail=f"Pulse → {target_labels[target]}: {thesis[:100]}",
+            root=root,
+        )
+    except Exception:
+        pass
+
     return pkt
 
 
-def approve_proposal(root: Path, proposal_packet_id: str) -> Optional[QuantPacket]:
-    """Approve a review proposal and emit the downstream packet.
+def approve_proposal(root: Path, approval_ref: str) -> Optional[QuantPacket]:
+    """Release a downstream packet after review approval.
 
-    Returns the downstream packet, or None if proposal not found.
+    Only works if the proposal state has been marked approved.
+    Called by the review poller after operator approves via #review,
+    or by handle_pulse_review() below.
+
+    Returns the downstream packet, or None if not found/not approved.
     """
+    state = _load_proposal_state(root, approval_ref)
+    if state is None:
+        return None
+    if state["status"] != "approved":
+        return None
+
+    target = state["target"]
+    if target not in PROPOSAL_TARGETS:
+        return None
+
+    # Find the original proposal packet for metadata
     proposals = list_lane_packets(root, "pulse", "pulse_review_proposal_packet")
     proposal = None
     for p in proposals:
-        if p.packet_id == proposal_packet_id:
+        if p.packet_id == state["proposal_packet_id"]:
             proposal = p
             break
 
-    if proposal is None:
-        return None
-
-    # Parse target from notes
-    target = None
-    for part in (proposal.notes or "").split(";"):
-        part = part.strip()
-        if part.startswith("target="):
-            target = part.split("=", 1)[1]
-
-    if not target or target not in PROPOSAL_TARGETS:
-        return None
+    thesis = state["thesis"]
+    symbol = state.get("symbol", "NQ")
+    confidence = state.get("confidence", 0.5)
+    proposal_id = state["proposal_packet_id"]
 
     # Emit the downstream packet into the target lane
     if target == "fish_scenario":
         downstream = make_packet(
             "scenario_packet", "fish",
-            f"[from Pulse] {proposal.thesis}",
+            f"[from Pulse] {thesis}",
             priority="medium",
-            symbol_scope=proposal.symbol_scope,
-            confidence=proposal.confidence,
-            evidence_refs=[proposal.packet_id],
-            notes="source=pulse_approved",
+            symbol_scope=symbol,
+            confidence=confidence,
+            evidence_refs=[proposal_id],
+            notes=f"source=pulse_approved; approval_ref={approval_ref}",
         )
     elif target == "hermes_research":
         downstream = make_packet(
             "research_request_packet", "hermes",
-            f"[from Pulse] {proposal.thesis}",
+            f"[from Pulse] {thesis}",
             priority="medium",
-            symbol_scope=proposal.symbol_scope,
-            evidence_refs=[proposal.packet_id],
-            notes="source=pulse_approved",
+            symbol_scope=symbol,
+            evidence_refs=[proposal_id],
+            notes=f"source=pulse_approved; approval_ref={approval_ref}",
             action_requested="Hermes: research this Pulse-originated topic",
         )
     elif target == "atlas_seed":
         downstream = make_packet(
             "idea_packet", "atlas",
-            f"[from Pulse] {proposal.thesis}",
+            f"[from Pulse] {thesis}",
             priority="low",
-            symbol_scope=proposal.symbol_scope,
-            confidence=proposal.confidence,
-            evidence_refs=[proposal.packet_id],
-            notes="source=pulse_approved",
+            symbol_scope=symbol,
+            confidence=confidence,
+            evidence_refs=[proposal_id],
+            notes=f"source=pulse_approved; approval_ref={approval_ref}",
         )
     else:
         return None
 
     store_packet(root, downstream)
+
+    # Update proposal state with downstream ID
+    state["downstream_packet_id"] = downstream.packet_id
+    _save_proposal_state(root, approval_ref, state)
+
     return downstream
+
+
+def handle_pulse_review(root: Path, approval_ref: str, decision: str) -> dict:
+    """Handle a #review decision for a Pulse proposal.
+
+    Called by the review poller when operator types:
+      approve pulse_xxx  →  decision="approved"
+      reject pulse_xxx   →  decision="rejected"
+
+    Returns {ok, approval_ref, decision, downstream_packet_id, error}.
+    """
+    state = _load_proposal_state(root, approval_ref)
+    if state is None:
+        return {"ok": False, "error": f"Pulse proposal {approval_ref} not found"}
+
+    if state["status"] != "pending":
+        return {"ok": False, "error": f"Proposal {approval_ref} is already {state['status']}"}
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    if decision == "approved":
+        state["status"] = "approved"
+        state["approved_at"] = now
+        _save_proposal_state(root, approval_ref, state)
+
+        # Now release the downstream packet
+        downstream = approve_proposal(root, approval_ref)
+        downstream_id = downstream.packet_id if downstream else None
+
+        return {
+            "ok": True,
+            "approval_ref": approval_ref,
+            "decision": "approved",
+            "downstream_packet_id": downstream_id,
+            "error": None,
+        }
+
+    elif decision == "rejected":
+        state["status"] = "rejected"
+        state["rejected_at"] = now
+        _save_proposal_state(root, approval_ref, state)
+
+        return {
+            "ok": True,
+            "approval_ref": approval_ref,
+            "decision": "rejected",
+            "downstream_packet_id": None,
+            "error": None,
+        }
+
+    else:
+        return {"ok": False, "error": f"Unsupported decision: {decision}"}
 
 
 # ---------------------------------------------------------------------------

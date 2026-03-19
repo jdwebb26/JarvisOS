@@ -126,19 +126,23 @@ class TestReviewGatedDownstream:
         for lane in ["fish", "atlas", "hermes", "sigma", "kitt", "tradefloor"]:
             assert len(list_lane_packets(clean_root, lane)) == 0
 
-    def test_approved_proposal_releases(self, clean_root):
-        from workspace.quant.pulse.alert_lane import propose_downstream, approve_proposal
+    def test_review_approved_releases(self, clean_root):
+        from workspace.quant.pulse.alert_lane import propose_downstream, handle_pulse_review
         proposal = propose_downstream(
             clean_root, "fish_scenario", "NQ downside", symbol="NQ",
         )
-        downstream = approve_proposal(clean_root, proposal.packet_id)
-        assert downstream is not None
-        assert downstream.lane == "fish"
+        ref = ""
+        for part in (proposal.notes or "").split(";"):
+            if part.strip().startswith("approval_ref="):
+                ref = part.strip().split("=", 1)[1]
+        result = handle_pulse_review(clean_root, ref, "approved")
+        assert result["ok"] is True
         assert len(list_lane_packets(clean_root, "fish")) == 1
 
-    def test_approve_nonexistent_returns_none(self, clean_root):
-        from workspace.quant.pulse.alert_lane import approve_proposal
-        assert approve_proposal(clean_root, "nonexistent-id") is None
+    def test_approve_nonexistent_returns_error(self, clean_root):
+        from workspace.quant.pulse.alert_lane import handle_pulse_review
+        result = handle_pulse_review(clean_root, "pulse_nonexistent", "approved")
+        assert result["ok"] is False
 
 
 # ---- End-to-end: webhook → ingest → proposal → approval → downstream ----
@@ -175,13 +179,20 @@ class TestEndToEndWebhookToDownstream:
         # Step 4: Verify nothing leaked
         assert len(list_lane_packets(clean_root, "fish")) == 0
 
-        # Step 5: Approve
-        downstream = approve_proposal(clean_root, proposal.packet_id)
-        assert downstream.lane == "fish"
-        assert "[from Pulse]" in downstream.thesis
+        # Step 5: Approve via review
+        from workspace.quant.pulse.alert_lane import handle_pulse_review
+        ref = ""
+        for part in (proposal.notes or "").split(";"):
+            if part.strip().startswith("approval_ref="):
+                ref = part.strip().split("=", 1)[1]
+        result = handle_pulse_review(clean_root, ref, "approved")
+        assert result["ok"] is True
+        assert result["downstream_packet_id"] is not None
 
         # Step 6: Verify fish now has exactly one packet
-        assert len(list_lane_packets(clean_root, "fish")) == 1
+        fish = list_lane_packets(clean_root, "fish")
+        assert len(fish) == 1
+        assert "[from Pulse]" in fish[0].thesis
 
 
 # ---- Kitt visibility ----
@@ -274,11 +285,16 @@ class TestApprovalPathIsolation:
         for lane in ["fish", "atlas", "hermes", "sigma", "kitt", "tradefloor"]:
             assert len(list_lane_packets(clean_root, lane)) == 0, f"Leaked to {lane}"
 
-        # Now approve one — only that target gets a packet
+        # Now approve one via review — only that target gets a packet
+        from workspace.quant.pulse.alert_lane import handle_pulse_review
         proposals = list_lane_packets(clean_root, "pulse", "pulse_review_proposal_packet")
         fish_proposal = [p for p in proposals if "fish_scenario" in (p.notes or "")][0]
-        downstream = approve_proposal(clean_root, fish_proposal.packet_id)
-        assert downstream.lane == "fish"
+        ref = ""
+        for part in (fish_proposal.notes or "").split(";"):
+            if part.strip().startswith("approval_ref="):
+                ref = part.strip().split("=", 1)[1]
+        result = handle_pulse_review(clean_root, ref, "approved")
+        assert result["ok"] is True
         assert len(list_lane_packets(clean_root, "fish")) == 1
         # Atlas still empty (that proposal wasn't approved)
         assert len(list_lane_packets(clean_root, "atlas")) == 0
