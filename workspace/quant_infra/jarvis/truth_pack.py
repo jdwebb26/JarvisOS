@@ -501,6 +501,28 @@ def _build_scenarios() -> dict:
 # Truth pack assembly
 # ---------------------------------------------------------------------------
 
+def _build_performance_attribution() -> dict:
+    """Per-family performance attribution."""
+    try:
+        from kitt.performance_attribution import compute_attribution
+        return compute_attribution()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _build_options_context() -> dict:
+    """Latest options-derived market context."""
+    options_path = QUANT_INFRA / "research" / "options" / "latest.json"
+    if not options_path.exists():
+        return {"has_data": False}
+    try:
+        data = json.loads(options_path.read_text())
+        data["has_data"] = True
+        return data
+    except (json.JSONDecodeError, OSError):
+        return {"has_data": False}
+
+
 def build_truth_pack() -> dict:
     """Assemble the complete operator truth pack."""
     now = datetime.now(timezone.utc)
@@ -514,6 +536,8 @@ def build_truth_pack() -> dict:
         "slippage": _build_slippage(),
         "feedback_loops": _build_feedback_loops(),
         "scenarios": _build_scenarios(),
+        "performance_attribution": _build_performance_attribution(),
+        "options_context": _build_options_context(),
     }
 
 
@@ -730,6 +754,47 @@ def render_truth_pack(pack: dict) -> str:
             )
     else:
         lines.append("  No active scenarios")
+
+    # 9. PERFORMANCE ATTRIBUTION
+    pa = pack.get("performance_attribution", {})
+    lines.append("")
+    lines.append("PERFORMANCE ATTRIBUTION")
+    pa_families = pa.get("families", {})
+    if pa_families:
+        pa_agg = pa.get("aggregate", {})
+        lines.append(
+            f"  Total: {pa_agg.get('total_trades', 0)} trades, "
+            f"PnL ${pa_agg.get('total_pnl', 0):.2f}, "
+            f"win rate {pa_agg.get('win_rate', 0):.0f}%"
+        )
+        for fam, info in pa_families.items():
+            pf = info.get("profit_factor", "N/A")
+            pf_str = f"{pf:.2f}" if isinstance(pf, float) else str(pf)
+            lines.append(
+                f"  {fam:25s}  {info['closed_trades']:3d} trades  "
+                f"W:{info['win_rate']:4.0f}%  PnL ${info['total_pnl']:>8.2f}  "
+                f"PF={pf_str}  DD=${info['max_drawdown']:.2f}"
+            )
+    else:
+        lines.append("  No closed trades for attribution")
+
+    # 10. OPTIONS CONTEXT
+    opts = pack.get("options_context", {})
+    lines.append("")
+    lines.append("OPTIONS CONTEXT")
+    if opts.get("has_data"):
+        lines.append(
+            f"  VIX: {opts.get('vix_current', 0)} ({opts.get('vix_regime', '?')}) | "
+            f"Term: {opts.get('vix_term_structure', '?')}"
+        )
+        lines.append(
+            f"  P/C ratio: {opts.get('spy_put_call_ratio', 0)} ({opts.get('spy_put_call_signal', '?')}) | "
+            f"IV rank: {opts.get('iv_rank_20d', 0):.0f}%"
+        )
+        if opts.get("spy_max_pain"):
+            lines.append(f"  SPY max pain: {opts['spy_max_pain']} ({opts.get('spy_max_pain_distance_pct', 0):+.1f}%)")
+    else:
+        lines.append("  No options data")
 
     lines.append("")
     lines.append(f"{'=' * 72}")
