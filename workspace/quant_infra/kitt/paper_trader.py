@@ -57,6 +57,20 @@ def _uid(prefix: str = "kpp") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
+def _simulate_slippage(price: float, direction: str) -> float:
+    """Apply realistic slippage to a paper fill price.
+
+    NQ typically has 0.25-point tick size. Simulate 0-2 ticks of adverse slippage.
+    Long fills slightly above requested, short fills slightly below.
+    """
+    import random
+    ticks = random.choice([0, 0, 0.25, 0.25, 0.50])  # 0-2 ticks, biased toward 0
+    if direction == "long":
+        return round(price + ticks, 2)  # pay more
+    else:
+        return round(price - ticks, 2)  # receive less
+
+
 def open_position(
     direction: str,
     entry_price: float,
@@ -65,26 +79,39 @@ def open_position(
     reasoning: str = "",
     quantity: int = 1,
     symbol: str = "NQ",
+    strategy_id: str | None = None,
 ) -> str:
-    """Open a new paper position and log the decision."""
+    """Open a new paper position with simulated slippage."""
     con = get_connection(WAREHOUSE_PATH)
     try:
         pos_id = _uid("kpp")
         dec_id = _uid("kpd")
 
-        # Record the position
+        # Apply slippage (spec §11: track requested vs fill for slippage measurement)
+        requested_price = entry_price
+        fill_price = _simulate_slippage(entry_price, direction)
+        slippage = abs(fill_price - requested_price)
+        if slippage > 0:
+            print(f"[kitt] Slippage: requested {requested_price:.2f}, filled {fill_price:.2f} ({slippage:.2f} pts)")
+
+        # Record the position with both prices
         insert_paper_position(con, {
             "position_id": pos_id,
             "opened_at": _now(),
             "symbol": symbol,
             "direction": direction,
             "quantity": quantity,
-            "entry_price": entry_price,
+            "entry_price": fill_price,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
             "reasoning": reasoning,
             "upstream_packet": "",
         })
+        # Store the requested price for slippage tracking + strategy_id for multi-strategy
+        con.execute(
+            "UPDATE kitt_paper_positions SET requested_price = ?, strategy_id = ? WHERE position_id = ?",
+            [requested_price, strategy_id, pos_id],
+        )
 
         # Record the decision
         insert_trade_decision(con, {
@@ -94,7 +121,7 @@ def open_position(
             "symbol": symbol,
             "reasoning": reasoning,
             "confidence": None,
-            "market_context": f"entry={entry_price}, SL={stop_loss}, TP={take_profit}",
+            "market_context": f"requested={requested_price}, fill={fill_price}, slippage={slippage:.2f}, SL={stop_loss}, TP={take_profit}",
             "position_id": pos_id,
             "upstream_packets": "",
         })
@@ -103,9 +130,9 @@ def open_position(
         _write_kitt_packet(con)
 
         # Write brief
-        _write_brief(con, f"Opened {direction} {symbol} @ {entry_price}")
+        _write_brief(con, f"Opened {direction} {symbol} @ {fill_price}")
 
-        print(f"[kitt] Opened {direction} {symbol} @ {entry_price} → {pos_id}")
+        print(f"[kitt] Opened {direction} {symbol} @ {fill_price} (requested {requested_price}, slip {slippage:.2f}) → {pos_id}")
         return pos_id
     finally:
         con.close()
@@ -267,7 +294,8 @@ def get_status() -> dict:
     try:
         open_positions = con.execute("""
             SELECT position_id, opened_at, symbol, direction, quantity,
-                   entry_price, stop_loss, take_profit, mark_price, marked_at, reasoning
+                   entry_price, stop_loss, take_profit, mark_price, marked_at, reasoning,
+                   strategy_id
             FROM kitt_paper_positions WHERE status = 'open'
             ORDER BY opened_at DESC
         """).fetchall()
@@ -296,6 +324,7 @@ def get_status() -> dict:
                     "direction": r[3], "quantity": r[4], "entry_price": r[5],
                     "stop_loss": r[6], "take_profit": r[7], "mark_price": r[8],
                     "marked_at": str(r[9]) if r[9] else None, "reasoning": r[10],
+                    "strategy_id": r[11],
                 }
                 for r in open_positions
             ],

@@ -23,7 +23,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+QUANT_INFRA = Path(__file__).resolve().parent.parent
+REPO_ROOT = QUANT_INFRA.parent.parent
+sys.path.insert(0, str(QUANT_INFRA))
+sys.path.insert(0, str(REPO_ROOT))
 
 import duckdb
 
@@ -31,7 +34,6 @@ from warehouse.loader import get_connection, insert_scenario
 from packets.writer import write_packet, read_packet
 
 THIS_DIR = Path(__file__).resolve().parent
-QUANT_INFRA = THIS_DIR.parent
 WAREHOUSE_PATH = QUANT_INFRA / "warehouse" / "quant.duckdb"
 SCENARIOS_DIR = QUANT_INFRA / "research" / "fish_scenarios"
 
@@ -83,6 +85,55 @@ def _get_recent_range(con: duckdb.DuckDBPyConnection, days: int = 5) -> dict:
     except Exception:
         pass
     return {}
+
+
+def _load_regime_guidance() -> dict:
+    """Read rejection regime feedback for scenario probability weighting.
+
+    Returns dict of {regime_tag: {rejection_count, dominant_reason, affected_families}}.
+    Per consumption plan Step 3: Fish reads rejection_feedback.json to bias
+    scenario generation toward regimes with high rejection rates.
+    """
+    path = REPO_ROOT / "workspace" / "quant" / "shared" / "latest" / "rejection_feedback.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+        return data.get("fish", {}).get("regimes", {})
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _apply_regime_bias(scenarios: list[dict], regime_guidance: dict) -> list[dict]:
+    """Adjust scenario probabilities based on rejection regime feedback.
+
+    Regimes with higher rejection counts get probability boosts on negative
+    scenarios (more risk awareness). This biases Fish toward modeling the
+    failure modes that the system actually hits.
+    """
+    if not regime_guidance:
+        return scenarios
+
+    # Find regimes with significant rejection counts
+    high_rejection_regimes = {
+        tag for tag, info in regime_guidance.items()
+        if info.get("rejection_count", 0) >= 3
+    }
+    if not high_rejection_regimes:
+        return scenarios
+
+    for scenario in scenarios:
+        stype = scenario.get("scenario_type", "")
+        # Boost probability of negative/risk scenarios when regime feedback
+        # indicates high rejection rates (strategies keep failing here)
+        if scenario.get("impact") == "negative" and stype in (
+            "stop_out", "failed_breakout", "gap_risk", "vol_expansion", "invalidation"
+        ):
+            # Small probability boost: +0.05 per high-rejection regime
+            boost = min(0.10, 0.05 * len(high_rejection_regimes))
+            scenario["probability"] = min(0.60, scenario["probability"] + boost)
+
+    return scenarios
 
 
 def generate_scenarios_for_position(
@@ -297,6 +348,11 @@ def run_scenario_generation() -> list[dict]:
         range_stats = _get_recent_range(con)
         all_scenarios = []
 
+        # Load rejection regime guidance for probability biasing
+        regime_guidance = _load_regime_guidance()
+        if regime_guidance:
+            print(f"[salmon] Loaded regime guidance: {len(regime_guidance)} regime(s) with rejection data")
+
         # Get open Kitt positions
         positions = con.execute("""
             SELECT position_id, direction, entry_price, stop_loss, take_profit
@@ -318,6 +374,9 @@ def run_scenario_generation() -> list[dict]:
         else:
             all_scenarios = generate_baseline_scenarios(con, market, range_stats)
             print(f"[salmon] Generated {len(all_scenarios)} baseline scenarios (no open positions)")
+
+        # Apply regime-aware probability bias from rejection feedback
+        all_scenarios = _apply_regime_bias(all_scenarios, regime_guidance)
 
         # Store in DuckDB
         for s in all_scenarios:
@@ -408,10 +467,49 @@ def _write_scenario_artifact(scenarios: list[dict], market: dict, positions: lis
     print(f"[salmon] Wrote scenario artifact → {SCENARIOS_DIR / 'latest.md'}")
 
 
+def _check_governor() -> bool:
+    """Check if governor has paused the fish/salmon lane."""
+    try:
+        from workspace.quant.shared.governor import get_lane_params
+        params = get_lane_params(REPO_ROOT, "fish")
+        if params.get("paused"):
+            print("[salmon] Governor: fish lane is PAUSED — skipping cycle")
+            return False
+    except Exception as exc:
+        print(f"[salmon] Governor check failed (running anyway): {exc}")
+    return True
+
+
+def _report_governor(scenario_count: int) -> None:
+    """Report cycle outcome to governor."""
+    try:
+        from workspace.quant.shared.governor import evaluate_cycle
+        health = 0.8 if scenario_count > 0 else 0.3
+        usefulness = 0.6 if scenario_count > 0 else 0.2
+        gov_action, gov_reason = evaluate_cycle(
+            REPO_ROOT, "fish",
+            usefulness_score=usefulness,
+            efficiency_score=0.7,
+            health_score=health,
+            confidence_score=0.5,
+        )
+        if gov_action != "hold":
+            print(f"[salmon] Governor: {gov_action} — {gov_reason}")
+    except Exception as exc:
+        print(f"[salmon] Governor report failed: {exc}")
+
+
 def main():
+    # Governor gate
+    if not _check_governor():
+        return
+
     print("[salmon] Running scenario generation for Fish lane...")
     scenarios = run_scenario_generation()
     print(f"[salmon] Generated {len(scenarios)} scenarios total.")
+
+    # Report to governor
+    _report_governor(len(scenarios))
 
 
 if __name__ == "__main__":

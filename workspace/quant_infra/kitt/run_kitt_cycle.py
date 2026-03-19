@@ -25,7 +25,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+QUANT_INFRA = Path(__file__).resolve().parent.parent
+REPO_ROOT = QUANT_INFRA.parent.parent
+sys.path.insert(0, str(QUANT_INFRA))
+sys.path.insert(0, str(REPO_ROOT))
 
 from kitt.paper_trader import (
     check_stops,
@@ -39,7 +42,6 @@ from warehouse.loader import get_connection, insert_trade_decision
 from events.emitter import emit_event
 
 THIS_DIR = Path(__file__).resolve().parent
-QUANT_INFRA = THIS_DIR.parent
 WAREHOUSE_PATH = QUANT_INFRA / "warehouse" / "quant.duckdb"
 BRIEFS_DIR = QUANT_INFRA / "research" / "kitt_briefs"
 THESIS_STATE_PATH = THIS_DIR / "thesis_state.json"
@@ -52,7 +54,23 @@ ENTRY_ATR_MULT = 1.8      # enter when deviation > 1.8 * ATR
 STOP_ATR_MULT = 2.5        # stop at 2.5 * ATR from entry
 TP_ATR_MULT = 1.5          # take-profit at 1.5 * ATR from entry
 MIN_ATR_ABS = 20.0         # minimum absolute ATR to trade (NQ points)
-MAX_OPEN_POSITIONS = 1     # never more than 1 open paper position
+DEFAULT_MAX_OPEN_POSITIONS = 3  # default max open paper positions (configurable via risk_limits.json)
+
+
+def _get_max_open_positions() -> int:
+    """Read max open positions from risk_limits.json, falling back to default.
+
+    This enables multi-strategy support: operators can raise the limit as
+    more strategies are promoted to paper trading.
+    """
+    risk_path = REPO_ROOT / "workspace" / "quant" / "shared" / "config" / "risk_limits.json"
+    try:
+        if risk_path.exists():
+            limits = json.loads(risk_path.read_text())
+            return limits.get("portfolio", {}).get("max_open_positions", DEFAULT_MAX_OPEN_POSITIONS)
+    except (json.JSONDecodeError, OSError):
+        pass
+    return DEFAULT_MAX_OPEN_POSITIONS
 
 
 def _now() -> str:
@@ -259,11 +277,49 @@ def compute_signal(bars: list[dict]) -> dict:
 # Cycle decision logic
 # ---------------------------------------------------------------------------
 
+def _check_governor() -> bool:
+    """Check if governor has paused the kitt lane. Returns True if OK to run."""
+    try:
+        from workspace.quant.shared.governor import get_lane_params
+        params = get_lane_params(REPO_ROOT, "kitt")
+        if params.get("paused"):
+            print("[kitt] Governor: lane is PAUSED — skipping cycle")
+            return False
+    except Exception as exc:
+        print(f"[kitt] Governor check failed (running anyway): {exc}")
+    return True
+
+
+def _report_governor(action: str) -> None:
+    """Report cycle outcome to governor for next-cycle adaptation."""
+    try:
+        from workspace.quant.shared.governor import evaluate_cycle
+        # Simple scoring: successful cycle = healthy, skip/error = lower
+        health = 0.8 if action not in ("skip",) else 0.4
+        usefulness = 0.6 if action in ("hold", "open_long", "open_short") else 0.3
+        gov_action, gov_reason = evaluate_cycle(
+            REPO_ROOT, "kitt",
+            usefulness_score=usefulness,
+            efficiency_score=0.7,
+            health_score=health,
+            confidence_score=0.5,
+        )
+        if gov_action != "hold":
+            print(f"[kitt] Governor: {gov_action} — {gov_reason}")
+    except Exception as exc:
+        print(f"[kitt] Governor report failed: {exc}")
+
+
 def run_cycle(dry_run: bool = False) -> dict:
     """Execute one bounded Kitt paper-trading cycle.
 
     Returns a decision record dict.
     """
+    # Governor gate
+    if not dry_run and not _check_governor():
+        return {"decision_id": "", "action": "governor_paused",
+                "reasoning": "Lane paused by governor"}
+
     now = datetime.now(timezone.utc)
     print(f"[kitt] Cycle start: {now.strftime('%Y-%m-%d %H:%M UTC')}")
 
@@ -322,25 +378,32 @@ def run_cycle(dry_run: bool = False) -> dict:
     regime = _classify_regime(signal)
 
     # 4. If already at max positions, decide hold or manage
-    if len(open_positions) >= MAX_OPEN_POSITIONS:
-        pos = open_positions[0]
-        mult = 1 if pos["direction"] == "long" else -1
-        unrealized = round((current_price - pos["entry_price"]) * mult, 2) if pos["entry_price"] else 0
-        dist_stop = round((current_price - pos["stop_loss"]) * mult, 2) if pos["stop_loss"] else None
-        dist_target = round((pos["take_profit"] - current_price) * mult, 2) if pos["take_profit"] else None
-        risk = abs(pos["entry_price"] - pos["stop_loss"]) if pos["entry_price"] and pos["stop_loss"] else None
-        reward = abs(pos["take_profit"] - pos["entry_price"]) if pos["take_profit"] and pos["entry_price"] else None
-        rr = round(reward / risk, 2) if risk and reward and risk > 0 else None
+    max_positions = _get_max_open_positions()
+    if len(open_positions) >= max_positions:
+        # Summarize all open positions (multi-strategy aware)
+        total_unrealized = 0.0
+        position_summaries = []
+        for pos in open_positions:
+            mult = 1 if pos["direction"] == "long" else -1
+            unrealized = round((current_price - pos["entry_price"]) * mult, 2) if pos["entry_price"] else 0
+            total_unrealized += unrealized
+            strat = pos.get("strategy_id") or "kitt-default"
+            position_summaries.append(
+                f"{pos['direction']} NQ @ {pos['entry_price']} ({strat}, "
+                f"unrealized={unrealized:+.2f} pts)"
+            )
 
-        # Thesis change detection
+        # Thesis change detection (uses most recent position for primary tracking)
+        primary_pos = open_positions[0]
         prev_state = _load_thesis_state()
         current_state = {
             "regime": regime,
             "signal_direction": signal["signal"],
             "atr": signal.get("atr"),
             "deviation": signal.get("deviation"),
-            "position_id": pos["position_id"],
-            "unrealized_pts": unrealized,
+            "position_id": primary_pos["position_id"],
+            "open_position_count": len(open_positions),
+            "total_unrealized_pts": round(total_unrealized, 2),
             "updated_at": _now(),
         }
 
@@ -348,26 +411,28 @@ def run_cycle(dry_run: bool = False) -> dict:
         if thesis_change and not dry_run:
             emit_event(
                 "kitt", "thesis_changed",
-                side=pos["direction"],
-                entry=pos["entry_price"],
-                stop=pos["stop_loss"],
-                target=pos["take_profit"],
+                side=primary_pos["direction"],
+                entry=primary_pos["entry_price"],
+                stop=primary_pos["stop_loss"],
+                target=primary_pos["take_profit"],
                 current_mark=current_price,
-                position_id=pos["position_id"],
+                position_id=primary_pos["position_id"],
                 reason=thesis_change,
                 source_packet="kitt_cycle",
-                extra={"regime": regime, "signal": signal["signal"]},
+                extra={"regime": regime, "signal": signal["signal"],
+                       "open_positions": len(open_positions)},
             )
             cycle_event = "thesis_changed"
             print(f"[kitt] Thesis change: {thesis_change}")
 
         _save_thesis_state(current_state)
 
-        reason = (f"Holding {pos['direction']} NQ @ {pos['entry_price']}, "
-                  f"mark={current_price:.2f}, unrealized={unrealized:.2f} pts")
+        reason = (f"Holding {len(open_positions)} position(s) "
+                  f"(max {max_positions}), total unrealized={total_unrealized:+.2f} pts: "
+                  + "; ".join(position_summaries[:3]))
         return _record_decision("hold", reason, reason, dry_run=dry_run,
                                 market_context=_market_context(bars),
-                                position_id=pos["position_id"],
+                                position_id=primary_pos["position_id"],
                                 signal=signal, regime=regime,
                                 cycle_event=cycle_event)
 
@@ -540,66 +605,146 @@ def _write_cycle_brief(action: str, reasoning: str, status: dict,
                        market_context: str, *, signal: dict | None = None,
                        regime: str | None = None,
                        cycle_event: str | None = None) -> None:
-    """Write human-readable Kitt cycle brief with thesis and change tracking."""
+    """Write spec §7 compliant Kitt cycle brief with all 9 sections + thesis tracking."""
     now = datetime.now(timezone.utc)
     perf = status["performance"]
 
-    md = f"""# Kitt Cycle Brief — {now.strftime('%Y-%m-%d %H:%M UTC')}
+    md = f"""KITT BRIEF — {now.strftime('%Y-%m-%d %H:%M UTC')}
+{'━' * 40}
 
-## Decision
-**{action}** — {reasoning}
-
-## Market Context
+MARKET READ
 {market_context}
 """
     if regime:
-        md += f"- **Regime**: {regime}\n"
+        md += f"  Regime: {regime}\n"
     if signal:
-        md += (f"- **Signal**: {signal.get('signal', 'n/a')} | "
+        md += (f"  Signal: {signal.get('signal', 'n/a')} | "
                f"ATR={signal.get('atr', 'n/a')} | "
                f"Deviation={signal.get('deviation', 'n/a')}\n")
-
     if cycle_event:
-        md += f"\n> **Event emitted this cycle**: `{cycle_event}`\n"
-
-    md += "\n## Open Positions\n"
-    if status["open_positions"]:
-        for p in status["open_positions"]:
-            entry = p["entry_price"]
-            mark = p.get("mark_price") or entry
-            direction = p["direction"]
-            mult = 1 if direction == "long" else -1
-            unrealized = round((mark - entry) * mult, 2) if entry else 0
-            stop = p.get("stop_loss")
-            target = p.get("take_profit")
-            dist_stop = round((mark - stop) * mult, 2) if mark and stop else None
-            dist_target = round((target - mark) * mult, 2) if mark and target else None
-            risk = abs(entry - stop) if entry and stop else None
-            reward = abs(target - entry) if entry and target else None
-            rr = round(reward / risk, 2) if risk and reward and risk > 0 else None
-
-            md += (f"- **{p['position_id']}**: {direction} NQ "
-                   f"@ {entry} → mark {mark}\n")
-            md += f"  - SL={stop} | TP={target} | R:R={rr}\n"
-            md += f"  - Unrealized: {unrealized:+.2f} pts (${unrealized * 20:+.2f})\n"
-            if dist_stop is not None:
-                md += f"  - Distance to stop: {dist_stop:.2f} pts | to target: {dist_target:.2f} pts\n"
-            if p.get("reasoning"):
-                md += f"  - **Thesis**: {p['reasoning'][:120]}\n"
-            if stop:
-                md += f"  - **Invalidation**: thesis fails if NQ reaches {stop}\n"
-    else:
-        md += "- None\n"
+        md += f"  Event: {cycle_event}\n"
 
     md += f"""
-## Paper Track Record
-- Trades: {perf['total_trades']} | Wins: {perf['wins']} | Losses: {perf['losses']}
-- Total PnL: ${perf['total_pnl']:.2f} | Avg: ${perf['avg_pnl']:.2f}
+TOP SIGNAL
+{action.upper()}: {reasoning}
 
-## Recent Decisions
+PIPELINE
 """
-    for d in status["recent_decisions"][:3]:
-        md += f"- [{d['at'][:19]}] **{d['action']}**: {d['reasoning'][:80]}\n"
+    # Read strategy registry for pipeline snapshot
+    pipeline = _get_pipeline_snapshot()
+    md += f"  PAPER_ACTIVE: {pipeline['paper_active_count']} strategies"
+    if pipeline["paper_active_ids"]:
+        md += f" ({', '.join(pipeline['paper_active_ids'])})"
+    md += f"\n  LIVE_ACTIVE:  {pipeline['live_active_count']} strategies"
+    if pipeline["live_active_ids"]:
+        md += f" ({', '.join(pipeline['live_active_ids'])})"
+    md += "\n"
+    if pipeline["near_promotion"]:
+        md += f"  Near promotion: {', '.join(pipeline['near_promotion'])}\n"
+
+    md += "\nPORTFOLIO SNAPSHOT\n"
+    portfolio = _compute_portfolio_snapshot(status)
+    md += f"  Total exposure: {portfolio['position_count']} position(s), {portfolio['strategy_count']} strategy(ies)\n"
+    md += f"  PnL: ${perf['total_pnl']:.2f} ({perf['total_trades']} trades, {perf['wins']}W/{perf['losses']}L)\n"
+    md += f"  Concentration: {portfolio['concentration_status']}\n"
+    md += f"  Correlation: {portfolio['correlation_status']}\n"
+
+    md += "\nLANE ACTIVITY\n"
+    lane_activity = _get_lane_activity()
+    for lane_name, summary in lane_activity.items():
+        md += f"  {lane_name:8s} {summary}\n"
+
+    # TradeFloor
+    tf = _get_tradefloor_summary()
+    if tf:
+        md += f"\nTRADEFLOOR\n"
+        md += f"  Agreement tier: {tf['tier']} ({tf['tier_name']})\n"
+        if tf.get("reasoning"):
+            md += f"  {tf['reasoning'][:80]}\n"
+
+    md += f"\nEXECUTION ({len(status['open_positions'])} open, max {_get_max_open_positions()})\n"
+    if status["open_positions"]:
+        # Group by strategy for multi-strategy visibility
+        by_strategy: dict[str, list] = {}
+        for p in status["open_positions"]:
+            strat = p.get("strategy_id") or "kitt-default"
+            by_strategy.setdefault(strat, []).append(p)
+
+        for strat_id, positions in by_strategy.items():
+            if len(by_strategy) > 1:
+                md += f"  --- Strategy: {strat_id} ({len(positions)} position(s)) ---\n"
+            for p in positions:
+                entry = p["entry_price"]
+                mark = p.get("mark_price") or entry
+                direction = p["direction"]
+                mult = 1 if direction == "long" else -1
+                unrealized = round((mark - entry) * mult, 2) if entry else 0
+                stop = p.get("stop_loss")
+                target = p.get("take_profit")
+                dist_stop = round((mark - stop) * mult, 2) if mark and stop else None
+                dist_target = round((target - mark) * mult, 2) if mark and target else None
+                risk = abs(entry - stop) if entry and stop else None
+                reward = abs(target - entry) if entry and target else None
+                rr = round(reward / risk, 2) if risk and reward and risk > 0 else None
+
+                md += (f"  {p['position_id']}: {direction} NQ "
+                       f"@ {entry} -> mark {mark}\n")
+                md += f"    SL={stop} | TP={target} | R:R={rr}\n"
+                md += f"    Unrealized: {unrealized:+.2f} pts (${unrealized * 20:+.2f})\n"
+                if dist_stop is not None:
+                    md += f"    Distance to stop: {dist_stop:.2f} pts | to target: {dist_target:.2f} pts\n"
+                if p.get("reasoning"):
+                    md += f"    Thesis: {p['reasoning'][:120]}\n"
+                if stop:
+                    md += f"    Invalidation: thesis fails if NQ reaches {stop}\n"
+    else:
+        md += "  No active positions\n"
+
+    # Rejection Intelligence section (consumption plan Step 2)
+    rej_summary = _get_rejection_summary()
+    if rej_summary.get("has_data"):
+        md += "\nREJECTION INTELLIGENCE\n"
+        if rej_summary["cooldown_families"]:
+            md += f"  Cooldown families: {', '.join(rej_summary['cooldown_families'])}\n"
+        if rej_summary["near_misses"]:
+            md += f"  Near-miss families: {', '.join(rej_summary['near_misses'])}\n"
+        if rej_summary["top_reasons"]:
+            md += "  Top rejection reasons: "
+            md += ", ".join(f"{r['reason']}({r['count']})" for r in rej_summary["top_reasons"])
+            md += "\n"
+        if rej_summary["exploration_shifts"]:
+            for shift in rej_summary["exploration_shifts"]:
+                md += f"  >> {shift}\n"
+
+    # Slippage tracking section
+    slip_summary = _get_slippage_summary()
+    if slip_summary.get("has_data"):
+        md += "\nSLIPPAGE TRACKING\n"
+        md += f"  Trades with slippage data: {slip_summary['trade_count']}\n"
+        md += f"  Mean slippage: {slip_summary['mean_slippage']:.2f} pts\n"
+        md += f"  Max slippage: {slip_summary['max_slippage']:.2f} pts\n"
+        md += f"  Total slippage cost: ${slip_summary['total_slippage_usd']:.2f}\n"
+
+    md += "\nSYSTEM HEALTH\n"
+    health = _get_system_health()
+    md += f"  Active lanes: {', '.join(health['active_lanes']) or 'none'}\n"
+    md += f"  Silent/errored: {', '.join(health['silent_lanes']) or 'all healthy'}\n"
+    if health["circuit_breakers"]:
+        for cb in health["circuit_breakers"]:
+            md += f"  !! {cb['lane']}: {cb['detail']}\n"
+    else:
+        md += "  Circuit breakers: all clear\n"
+    feedback = _get_feedback_loop_status()
+    md += f"  Feedback loops: Atlas consuming rejections: {feedback['atlas_consuming']}, "
+    md += f"Fish calibrating: {feedback['fish_calibrating']}\n"
+
+    md += "\nOPERATOR ACTION NEEDED\n"
+    actions = _get_operator_actions(pipeline, health)
+    if actions:
+        for a in actions:
+            md += f"  - {a}\n"
+    else:
+        md += "  none\n"
 
     # What changed since last cycle
     prev_state = _load_thesis_state()
@@ -623,6 +768,269 @@ def _write_cycle_brief(action: str, reasoning: str, status: dict,
 
 
 # ---------------------------------------------------------------------------
+# Brief data helpers — read shared state for spec §7 sections
+# ---------------------------------------------------------------------------
+
+def _compute_portfolio_snapshot(status: dict) -> dict:
+    """Compute portfolio concentration and correlation per spec §15.
+
+    Concentration: flags if any single strategy holds > threshold of total exposure.
+    Correlation: flags if multiple strategies trade the same symbol/direction.
+    """
+    positions = status["open_positions"]
+    risk_path = REPO_ROOT / "workspace" / "quant" / "shared" / "config" / "risk_limits.json"
+    try:
+        limits = json.loads(risk_path.read_text()) if risk_path.exists() else {}
+    except (json.JSONDecodeError, OSError):
+        limits = {}
+
+    portfolio_limits = limits.get("portfolio", {})
+    max_exposure = portfolio_limits.get("max_total_exposure", 4)
+    concentration_threshold = portfolio_limits.get("concentration_threshold", 0.6)
+
+    # Count active strategies from registry
+    registry = REPO_ROOT / "workspace" / "quant" / "shared" / "registries" / "strategies.jsonl"
+    active_strategies = []
+    try:
+        if registry.exists():
+            for line in registry.read_text().strip().splitlines():
+                entry = json.loads(line)
+                if entry.get("lifecycle_state") in ("PAPER_ACTIVE", "LIVE_ACTIVE"):
+                    active_strategies.append(entry.get("strategy_id", ""))
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    strategy_count = len(active_strategies)
+
+    # Concentration check: is any one symbol > threshold of total positions?
+    concentration_status = "clean"
+    if positions:
+        symbol_counts: dict[str, int] = {}
+        for p in positions:
+            sym = p.get("symbol", "NQ")
+            symbol_counts[sym] = symbol_counts.get(sym, 0) + 1
+        total = sum(symbol_counts.values())
+        for sym, count in symbol_counts.items():
+            if total > 0 and count / total > concentration_threshold:
+                concentration_status = f"WARNING: {sym} is {count}/{total} ({count/total:.0%}) of exposure"
+
+    # Exposure check
+    if strategy_count >= max_exposure:
+        concentration_status = (f"LIMIT: {strategy_count} active strategies "
+                                f"(max {max_exposure})")
+
+    # Correlation check: multiple positions in same direction on same symbol
+    correlation_status = "clean"
+    if len(positions) >= 2:
+        direction_groups: dict[str, list] = {}
+        for p in positions:
+            key = f"{p.get('symbol', 'NQ')}_{p.get('direction', '?')}"
+            direction_groups.setdefault(key, []).append(p.get("position_id", ""))
+        correlated = {k: v for k, v in direction_groups.items() if len(v) > 1}
+        if correlated:
+            pairs = ", ".join(f"{k} ({len(v)} positions)" for k, v in correlated.items())
+            correlation_status = f"WARNING: correlated positions: {pairs}"
+
+    return {
+        "position_count": len(positions),
+        "strategy_count": strategy_count,
+        "concentration_status": concentration_status,
+        "correlation_status": correlation_status,
+    }
+
+
+def _get_pipeline_snapshot() -> dict:
+    """Read strategy registry for PIPELINE section."""
+    registry = REPO_ROOT / "workspace" / "quant" / "shared" / "registries" / "strategies.jsonl"
+    paper_active = []
+    live_active = []
+    near_promotion = []
+    try:
+        if registry.exists():
+            for line in registry.read_text().strip().splitlines():
+                entry = json.loads(line)
+                state = entry.get("lifecycle_state", "")
+                sid = entry.get("strategy_id", "")
+                if state == "PAPER_ACTIVE":
+                    paper_active.append(sid)
+                elif state == "LIVE_ACTIVE":
+                    live_active.append(sid)
+                elif state in ("PROMOTED", "PAPER_REVIEW"):
+                    near_promotion.append(sid)
+    except (json.JSONDecodeError, OSError):
+        pass
+    return {
+        "paper_active_count": len(paper_active),
+        "paper_active_ids": paper_active,
+        "live_active_count": len(live_active),
+        "live_active_ids": live_active,
+        "near_promotion": near_promotion,
+    }
+
+
+def _get_lane_activity() -> dict[str, str]:
+    """Read latest health summaries for LANE ACTIVITY section."""
+    latest_dir = REPO_ROOT / "workspace" / "quant" / "shared" / "latest"
+    activity = {}
+    lane_packets = {
+        "Atlas": "atlas_health_summary.json",
+        "Fish": "fish_health_summary.json",
+        "Sigma": "sigma_validation_packet.json",
+        "Hermes": "hermes_health_summary.json",
+    }
+    for name, filename in lane_packets.items():
+        path = latest_dir / filename
+        if path.exists():
+            try:
+                data = json.loads(path.read_text())
+                thesis = data.get("thesis", data.get("summary", ""))
+                if thesis:
+                    activity[name] = thesis[:70]
+                else:
+                    activity[name] = f"packet at {data.get('created_at', '?')[:19]}"
+            except (json.JSONDecodeError, OSError):
+                activity[name] = "(read error)"
+        else:
+            activity[name] = "(no recent packet)"
+    return activity
+
+
+def _get_tradefloor_summary() -> dict | None:
+    """Read latest tradefloor packet for TRADEFLOOR section."""
+    path = REPO_ROOT / "workspace" / "quant" / "shared" / "latest" / "tradefloor_tradefloor_packet.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        tier = data.get("agreement_tier", 0)
+        tier_names = {0: "none", 1: "weak", 2: "strong", 3: "high_conviction", 4: "actionable"}
+        return {
+            "tier": tier,
+            "tier_name": tier_names.get(tier, "unknown"),
+            "reasoning": data.get("agreement_tier_reasoning", ""),
+        }
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _get_system_health() -> dict:
+    """Read lane health + circuit breakers for SYSTEM HEALTH section."""
+    latest_dir = REPO_ROOT / "workspace" / "quant" / "shared" / "latest"
+    active = []
+    silent = []
+    expected = ["atlas", "fish", "hermes"]
+    for lane in expected:
+        path = latest_dir / f"{lane}_health_summary.json"
+        if path.exists():
+            active.append(lane)
+        else:
+            silent.append(lane)
+
+    # Always-active services
+    active.extend(["kitt", "salmon", "sigma"])
+
+    # Circuit breakers
+    cb_trips = []
+    try:
+        from workspace.quant.shared.circuit_breakers import check_circuit_breakers
+        cb_trips = check_circuit_breakers(REPO_ROOT)
+    except Exception:
+        pass
+
+    return {
+        "active_lanes": sorted(active),
+        "silent_lanes": silent,
+        "circuit_breakers": cb_trips,
+    }
+
+
+def _get_rejection_summary() -> dict:
+    """Read rejection scoreboards for brief enrichment (consumption plan Step 2)."""
+    result: dict = {"has_data": False, "top_reasons": [], "cooldown_families": [],
+                    "near_misses": [], "exploration_shifts": []}
+
+    scoreboard_dir = REPO_ROOT / "state" / "quant" / "rejections"
+
+    learning_path = scoreboard_dir / "learning_summary.json"
+    if learning_path.exists():
+        try:
+            data = json.loads(learning_path.read_text())
+            result["has_data"] = True
+            result["top_reasons"] = data.get("top_rejection_reasons", [])[:3]
+            result["near_misses"] = [
+                f["family"] for f in data.get("top_near_miss_families", [])[:3]
+            ]
+            result["exploration_shifts"] = data.get("recommended_exploration_shifts", [])[:3]
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    family_path = scoreboard_dir / "family_scoreboard.json"
+    if family_path.exists():
+        try:
+            data = json.loads(family_path.read_text())
+            result["has_data"] = True
+            result["cooldown_families"] = [
+                f for f, info in data.get("families", {}).items()
+                if info.get("cooldown")
+            ]
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return result
+
+
+def _get_slippage_summary() -> dict:
+    """Compute aggregate slippage stats from paper positions."""
+    result: dict = {"has_data": False, "trade_count": 0, "mean_slippage": 0.0,
+                    "max_slippage": 0.0, "total_slippage_usd": 0.0}
+    try:
+        con = get_connection(WAREHOUSE_PATH)
+        try:
+            row = con.execute("""
+                SELECT COUNT(*) as n,
+                       COALESCE(AVG(ABS(entry_price - requested_price)), 0) as mean_slip,
+                       COALESCE(MAX(ABS(entry_price - requested_price)), 0) as max_slip,
+                       COALESCE(SUM(ABS(entry_price - requested_price) * quantity * 20), 0) as total_slip_usd
+                FROM kitt_paper_positions
+                WHERE requested_price IS NOT NULL
+            """).fetchone()
+            if row and row[0] > 0:
+                result["has_data"] = True
+                result["trade_count"] = row[0]
+                result["mean_slippage"] = round(row[1], 2)
+                result["max_slippage"] = round(row[2], 2)
+                result["total_slippage_usd"] = round(row[3], 2)
+        finally:
+            con.close()
+    except Exception:
+        pass
+    return result
+
+
+def _get_feedback_loop_status() -> dict:
+    """Check if rejection feedback and calibration are flowing."""
+    feedback_path = REPO_ROOT / "workspace" / "quant" / "shared" / "latest" / "rejection_feedback.json"
+    atlas_consuming = feedback_path.exists()
+
+    cal_path = REPO_ROOT / "workspace" / "quant" / "shared" / "latest" / "fish_calibration_packet.json"
+    fish_calibrating = cal_path.exists()
+
+    return {"atlas_consuming": "yes" if atlas_consuming else "no",
+            "fish_calibrating": "yes" if fish_calibrating else "no"}
+
+
+def _get_operator_actions(pipeline: dict, health: dict) -> list[str]:
+    """Determine what needs operator attention."""
+    actions = []
+    if pipeline["near_promotion"]:
+        actions.append(f"Review near-promotion: {', '.join(pipeline['near_promotion'])}")
+    critical = [t for t in health["circuit_breakers"] if t.get("severity") == "critical"]
+    for t in critical:
+        actions.append(f"CRITICAL: {t['lane']} — {t['detail']}")
+    return actions
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -641,6 +1049,10 @@ def main():
 
     decision = run_cycle(dry_run=args.dry_run)
     print(f"\n[kitt] Cycle complete: {decision['action']}")
+
+    # Report to governor
+    if not args.dry_run:
+        _report_governor(decision.get("action", "unknown"))
 
 
 if __name__ == "__main__":

@@ -239,6 +239,23 @@ HANDSHAKE CHAIN [{hs['completed_at']}]
   {steps}
 """
 
+    # Circuit breakers
+    try:
+        sys.path.insert(0, str(QUANT_INFRA.parent.parent))
+        from workspace.quant.shared.circuit_breakers import circuit_breaker_summary
+        cb = circuit_breaker_summary(QUANT_INFRA.parent.parent)
+        if cb["status"] == "tripped":
+            report += f"""
+CIRCUIT BREAKERS — {cb['count']} TRIPPED ({cb['critical_count']} critical, {cb['warning_count']} warning)
+"""
+            for t in cb["tripped"]:
+                icon = "!!" if t["severity"] == "critical" else "**"
+                report += f"  [{icon}] {t['lane']:10s}  {t['breaker']} — {t['detail']}\n"
+        else:
+            report += "\nCIRCUIT BREAKERS — all clear\n"
+    except Exception as exc:
+        report += f"\nCIRCUIT BREAKERS — check failed: {exc}\n"
+
     report += "\nLANE PACKETS\n"
     if lane_packets:
         for lane, info in sorted(lane_packets.items()):

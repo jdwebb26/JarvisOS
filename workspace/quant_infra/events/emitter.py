@@ -4,15 +4,26 @@ Events are JSON files written to events/<lane>/pending/.
 Each event captures a meaningful state change worth propagating downstream.
 
 Consumers read from pending/, process, and move to processed/.
+
+Per spec §2: the event emitter checks scheduler state before writing events
+that trigger heavy downstream jobs (e.g. kitt events trigger the full
+handshake chain). If capacity is constrained, the event is still written
+but a scheduler_warning is included in the event payload.
 """
 from __future__ import annotations
 
 import json
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 EVENTS_DIR = Path(__file__).resolve().parent
+QUANT_INFRA = EVENTS_DIR.parent
+REPO_ROOT = QUANT_INFRA.parent.parent
+
+# Event types that trigger heavy downstream work (handshake chain, etc.)
+_HEAVY_TRIGGER_TYPES = {"thesis_changed", "position_opened", "stop_triggered", "regime_shift"}
 
 
 def emit_event(
@@ -57,6 +68,13 @@ def emit_event(
     if extra:
         event["extra"] = extra
 
+    # Spec §2: check scheduler before events that trigger heavy downstream work
+    if event_type in _HEAVY_TRIGGER_TYPES:
+        event["scheduler_check"] = _check_scheduler_capacity(lane)
+        if not event["scheduler_check"].get("capacity_available", True):
+            print(f"[event] WARNING: scheduler constrained when emitting {event_type} "
+                  f"— {event['scheduler_check'].get('reason', 'unknown')}")
+
     pending_dir = EVENTS_DIR / lane / "pending"
     pending_dir.mkdir(parents=True, exist_ok=True)
 
@@ -67,6 +85,17 @@ def emit_event(
 
     print(f"[event] Emitted {event_type} -> {path.name}")
     return path
+
+
+def _check_scheduler_capacity(lane: str) -> dict:
+    """Check scheduler capacity for downstream heavy work. Non-blocking."""
+    try:
+        sys.path.insert(0, str(REPO_ROOT))
+        from workspace.quant.shared.scheduler.scheduler import check_capacity
+        can_start, host, reason = check_capacity(REPO_ROOT, lane)
+        return {"capacity_available": can_start, "host": host, "reason": reason}
+    except Exception:
+        return {"capacity_available": True, "reason": "scheduler_check_unavailable"}
 
 
 def read_pending(lane: str) -> list[dict]:

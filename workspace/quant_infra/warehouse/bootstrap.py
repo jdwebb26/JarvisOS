@@ -51,6 +51,28 @@ def apply_schema(con: duckdb.DuckDBPyConnection) -> None:
     print("[warehouse] Schema applied.")
 
 
+def apply_migrations(con: duckdb.DuckDBPyConnection) -> None:
+    """Apply incremental schema migrations for existing databases."""
+    migrations = [
+        # 2026-03-19: Add fill_status for live trading fill rate tracking
+        ("kitt_paper_positions", "fill_status",
+         "ALTER TABLE kitt_paper_positions ADD COLUMN fill_status VARCHAR NOT NULL DEFAULT 'filled'"),
+        # 2026-03-19: Add strategy_id for multi-strategy tracking
+        ("kitt_paper_positions", "strategy_id",
+         "ALTER TABLE kitt_paper_positions ADD COLUMN strategy_id VARCHAR"),
+    ]
+    for table, column, sql in migrations:
+        try:
+            cols = [r[0] for r in con.execute(
+                f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table}'"
+            ).fetchall()]
+            if column not in cols:
+                con.execute(sql)
+                print(f"[warehouse] Migration: added {table}.{column}")
+        except Exception as exc:
+            print(f"[warehouse] Migration skip ({table}.{column}): {exc}")
+
+
 def apply_views(con: duckdb.DuckDBPyConnection) -> None:
     """Apply views.sql to create analytical views."""
     views_file = SQL_DIR / "views.sql"
@@ -153,6 +175,7 @@ def main():
     con = duckdb.connect(str(DB_PATH))
     try:
         apply_schema(con)
+        apply_migrations(con)
         apply_views(con)
 
         # Load NQ daily CSV if available

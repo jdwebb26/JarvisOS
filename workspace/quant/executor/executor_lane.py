@@ -49,14 +49,54 @@ def _kill_switch_engaged(root: Path) -> bool:
     return ks.get("engaged", False)
 
 
-def _check_risk_limits(root: Path, strategy_id: str, symbol: str, quantity: int) -> tuple[bool, str]:
-    """Check per-strategy and portfolio risk limits."""
+def _check_risk_limits(
+    root: Path,
+    strategy_id: str,
+    symbol: str,
+    quantity: int,
+    approval_ref: str | None = None,
+) -> tuple[bool, str]:
+    """Check per-strategy and portfolio risk limits (spec §5 + §15).
+
+    Enforces:
+      1. Quantity against approval object's max_position_size (if available)
+      2. Quantity against static config per-strategy limits
+      3. Portfolio exposure limit — active strategy count vs max_total_exposure
+    """
     limits = _load_json(root / "workspace" / "quant" / "shared" / "config" / "risk_limits.json")
     per_strat = limits.get("per_strategy", {})
+    portfolio = limits.get("portfolio", {})
+
+    # 1. Check against approval object limits (spec §5 pre-flight #4)
+    if approval_ref:
+        approval = get_approval(root, approval_ref)
+        if approval:
+            approved_max = getattr(approval.approved_actions, "max_position_size", None)
+            if approved_max is not None and quantity > approved_max:
+                return False, (f"strategy_limit_breach: quantity {quantity} > "
+                               f"approval max_position_size {approved_max}")
+
+    # 2. Check against static config limits
     max_pos = per_strat.get("max_position_size", 2)
     if quantity > max_pos:
-        return False, f"strategy_limit_breach: quantity {quantity} > max {max_pos}"
-    # Portfolio checks would look at all active positions — simplified for now
+        return False, f"strategy_limit_breach: quantity {quantity} > config max {max_pos}"
+
+    # 3. Portfolio exposure limit (spec §15 — dual enforcement)
+    max_exposure = portfolio.get("max_total_exposure", 999)
+    registry_path = root / "workspace" / "quant" / "shared" / "registries" / "strategies.jsonl"
+    active_count = 0
+    if registry_path.exists():
+        try:
+            for line in registry_path.read_text().strip().splitlines():
+                entry = json.loads(line)
+                if entry.get("lifecycle_state") in ("PAPER_ACTIVE", "LIVE_ACTIVE"):
+                    active_count += 1
+        except (json.JSONDecodeError, OSError):
+            pass
+    if active_count >= max_exposure:
+        return False, (f"portfolio_limit_breach: active strategies ({active_count}) "
+                       f">= max_total_exposure ({max_exposure})")
+
     return True, "within_limits"
 
 

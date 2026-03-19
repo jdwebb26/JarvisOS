@@ -1,6 +1,7 @@
 {
   "portfolio": {
     "max_total_exposure": 4,
+    "max_open_positions": 3,
     "max_correlated_strategies": 3,
     "max_total_drawdown": 5000,
     "concentration_threshold": 0.6

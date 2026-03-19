@@ -64,7 +64,10 @@ CREATE TABLE IF NOT EXISTS kitt_paper_positions (
     reasoning       VARCHAR,
     upstream_packet VARCHAR,       -- packet_id that triggered this
     mark_price      DOUBLE,        -- latest mark-to-market price
-    marked_at       TIMESTAMP
+    marked_at       TIMESTAMP,
+    requested_price DOUBLE,        -- signal's intended price (for slippage: entry_price - requested_price)
+    fill_status     VARCHAR NOT NULL DEFAULT 'filled',  -- 'filled', 'partial', 'rejected' (paper=always filled; live=exchange response)
+    strategy_id     VARCHAR        -- FK to strategy registry; NULL = kitt default signal
 );
 
 -- Kitt trade decisions (audit log)

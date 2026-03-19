@@ -100,6 +100,28 @@ _EXPERIMENT_TEMPLATES: dict[str, dict] = {
 }
 
 
+def _load_rejection_guidance() -> dict:
+    """Read rejection feedback for Atlas proposal biasing (consumption plan Step 5).
+
+    Returns compact dict with cooldown_families and near_miss_families.
+    """
+    QUANT_INFRA = Path(__file__).resolve().parent.parent
+    REPO_ROOT = QUANT_INFRA.parent.parent
+    path = REPO_ROOT / "workspace" / "quant" / "shared" / "latest" / "rejection_feedback.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+        atlas = data.get("atlas", {})
+        return {
+            "cooldown_families": atlas.get("cooldown_families", []),
+            "near_miss_families": atlas.get("near_miss_families", []),
+            "families": atlas.get("families", {}),
+        }
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def generate_proposal() -> dict | None:
     """Read latest Sigma feedback and produce an experiment proposal.
 
@@ -168,6 +190,29 @@ def generate_proposal() -> dict | None:
         if bn not in seen_bottlenecks or exp["confidence"] > seen_bottlenecks[bn]["confidence"]:
             seen_bottlenecks[bn] = exp
     deduped = list(seen_bottlenecks.values())
+
+    # Apply rejection-aware biasing (consumption plan Step 5):
+    # Deprioritize experiments that target families in cooldown,
+    # boost confidence for near-miss families worth mutating.
+    rejection_guidance = _load_rejection_guidance()
+    cooldown_families = set(rejection_guidance.get("cooldown_families", []))
+    near_miss_families = set(rejection_guidance.get("near_miss_families", []))
+    cooldown_note = ""
+    if cooldown_families or near_miss_families:
+        for exp in deduped:
+            # Check if the bottleneck maps to a cooled-down family pattern
+            bn = exp.get("bottleneck", "")
+            if cooldown_families:
+                exp.setdefault("rejection_bias", {})
+                exp["rejection_bias"]["cooldown_families"] = list(cooldown_families)
+            if near_miss_families:
+                # Boost confidence for near-miss family experiments
+                exp.setdefault("rejection_bias", {})
+                exp["rejection_bias"]["near_miss_families"] = list(near_miss_families)
+                exp["confidence"] = min(0.9, exp["confidence"] + 0.1)
+        if cooldown_families:
+            cooldown_note = f" (cooldown: {', '.join(sorted(cooldown_families))})"
+            print(f"[atlas-proposal] Rejection bias applied — cooldown families: {cooldown_families}")
 
     proposal = {
         "proposal_id": proposal_id,

@@ -151,6 +151,9 @@ class PaperRun:
     max_consecutive_losses: int = 0
     win_rate: float = 0.0
     expectancy: float = 0.0
+    gross_profit: float = 0.0
+    gross_loss: float = 0.0
+    trade_pnls: list[float] = field(default_factory=list)  # per-trade PnL for Sharpe/consistency
     proof_status: str = "accumulating"  # accumulating, sufficient, insufficient
     last_checkpoint: str = ""
     promotion_id: Optional[str] = None
@@ -256,6 +259,12 @@ def record_fill(root: Path, paper_run_id: str, pnl: float, is_winner: bool) -> P
     run.entry_count += 1
     run.closed_count += 1
     run.realized_pnl += pnl
+    run.trade_pnls.append(pnl)
+
+    if pnl >= 0:
+        run.gross_profit += pnl
+    else:
+        run.gross_loss += abs(pnl)
 
     if is_winner:
         run.win_count += 1
@@ -276,6 +285,106 @@ def record_fill(root: Path, paper_run_id: str, pnl: float, is_winner: bool) -> P
     run.last_checkpoint = datetime.now(timezone.utc).isoformat()
     save_paper_run(root, run)
     return run
+
+
+def _query_fill_rate_from_warehouse(root: Path, strategy_id: str) -> float | None:
+    """Compute fill rate from DuckDB: attempted opens vs actual positions.
+
+    fill_rate = positions_opened / decisions_to_open
+    Returns float 0-1 or None if no data.
+    """
+    db_path = root / "workspace" / "quant_infra" / "warehouse" / "quant.duckdb"
+    if not db_path.exists():
+        return None
+    try:
+        import duckdb
+        con = duckdb.connect(str(db_path), read_only=True)
+        try:
+            # Count decisions that attempted to open
+            attempted = con.execute("""
+                SELECT COUNT(*) FROM kitt_trade_decisions
+                WHERE action IN ('open_long', 'open_short')
+            """).fetchone()[0]
+
+            if attempted == 0:
+                return None
+
+            # Count actual positions opened
+            filled = con.execute("""
+                SELECT COUNT(*) FROM kitt_paper_positions
+            """).fetchone()[0]
+
+            return round(filled / attempted, 4) if attempted > 0 else None
+        finally:
+            con.close()
+    except Exception:
+        return None
+
+
+def _query_cloud_cost_from_warehouse(root: Path, lane: str | None = None) -> float:
+    """Read accumulated cloud cost from token_usage table.
+
+    Returns total estimated_cost_usd. 0.0 if no data.
+    """
+    db_path = root / "workspace" / "quant_infra" / "warehouse" / "quant.duckdb"
+    if not db_path.exists():
+        return 0.0
+    try:
+        import duckdb
+        con = duckdb.connect(str(db_path), read_only=True)
+        try:
+            if lane:
+                row = con.execute(
+                    "SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM token_usage WHERE lane = ?",
+                    [lane],
+                ).fetchone()
+            else:
+                row = con.execute(
+                    "SELECT COALESCE(SUM(estimated_cost_usd), 0) FROM token_usage"
+                ).fetchone()
+            return float(row[0]) if row else 0.0
+        finally:
+            con.close()
+    except Exception:
+        return 0.0
+
+
+def _query_avg_slippage_from_warehouse(root: Path) -> float | None:
+    """Compute average entry slippage from DuckDB.
+
+    slippage = abs(entry_price - requested_price) for each position.
+    Returns average in NQ points, or None if no data.
+    """
+    db_path = root / "workspace" / "quant_infra" / "warehouse" / "quant.duckdb"
+    if not db_path.exists():
+        return None
+    try:
+        import duckdb
+        con = duckdb.connect(str(db_path), read_only=True)
+        try:
+            row = con.execute("""
+                SELECT AVG(ABS(entry_price - requested_price))
+                FROM kitt_paper_positions
+                WHERE requested_price IS NOT NULL
+                  AND entry_price IS NOT NULL
+            """).fetchone()
+            return round(float(row[0]), 4) if row and row[0] is not None else None
+        finally:
+            con.close()
+    except Exception:
+        return None
+
+
+def _load_review_thresholds(root: Path) -> dict:
+    """Load paper review thresholds from config (spec §11)."""
+    path = root / "workspace" / "quant" / "shared" / "config" / "review_thresholds.json"
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data.get("paper_review", {})
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
 
 
 def evaluate_proof(root: Path, paper_run_id: str) -> dict:
@@ -329,6 +438,79 @@ def evaluate_proof(root: Path, paper_run_id: str) -> dict:
             "required": profile.min_win_rate,
             "actual": run.win_rate,
             "met": run.win_rate >= profile.min_win_rate,
+        }
+
+    # -- Spec §11 review criteria (from review_thresholds.json + DuckDB) ------
+    # Only evaluated when sufficient data is available (backwards-compatible
+    # with runs created before per-trade tracking was added).
+    thresholds = _load_review_thresholds(root)
+
+    # Fill rate from DuckDB (spec: >= 0.90)
+    fill_rate = _query_fill_rate_from_warehouse(root, run.strategy_id)
+    if fill_rate is not None:
+        min_fill = thresholds.get("min_fill_rate", 0.90)
+        criteria["fill_rate"] = {
+            "required": min_fill,
+            "actual": fill_rate,
+            "met": fill_rate >= min_fill,
+        }
+
+    # Slippage from DuckDB (spec: avg slippage <= 2x expected)
+    avg_slippage = _query_avg_slippage_from_warehouse(root)
+    if avg_slippage is not None:
+        # Baseline expected slippage: 0.25 pts (1 NQ tick). Threshold: 2x = 0.50
+        expected_slippage = 0.25
+        max_slippage = expected_slippage * 2
+        criteria["slippage"] = {
+            "required": f"<= {max_slippage:.2f} pts (2x baseline {expected_slippage:.2f})",
+            "actual": avg_slippage,
+            "met": avg_slippage <= max_slippage,
+        }
+    has_trade_data = bool(run.trade_pnls) and len(run.trade_pnls) >= 2
+
+    # Profit Factor: gross_profit / gross_loss (spec: >= 1.3)
+    if run.gross_loss > 0:
+        realized_pf = round(run.gross_profit / run.gross_loss, 2)
+    elif run.gross_profit > 0:
+        realized_pf = 99.0  # all winners
+    else:
+        realized_pf = None  # no data yet
+    min_pf = thresholds.get("min_profit_factor", 1.3)
+    if realized_pf is not None:
+        criteria["profit_factor"] = {
+            "required": min_pf,
+            "actual": realized_pf,
+            "met": realized_pf >= min_pf,
+        }
+
+    # Sharpe proxy: mean(trade_pnls) / stddev(trade_pnls) (spec: >= 0.8)
+    if has_trade_data:
+        import math
+        mean_pnl = sum(run.trade_pnls) / len(run.trade_pnls)
+        variance = sum((p - mean_pnl) ** 2 for p in run.trade_pnls) / (len(run.trade_pnls) - 1)
+        stddev = math.sqrt(variance) if variance > 0 else 0.001
+        realized_sharpe = round(mean_pnl / stddev, 2)
+        min_sharpe = thresholds.get("min_sharpe", 0.8)
+        criteria["sharpe"] = {
+            "required": min_sharpe,
+            "actual": realized_sharpe,
+            "met": realized_sharpe >= min_sharpe,
+        }
+
+    # Consistency: no single period > 60% of total PnL
+    if has_trade_data and abs(run.realized_pnl) > 0:
+        consistency_ok = True
+        bucket_size = max(5, len(run.trade_pnls) // 4) if len(run.trade_pnls) >= 10 else len(run.trade_pnls)
+        for i in range(0, len(run.trade_pnls), bucket_size):
+            bucket = run.trade_pnls[i:i + bucket_size]
+            bucket_pnl = sum(bucket)
+            if abs(run.realized_pnl) > 0 and abs(bucket_pnl / run.realized_pnl) > 0.6:
+                consistency_ok = False
+                break
+        criteria["consistency"] = {
+            "required": "no single period > 60% of total PnL",
+            "actual": "pass" if consistency_ok else "fail",
+            "met": consistency_ok,
         }
 
     all_met = all(c["met"] for c in criteria.values())
