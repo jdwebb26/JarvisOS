@@ -18,25 +18,32 @@ Jarvis OS coordinates a fleet of specialized AI agents that receive work through
 
 ### Persistent services
 
-| Service | What it does | Status |
-|---------|-------------|--------|
-| `openclaw-gateway` | Node.js Discord bot, WebSocket, agent session routing | **LIVE** |
-| `openclaw-inbound-server` | HTTP API on `:18790` for operator replies | **LIVE** |
-| `openclaw-dashboard` | Operator dashboard at `http://127.0.0.1:18793` | **LIVE** |
-| `cadence-voice-daemon` | Wake-word + VAD + STT + TTS | **PARTIAL** — mic blocked on WSL2 |
+| Service | What it does | Port | Status |
+|---------|-------------|------|--------|
+| `openclaw-gateway` | Node.js Discord bot, WebSocket, agent session routing | 18789 (loopback) | **LIVE** |
+| `openclaw-inbound-server` | HTTP API for operator replies and approval routing | 18790 (loopback) | **LIVE** |
+| `openclaw-dashboard` | Operator dashboard | 18793 (loopback) | **LIVE** |
+| `pulse-webhook` | TradingView webhook receiver for Pulse alerts | 18795 (0.0.0.0) | **LIVE** |
+| `cadence-voice-daemon` | Wake-word + VAD + STT + TTS | — (audio) | **PARTIAL** — mic blocked on WSL2 |
 
 ### Timer-driven services
 
 | Timer | Interval | What it does |
 |-------|----------|-------------|
-| `openclaw-ralph` | 10 min | Picks one queued task, dispatches to backend, requests review |
-| `openclaw-review-poller` | 30 sec | Polls `#review` for approve/reject reactions |
-| `lobster-todo-intake` | 2 min | Polls `#todo` for new task messages |
+| `openclaw-review-poller` | 30 sec | Polls `#review` for approve/reject text + emoji reactions |
 | `openclaw-discord-outbox` | 60 sec | Delivers pending Discord messages via webhooks |
-| `openclaw-operator-status` | 5 min | Posts action summary to `#jarvis` when needed |
-| `quant-lane-b-cycle` | 4 hours | Quant intelligence cycle: Atlas, Fish, Hermes, Kitt |
-| `openclaw-factory-weekly` | Sun 2 AM | Strategy Factory batch run |
+| `openclaw-operator-status` | 5 min | Posts action summary to `#jarvis` when operator attention needed |
+| `openclaw-ralph` | 10 min | Picks one queued task, dispatches to backend, requests review |
+| `openclaw-kitt-paper` | 10 min | Kitt paper trading cycle — position tracking, proof sweeps |
+| `quant-lane-b-cycle` | 4 hours | Quant intelligence cycle: Atlas → Fish → Hermes → Kitt |
+| `openclaw-factory-weekly` | Sun 2 AM | Strategy Factory full batch run |
 | `openclaw-ops-check` | Sun 3 AM | Doctor + security audit + backup |
+
+### Cron
+
+| Schedule | What it does |
+|----------|-------------|
+| Every 2 min | `local_executor.py` — polls task queue (SQLite), dispatches strategy factory runs |
 
 ### LLM providers
 
@@ -76,7 +83,7 @@ These have Discord channels for outbound event delivery but are **not** fully se
 | Sigma | `#sigma` | Strategy validation gates |
 | Atlas | `#atlas` | Strategy candidate generation |
 | Fish | `#fish` | Market scenario analysis |
-| Pulse | `#pulse` | Discretionary NQ alerts and proposals |
+| Pulse | `#pulse` | Discretionary NQ alerts & proposals |
 
 ---
 
@@ -86,24 +93,32 @@ These have Discord channels for outbound event delivery but are **not** fully se
 
 | Channel | Purpose |
 |---------|---------|
-| **#review** | **Operator action inbox.** Review requests, approval requests, paper-trade approvals, pulse proposals. |
-| **#worklog** | **Audit trail.** Completion receipts, review verdicts, approval decisions. Nothing here needs action. |
-| **#jarvis** | **Escalations only.** Failures, blocked tasks, alerts, factory summaries, warnings. Low-noise. |
-| **#todo** | **Task intake.** Post a message to create a task. Picked up every 2 minutes. |
+| **#review** | **Operator action inbox.** Review requests, approval requests, paper-trade approvals, pulse proposals. Respond with `approve apr_xxx` or emoji reactions. |
+| **#worklog** | **Audit trail.** Completion receipts, review verdicts, approval decisions. Read-only — nothing here needs action. |
+| **#jarvis** | **Escalations only.** Failures, blocked tasks, quant alerts, factory summaries, warnings, errors. Low-noise — only operator-action-needed events. |
 
 ### Agent channels
 
 | Channel | What goes there | Interactive? |
 |---------|----------------|-------------|
-| `#hal` | Builder execution output | Yes |
-| `#kitt` | Quant briefs, strategy oversight | Yes |
-| `#hermes` | Research daemon output | Yes |
-| `#scout` | Recon, web search results | Yes |
-| `#muse` | Creative agent output | Yes |
-| `#bowser` | Browser automation output | Yes |
-| `#cadence` | Voice/TTS events only | Voice-only |
+| `#hal` | Builder execution output | Yes — HAL responds |
+| `#kitt` | Quant briefs, strategy oversight | Yes — Kitt responds |
+| `#hermes` | Research daemon output | Yes — Hermes responds |
+| `#scout` | Recon, web search results | Yes — Scout responds |
+| `#muse` | Creative agent output | Yes — Muse responds |
+| `#bowser` | Browser automation output | Yes — Bowser responds |
+| `#cadence` | Voice/TTS events only | Voice-only channel |
 | `#qwen` | Qwen-Agent output | Yes (ACP) |
-| `#sigma` / `#atlas` / `#fish` / `#pulse` | Quant lane events | Outbound only (jarvis fallback) |
+| `#ralph` | Overflow / task runner output | Yes — Ralph responds |
+
+### Quant lane channels
+
+| Channel | What goes there | Interactive? |
+|---------|----------------|-------------|
+| `#sigma` | Validation events | Outbound only (jarvis fallback) |
+| `#atlas` | Discovery events | Outbound only (jarvis fallback) |
+| `#fish` | Scenario events | Outbound only (jarvis fallback) |
+| `#pulse` | Alert events | Outbound only (jarvis fallback) |
 
 ---
 
@@ -126,24 +141,28 @@ Ralph dispatches → HAL executes → Archimedes reviews → Operator approves �
 ```
 
 - Review and approval requests appear in `#review`
-- Approve via Discord: `approve apr_xxx` or emoji reaction
-- Approve via CLI: `python3 scripts/run_ralph_v1.py --approve task_xxx`
+- Approve via Discord: `approve apr_xxx` or emoji ✅ reaction
+- Reject via Discord: `reject apr_xxx [reason]` or ❌ reaction
+- Rerun: `rerun apr_xxx`
+- ID patterns: `apr_*` (approvals), `qpt_*` (quant paper-trade), `pulse_*` (alerts), `promo_*` (promotions)
 - Completion receipts go to `#worklog`, not `#review`
 - High-stakes items (quant, deploy) escalate to Anton
+- Review poller checks every 30 seconds; decisions route through inbound server → runtime → outbox → Discord
 
 ---
 
 ## The Quant System
 
-Strategy Factory is **one part** of the broader quant system:
+Strategy Factory is **one part** of the broader quant system. The full picture:
 
 | Component | What it does | Schedule |
 |-----------|-------------|----------|
-| **Quant Lane B** | Intelligence cycle: Atlas → Fish → Hermes → Kitt briefs | Every 4 hours |
-| **Strategy Factory** | Weekly batch: backtest, validate, promote survivors | Sunday 2 AM |
-| **Sigma** | Validation gates — PF, Sharpe, drawdown thresholds | Per-candidate |
-| **Pulse** | Discretionary session alerts, proposals to downstream lanes | Real-time |
-| **Paper trading** | Approved strategies execute paper trades via executor | On approval |
+| **Quant Lane B** | Intelligence cycle: Atlas discovers → Fish models scenarios → Hermes researches → Kitt generates briefs | Every 4 hours |
+| **Strategy Factory** | Weekly batch: backtest candidates, run validation gates, promote survivors | Sunday 2 AM |
+| **Sigma** | Validation gates — PF, Sharpe, drawdown, trade count thresholds | Per-candidate |
+| **Pulse** | Discretionary session alerts, TradingView webhook ingestion, proposals to downstream lanes | Real-time (webhook on :18795) |
+| **Kitt** | Paper trading cycle — position tracking, proof sweeps, briefs | Every 10 min |
+| **Executor** | Paper position accounting, execution intents, rejection tracking | On event |
 
 ### Strategy lifecycle
 
@@ -151,7 +170,15 @@ Strategy Factory is **one part** of the broader quant system:
 IDEA → CANDIDATE → VALIDATED → PROMOTED → PAPER_TRADING → LIVE
 ```
 
-Paper-trade and live-trade transitions require explicit operator approval.
+Paper-trade and live-trade transitions require explicit operator approval via `#review`.
+
+### Current state (as of 2026-03-19)
+
+- **59 strategies** in the registry, all at CANDIDATE stage with gate failures
+- **0 strategies** promoted to paper trading yet
+- Logic families tested: EMA crossover, breakout, mean reversion
+- Gate failures primarily: insufficient trade counts, Sharpe below 0.5 threshold
+- Weekly runs producing artifacts with full candidate → perturbation → regime → stress pipeline
 
 ---
 
@@ -159,22 +186,24 @@ Paper-trade and live-trade transitions require explicit operator approval.
 
 **Status: PARTIAL**
 
-Two-layer voice interface. Daemon running but mic capture blocked on WSL2.
+Cadence is the operator-facing voice identity. Two-layer architecture:
 
-- **Layer 1 (command):** openWakeWord → Silero VAD → faster-whisper STT → task routing → Piper TTS. Built, not proven e2e without live mic.
+- **Layer 1 (command):** openWakeWord → Silero VAD → faster-whisper STT → task routing → Piper TTS. Pipeline built and daemon running. Mic capture blocked on WSL2 — RDPSource is silent; Windows ffmpeg pipe capture (`win_capture.py`) is the known workaround but not wired into the daemon.
 - **Layer 2 (conversation):** Persistent conversational copilot with live runtime context. Proven via replay mode.
 
 Test: `python3 scripts/cadence_status.py --replay "What needs attention?"`
+
+Note: "Cadence" is the operator-facing identity; "PersonaPlex" is the internal engine name.
 
 ---
 
 ## OpenClaw Substrate
 
-Jarvis OS runs on the OpenClaw runtime (`v2026.3.13`), which provides:
+Jarvis OS runs on the **OpenClaw** upstream runtime (`v2026.3.13`). OpenClaw provides:
 
 - Discord bot gateway (Node.js, WebSocket)
 - Agent session management (per-channel, daily reset at 4 AM)
-- ACP (Agent Control Protocol) for sandboxed execution
+- ACP (Agent Control Protocol) for sandboxed execution (HAL uses this)
 - Plugin system (acpx, qwen-agent, discord)
 - Health, backup, and security audit commands
 
@@ -186,12 +215,14 @@ Commands: `openclaw status`, `openclaw doctor`, `openclaw security audit`
 
 | Area | Status | What is missing |
 |------|--------|----------------|
-| Cadence voice | PARTIAL | Live mic blocked on WSL2. Proven in replay only. |
-| Bowser browser | BOUNDED | Protocol live, full external lane not proven e2e. |
-| Sigma/Atlas/Fish/Pulse | FALLBACK | Outbound-only. No dedicated interactive agents. |
-| OpenAI / GPT | SCAFFOLD | Adapter wired, needs funded API billing. |
-| v5.2 multi-model routing | SCAFFOLD | Not active in production. |
-| Daily data pull | NOT SCHEDULED | Documented but no timer exists. Only weekly batch is live. |
+| Cadence voice | PARTIAL | Live mic blocked on WSL2. Proven in replay only. `win_capture.py` workaround exists but not wired into daemon. |
+| Bowser browser | BOUNDED | Request/result protocol live, full external browser lane not proven e2e. |
+| Sigma/Atlas/Fish/Pulse agents | FALLBACK | Outbound-only channel presence. No dedicated interactive agents — inbound routes to Jarvis. |
+| `#todo` intake | DEAD | `lobster-todo-intake` service has no timer and is not running. Task intake via cron executor only. |
+| OpenAI / GPT | SCAFFOLD | Adapter wired but requires funded API billing to activate. |
+| v5.2 multi-model routing | SCAFFOLD | Scaffolding exists but not active in production. |
+| Daily data pull (4 AM) | NOT SCHEDULED | Documented in FACTORY_RUNBOOK but no systemd timer exists. Only weekly batch is live. |
+| TASKS.jsonl / EXPERIMENTS.jsonl | DEPRECATED | Both empty. Tasks migrated to SQLite (`tasks/tasks.db`). |
 
 ---
 

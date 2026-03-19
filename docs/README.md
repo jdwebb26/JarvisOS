@@ -8,7 +8,7 @@
 
 | What you want | Where to go |
 |--------------|-------------|
-| **Understand the whole system at a glance** | [System Overview](overview/OVERVIEW.md) &nbsp;/&nbsp; [HTML version](overview/index.html) |
+| **Understand the whole system at a glance** | [System Overview](overview/OVERVIEW.md) &nbsp;/&nbsp; [HTML version](overview/index.html) &nbsp;/&nbsp; [Print version](overview/print.html) |
 | **Operate the system day-to-day** | [Operating Guide](OPERATING_GUIDE.md) |
 | **First time running this repo** | [Operator First Run](operator-first-run.md) |
 | **Check if deployment is ready** | [Go-Live Checklist](operator_go_live_checklist.md) |
@@ -57,7 +57,9 @@
 | **#review** | Operator action inbox | Review requests, approval requests, paper-trade approvals, pulse proposals |
 | **#worklog** | Audit trail | Review completed, approval completed, lifecycle receipts |
 | **#jarvis** | Escalations only | Failures, blocked tasks, alerts, factory summaries, warnings |
-| **#todo** | Task intake | Human messages become queued tasks |
+| **#hal, #kitt, #hermes, #scout, #muse, #bowser, #qwen, #ralph** | Agent channels | Agent output — interactive (operator can message agents here) |
+| **#cadence** | Voice channel | Voice/TTS events only |
+| **#sigma, #atlas, #fish, #pulse** | Quant lane channels | Outbound events only — inbound routes to Jarvis (temporary fallback) |
 
 Full channel→agent→webhook mapping: [`config/agent_channel_map.json`](../config/agent_channel_map.json)
 

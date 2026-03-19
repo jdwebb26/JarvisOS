@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarvis OS v5.1 — System Overview (Print)</title>
+<style>
+  :root {
+    --bg: #fff; --surface: #f6f8fa; --surface2: #eef1f4; --border: #d0d7de;
+    --text: #1f2328; --muted: #636c76; --accent: #0969da;
+    --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
+    --purple: #8250df; --orange: #bc4c00;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.55;
+    max-width: 800px; margin: 0 auto; padding: 1.5rem; font-size: 10.5pt;
+  }
+  @media print {
+    body { padding: 0; max-width: 100%; }
+    h2 { page-break-after: avoid; }
+    table, .card { page-break-inside: avoid; }
+  }
+  h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.15rem; }
+  .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 0.6rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--border); }
+  h3 { font-size: 0.95rem; margin-top: 1.2rem; margin-bottom: 0.4rem; color: var(--accent); }
+  p { margin-bottom: 0.5rem; font-size: 0.9rem; }
+  table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.82rem; }
+  th { text-align: left; padding: 0.35rem 0.5rem; background: var(--surface); border-bottom: 2px solid var(--border); font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
+  td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  code { background: var(--surface); padding: 0.05rem 0.25rem; border-radius: 3px; font-size: 0.82em; border: 1px solid var(--border); }
+  .badge { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 10px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; border: 1px solid; }
+  .badge-live { border-color: var(--green); color: var(--green); }
+  .badge-partial { border-color: var(--yellow); color: var(--yellow); }
+  .badge-scaffold { border-color: var(--muted); color: var(--muted); }
+  .badge-fallback { border-color: var(--orange); color: var(--orange); }
+  .badge-dead { border-color: var(--red); color: var(--red); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.8rem 1rem; margin-bottom: 0.6rem; }
+  .card-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.2rem; }
+  .card-body { color: var(--muted); font-size: 0.82rem; line-height: 1.45; }
+  .card-body strong { color: var(--text); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin: 0.6rem 0; }
+  .flow { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin: 0.5rem 0; font-size: 0.82rem; }
+  .flow-step { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.2rem 0.5rem; font-weight: 600; }
+  .flow-arrow { color: var(--muted); }
+  ul, ol { padding-left: 1.2rem; font-size: 0.85rem; }
+  li { margin-bottom: 0.2rem; }
+  footer { margin-top: 2rem; padding-top: 0.6rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.75rem; }
+</style>
+</head>
+<body>
+
+<h1>Jarvis OS v5.1</h1>
+<p class="subtitle">Autonomous multi-agent AI runtime for NQ futures &bull; OpenClaw v2026.3.13 &bull; Generated 2026-03-19</p>
+
+<h2>What This Is</h2>
+<p>Jarvis OS coordinates a fleet of specialized AI agents that receive work through Discord, execute it via local LLMs (Qwen 3.5 on LM Studio), and surface results for operator review. The quant system discovers, validates, and paper-trades NQ futures strategies. <strong>Nothing reaches production without human sign-off.</strong></p>
+
+<h2>Live Services</h2>
+
+<h3>Persistent</h3>
+<table>
+  <tr><th>Service</th><th>What it does</th><th>Port</th><th>Status</th></tr>
+  <tr><td><code>openclaw-gateway</code></td><td>Discord bot, WebSocket, agent routing</td><td>18789</td><td><span class="badge badge-live">LIVE</span></td></tr>
+  <tr><td><code>openclaw-inbound-server</code></td><td>Operator reply + approval API</td><td>18790</td><td><span class="badge badge-live">LIVE</span></td></tr>
+  <tr><td><code>openclaw-dashboard</code></td><td>Operator dashboard</td><td>18793</td><td><span class="badge badge-live">LIVE</span></td></tr>
+  <tr><td><code>pulse-webhook</code></td><td>TradingView webhook receiver</td><td>18795</td><td><span class="badge badge-live">LIVE</span></td></tr>
+  <tr><td><code>cadence-voice-daemon</code></td><td>Wake-word + VAD + STT + TTS</td><td>&mdash;</td><td><span class="badge badge-partial">PARTIAL</span></td></tr>
+</table>
+
+<h3>Timers</h3>
+<table>
+  <tr><th>Timer</th><th>Interval</th><th>What it does</th></tr>
+  <tr><td><code>review-poller</code></td><td>30s</td><td>Polls #review for approve/reject</td></tr>
+  <tr><td><code>discord-outbox</code></td><td>60s</td><td>Delivers queued Discord messages</td></tr>
+  <tr><td><code>operator-status</code></td><td>5m</td><td>Posts action summary to #jarvis</td></tr>
+  <tr><td><code>ralph</code></td><td>10m</td><td>Task dispatch cycle</td></tr>
+  <tr><td><code>kitt-paper</code></td><td>10m</td><td>Paper trading cycle</td></tr>
+  <tr><td><code>lane-b-cycle</code></td><td>4h</td><td>Atlas &rarr; Fish &rarr; Hermes &rarr; Kitt</td></tr>
+  <tr><td><code>factory-weekly</code></td><td>Sun 2AM</td><td>Strategy Factory batch run</td></tr>
+  <tr><td><code>ops-check</code></td><td>Sun 3AM</td><td>Doctor + audit + backup</td></tr>
+</table>
+
+<h2>Agent Roster</h2>
+<table>
+  <tr><th>Agent</th><th>Role</th><th>Model</th><th>Type</th></tr>
+  <tr><td><strong>Jarvis</strong></td><td>Orchestrator</td><td>Qwen 3.5 35B</td><td>Embedded</td></tr>
+  <tr><td><strong>HAL</strong></td><td>Builder / code / backtests</td><td>Qwen3 Coder 30B</td><td>ACP</td></tr>
+  <tr><td><strong>Ralph</strong></td><td>Task runner</td><td>Qwen 3.5 35B</td><td>Timer</td></tr>
+  <tr><td><strong>Archimedes</strong></td><td>Technical reviewer</td><td>Qwen3 Coder Next</td><td>Embedded</td></tr>
+  <tr><td><strong>Anton</strong></td><td>Supreme reviewer</td><td>Qwen 3.5 122B</td><td>Embedded</td></tr>
+  <tr><td><strong>Hermes</strong></td><td>Research daemon</td><td>Qwen 3.5 122B</td><td>On-demand</td></tr>
+  <tr><td><strong>Scout</strong></td><td>Recon / web search</td><td>Qwen 3.5 35B</td><td>Embedded</td></tr>
+  <tr><td><strong>Kitt</strong></td><td>Quant lead / briefs</td><td>Kimi K2.5</td><td>Interactive</td></tr>
+  <tr><td><strong>Cadence</strong></td><td>Voice (wake-word, STT, TTS)</td><td>Qwen 3.5 9B</td><td>Daemon</td></tr>
+  <tr><td><strong>Muse</strong></td><td>Creative</td><td>Qwen 3.5 35B</td><td>Embedded</td></tr>
+  <tr><td><strong>Bowser</strong></td><td>Browser automation</td><td>Qwen 3.5 35B</td><td>Bounded</td></tr>
+  <tr><td><strong>Qwen</strong></td><td>Qwen-Agent (ACP)</td><td>Qwen 3.5 35B</td><td>ACP</td></tr>
+  <tr><td><strong>Claude</strong></td><td>External (Anthropic)</td><td>Claude Sonnet 4.6</td><td>Embedded</td></tr>
+</table>
+
+<p style="font-size:0.82rem; color:var(--muted);">Quant lane services (Sigma, Atlas, Fish, Pulse) have outbound Discord channels but route inbound to Jarvis as temporary fallback.</p>
+
+<h2>Discord Channels</h2>
+<table>
+  <tr><th>Channel</th><th>Purpose</th><th>Action required?</th></tr>
+  <tr><td><strong>#review</strong></td><td>Operator action inbox — approvals, reviews, proposals</td><td>Yes</td></tr>
+  <tr><td><strong>#worklog</strong></td><td>Audit trail — completion receipts</td><td>No (read-only)</td></tr>
+  <tr><td><strong>#jarvis</strong></td><td>Escalations — failures, alerts, blocked tasks</td><td>If flagged</td></tr>
+  <tr><td>#hal, #kitt, #hermes, #scout, #muse, #bowser, #qwen, #ralph</td><td>Agent output channels</td><td>Interactive</td></tr>
+  <tr><td>#cadence</td><td>Voice/TTS events</td><td>Voice-only</td></tr>
+  <tr><td>#sigma, #atlas, #fish, #pulse</td><td>Quant lane events (outbound only)</td><td>No</td></tr>
+</table>
+
+<h2>Task &amp; Review Flow</h2>
+<div class="flow">
+  <span class="flow-step">QUEUED</span><span class="flow-arrow">&rarr;</span>
+  <span class="flow-step">RUNNING</span><span class="flow-arrow">&rarr;</span>
+  <span class="flow-step">REVIEW</span><span class="flow-arrow">&rarr;</span>
+  <span class="flow-step">APPROVAL</span><span class="flow-arrow">&rarr;</span>
+  <span class="flow-step">COMPLETED</span>
+</div>
+<p>Ralph dispatches &rarr; HAL executes &rarr; Archimedes reviews &rarr; Operator approves via #review. Approve: <code>approve apr_xxx</code> or emoji. Reject: <code>reject apr_xxx</code>.</p>
+
+<h2>Quant System</h2>
+<table>
+  <tr><th>Component</th><th>What</th><th>When</th></tr>
+  <tr><td>Lane B cycle</td><td>Atlas &rarr; Fish &rarr; Hermes &rarr; Kitt</td><td>Every 4h</td></tr>
+  <tr><td>Strategy Factory</td><td>Backtest, validate, promote</td><td>Sun 2AM</td></tr>
+  <tr><td>Sigma</td><td>Validation gates</td><td>Per-candidate</td></tr>
+  <tr><td>Pulse</td><td>TradingView alerts, proposals</td><td>Real-time</td></tr>
+  <tr><td>Kitt paper</td><td>Position tracking, proofs</td><td>Every 10m</td></tr>
+</table>
+<p>Strategy lifecycle: IDEA &rarr; CANDIDATE &rarr; VALIDATED &rarr; PROMOTED &rarr; PAPER_TRADING &rarr; LIVE. Paper and live require operator approval.</p>
+<p><strong>Current:</strong> 59 candidates, 0 promoted. Gate failures: trade count, Sharpe thresholds.</p>
+
+<h2>What Is Still Partial</h2>
+<table>
+  <tr><th>Area</th><th>Status</th><th>Gap</th></tr>
+  <tr><td>Cadence voice</td><td><span class="badge badge-partial">PARTIAL</span></td><td>Mic blocked on WSL2</td></tr>
+  <tr><td>Bowser</td><td><span class="badge badge-partial">BOUNDED</span></td><td>Not proven e2e</td></tr>
+  <tr><td>Quant lanes</td><td><span class="badge badge-fallback">FALLBACK</span></td><td>No interactive agents</td></tr>
+  <tr><td>#todo intake</td><td><span class="badge badge-dead">DEAD</span></td><td>lobster service has no timer</td></tr>
+  <tr><td>OpenAI/GPT</td><td><span class="badge badge-scaffold">SCAFFOLD</span></td><td>Needs API billing</td></tr>
+  <tr><td>Daily data pull</td><td><span class="badge badge-scaffold">NONE</span></td><td>No timer exists</td></tr>
+</table>
+
+<h2>Daily Operator Checklist</h2>
+<ol>
+  <li>Dashboard: <code>http://127.0.0.1:18793</code></li>
+  <li>Check <code>#review</code> &mdash; approve/reject pending</li>
+  <li>Glance at <code>#jarvis</code> &mdash; failures or blocked tasks?</li>
+  <li>Run <code>python3 scripts/operator_status.py</code></li>
+  <li>Review Kitt briefs in <code>#kitt</code></li>
+  <li>If queue backs up: <code>python3 scripts/run_ralph_v1.py</code></li>
+</ol>
+
+<footer>Jarvis OS v5.1 &bull; OpenClaw v2026.3.13 &bull; 2026-03-19 &bull; github.com/jdwebb26/JarvisOS</footer>
+</body>
+</html>

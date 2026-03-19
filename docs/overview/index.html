@@ -3,121 +3,268 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Jarvis OS — System Overview</title>
+<title>Jarvis OS v5.1 — System Overview</title>
 <style>
   :root {
-    --bg: #0d1117; --surface: #161b22; --border: #30363d;
-    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
-    --green: #3fb950; --yellow: #d29922; --red: #f85149;
-    --purple: #bc8cff; --orange: #db6d28;
+    --bg: #0d1117; --surface: #161b22; --surface2: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --accent-dim: #1f3a5f;
+    --green: #3fb950; --green-dim: #0d3117; --yellow: #d29922; --yellow-dim: #3d2e00;
+    --red: #f85149; --red-dim: #4a1011; --purple: #bc8cff; --purple-dim: #2a1a4e;
+    --orange: #db6d28; --orange-dim: #3d1e00;
+    --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,0.3);
   }
   @media (prefers-color-scheme: light) {
     :root {
-      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
-      --text: #1f2328; --muted: #636c76; --accent: #0969da;
-      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
-      --purple: #8250df; --orange: #bc4c00;
+      --bg: #ffffff; --surface: #f6f8fa; --surface2: #eef1f4; --border: #d0d7de;
+      --text: #1f2328; --muted: #636c76; --accent: #0969da; --accent-dim: #ddf4ff;
+      --green: #1a7f37; --green-dim: #dafbe1; --yellow: #9a6700; --yellow-dim: #fff8c5;
+      --red: #cf222e; --red-dim: #ffebe9; --purple: #8250df; --purple-dim: #fbefff;
+      --orange: #bc4c00; --orange-dim: #fff1e5;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
   }
   @media print {
     :root {
-      --bg: #fff; --surface: #f6f8fa; --border: #d0d7de;
-      --text: #1f2328; --muted: #636c76; --accent: #0969da;
-      --green: #1a7f37; --yellow: #9a6700; --red: #cf222e;
-      --purple: #8250df; --orange: #bc4c00;
+      --bg: #fff; --surface: #f6f8fa; --surface2: #eef1f4; --border: #d0d7de;
+      --text: #1f2328; --muted: #636c76; --accent: #0969da; --accent-dim: #ddf4ff;
+      --green: #1a7f37; --green-dim: #dafbe1; --yellow: #9a6700; --yellow-dim: #fff8c5;
+      --red: #cf222e; --red-dim: #ffebe9; --purple: #8250df; --purple-dim: #fbefff;
+      --orange: #bc4c00; --orange-dim: #fff1e5;
+      --shadow: none;
     }
-    body { font-size: 11pt; }
+    body { font-size: 10.5pt; padding: 1rem; max-width: 100%; }
     .no-print { display: none !important; }
+    h2 { page-break-after: avoid; }
+    .card, table { page-break-inside: avoid; }
+    .arch { page-break-inside: avoid; }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
-  h1 { font-size: 2rem; margin-bottom: 0.25rem; }
-  h2 { font-size: 1.4rem; margin-top: 2.5rem; margin-bottom: 1rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
-  h3 { font-size: 1.1rem; margin-top: 1.5rem; margin-bottom: 0.5rem; color: var(--accent); }
-  p, li { color: var(--text); }
-  .subtitle { color: var(--muted); font-size: 1rem; margin-bottom: 2rem; }
-  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; margin-left: 0.3rem; vertical-align: middle; }
-  .badge-live { background: var(--green); color: #fff; }
-  .badge-partial { background: var(--yellow); color: #fff; }
-  .badge-scaffold { background: var(--muted); color: #fff; }
-  .badge-fallback { background: var(--orange); color: #fff; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.65;
+    max-width: 980px; margin: 0 auto; padding: 2.5rem 2rem;
+  }
 
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin-bottom: 1rem; }
-  .card-title { font-weight: 600; margin-bottom: 0.4rem; }
-  .card-body { color: var(--muted); font-size: 0.9rem; }
+  /* Header */
+  .header { margin-bottom: 2.5rem; }
+  h1 { font-size: 2.2rem; font-weight: 700; letter-spacing: -0.02em; }
+  h1 .version { color: var(--muted); font-weight: 400; }
+  .subtitle { color: var(--muted); font-size: 1rem; margin-top: 0.3rem; line-height: 1.5; }
+  .subtitle code { background: var(--surface); padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.9em; border: 1px solid var(--border); }
 
-  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
-  th { text-align: left; padding: 0.5rem 0.75rem; background: var(--surface); border-bottom: 2px solid var(--border); font-weight: 600; }
-  td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
-  code { background: var(--surface); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; border: 1px solid var(--border); }
+  /* TOC */
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.2rem 1.5rem; margin-bottom: 2.5rem; }
+  .toc-title { font-weight: 600; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+  .toc-list { list-style: none; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 2rem; }
+  .toc-list a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+  .toc-list a:hover { text-decoration: underline; }
+  @media (max-width: 640px) { .toc-list { grid-template-columns: 1fr; } }
 
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+  /* Sections */
+  h2 {
+    font-size: 1.4rem; font-weight: 700; margin-top: 3rem; margin-bottom: 1rem;
+    padding-bottom: 0.5rem; border-bottom: 2px solid var(--border);
+    letter-spacing: -0.01em;
+  }
+  h3 { font-size: 1.05rem; margin-top: 1.8rem; margin-bottom: 0.6rem; color: var(--accent); font-weight: 600; }
+  p { margin-bottom: 0.75rem; }
+  p, li { color: var(--text); font-size: 0.95rem; }
+
+  /* Badges */
+  .badge {
+    display: inline-block; padding: 0.15rem 0.55rem; border-radius: 12px;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; vertical-align: middle; margin-left: 0.25rem;
+  }
+  .badge-live { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+  .badge-partial { background: var(--yellow-dim); color: var(--yellow); border: 1px solid var(--yellow); }
+  .badge-scaffold { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .badge-fallback { background: var(--orange-dim); color: var(--orange); border: 1px solid var(--orange); }
+  .badge-dead { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+
+  /* Cards */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.2rem 1.4rem; margin-bottom: 1rem; box-shadow: var(--shadow);
+  }
+  .card-title { font-weight: 700; margin-bottom: 0.3rem; font-size: 1rem; }
+  .card-body { color: var(--muted); font-size: 0.9rem; line-height: 1.55; }
+  .card-body strong { color: var(--text); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.75rem; margin: 1rem 0; }
+  @media (max-width: 768px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.88rem; }
+  th {
+    text-align: left; padding: 0.6rem 0.75rem; background: var(--surface);
+    border-bottom: 2px solid var(--border); font-weight: 700; font-size: 0.82rem;
+    text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted);
+  }
+  td { padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:hover td { background: var(--surface); }
+  code {
+    background: var(--surface2); padding: 0.12rem 0.4rem; border-radius: 4px;
+    font-size: 0.85em; border: 1px solid var(--border); font-family: "SF Mono", "Fira Code", monospace;
+  }
+  td code { font-size: 0.82em; }
 
   /* Architecture diagram */
-  .arch { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; overflow-x: auto; }
-  .arch svg { width: 100%; max-width: 880px; height: auto; display: block; margin: 0 auto; }
-  .arch text { font-family: inherit; }
+  .arch {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.5rem; margin: 1.5rem 0; overflow-x: auto; box-shadow: var(--shadow);
+  }
+  .arch svg { width: 100%; max-width: 900px; height: auto; display: block; margin: 0 auto; }
+  .arch-legend { font-size: 0.82rem; color: var(--muted); margin-top: 1rem; text-align: center; }
 
-  .flow { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.75rem 0; }
-  .flow-step { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.85rem; font-weight: 500; }
+  /* Flow diagrams */
+  .flow { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin: 0.75rem 0; }
+  .flow-step {
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 6px;
+    padding: 0.3rem 0.75rem; font-size: 0.85rem; font-weight: 600;
+  }
   .flow-arrow { color: var(--muted); font-size: 1.1rem; }
+  .flow-branch { margin-left: 8.5rem; }
 
-  .status-bar { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
-  .status-item { font-size: 0.85rem; }
-  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-  .dot-green { background: var(--green); }
-  .dot-yellow { background: var(--yellow); }
+  /* Channel cards */
+  .channel-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1rem 1.2rem; box-shadow: var(--shadow);
+  }
+  .channel-card .channel-name { font-weight: 700; font-size: 1.05rem; margin-bottom: 0.25rem; }
+  .channel-card .channel-desc { color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+  .channel-card .channel-desc strong { color: var(--text); }
+
+  /* Status summary */
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+  .status-item {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 0.8rem 1rem; display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem;
+  }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
   .dot-red { background: var(--red); }
+  .dot-gray { background: var(--muted); }
 
-  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.8rem; }
+  /* Checklist */
+  .checklist { list-style: none; padding: 0; }
+  .checklist li {
+    padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border);
+    font-size: 0.9rem; display: flex; gap: 0.6rem; align-items: flex-start;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .check-num {
+    background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent);
+    width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 0.72rem; font-weight: 700; flex-shrink: 0;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--border);
+    color: var(--muted); font-size: 0.8rem; display: flex; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.5rem;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
-<h1>Jarvis OS <span style="color:var(--muted); font-weight:400">v5.1</span></h1>
-<p class="subtitle">Autonomous multi-agent AI runtime for NQ futures strategy discovery, execution, and operator supervision.<br>
-Running on OpenClaw <code>v2026.3.13</code> &mdash; Qwen-primary, locally hosted.</p>
+<!-- ============================================================ -->
+<!-- HEADER -->
+<!-- ============================================================ -->
+<div class="header">
+  <h1>Jarvis OS <span class="version">v5.1</span></h1>
+  <p class="subtitle">
+    Autonomous multi-agent AI runtime for NQ futures strategy discovery, execution, and operator supervision.<br>
+    Running on OpenClaw <code>v2026.3.13</code> &mdash; Qwen-primary, locally hosted.
+  </p>
+</div>
 
 <!-- ============================================================ -->
-<h2>What This Is</h2>
+<!-- TABLE OF CONTENTS -->
+<!-- ============================================================ -->
+<nav class="toc no-print">
+  <div class="toc-title">Contents</div>
+  <ol class="toc-list">
+    <li><a href="#what-this-is">What This Is</a></li>
+    <li><a href="#whats-running">What Is Running Right Now</a></li>
+    <li><a href="#architecture">Architecture Diagram</a></li>
+    <li><a href="#agents">Agent Roster</a></li>
+    <li><a href="#channels">Discord Channel Model</a></li>
+    <li><a href="#tasks">Task Lifecycle</a></li>
+    <li><a href="#review">Review &amp; Approval Flow</a></li>
+    <li><a href="#quant">The Quant System</a></li>
+    <li><a href="#cadence">Cadence Voice</a></li>
+    <li><a href="#substrate">OpenClaw Substrate</a></li>
+    <li><a href="#partial">What Is Still Partial</a></li>
+    <li><a href="#daily">Daily Operator Checklist</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<!-- WHAT THIS IS -->
+<!-- ============================================================ -->
+<h2 id="what-this-is">What This Is</h2>
 
 <p>Jarvis OS coordinates a fleet of specialized AI agents that receive work through Discord, execute it via local LLMs (primarily Qwen 3.5 on LM Studio), and surface results back to the operator for review and approval. The quant system discovers, validates, and paper-trades NQ futures strategies. <strong>Nothing reaches production without human sign-off.</strong></p>
 
 <div class="grid-2">
   <div class="card">
     <div class="card-title">Single operator</div>
-    <div class="card-body">Designed for one operator on one machine. Dashboard and gateway bind to localhost only.</div>
+    <div class="card-body">Designed for one operator on one machine. Dashboard and gateway bind to <strong>localhost only</strong>. Pulse webhook is the sole exception (bound to 0.0.0.0 for TradingView ingestion).</div>
   </div>
   <div class="card">
     <div class="card-title">Human-in-the-loop</div>
-    <div class="card-body">All promotions, paper-trade requests, and live trade decisions require explicit operator approval.</div>
+    <div class="card-body">All promotions, paper-trade requests, and live trade decisions require <strong>explicit operator approval</strong>. The system proposes; you decide.</div>
   </div>
 </div>
 
 <!-- ============================================================ -->
-<h2>What Is Running Right Now</h2>
+<!-- WHAT'S RUNNING -->
+<!-- ============================================================ -->
+<h2 id="whats-running">What Is Running Right Now</h2>
+
+<div class="status-grid">
+  <div class="status-item"><span class="status-dot dot-green"></span> Gateway :18789</div>
+  <div class="status-item"><span class="status-dot dot-green"></span> Inbound :18790</div>
+  <div class="status-item"><span class="status-dot dot-green"></span> Dashboard :18793</div>
+  <div class="status-item"><span class="status-dot dot-green"></span> Pulse Webhook :18795</div>
+  <div class="status-item"><span class="status-dot dot-yellow"></span> Cadence Voice (mic blocked)</div>
+  <div class="status-item"><span class="status-dot dot-green"></span> 8 systemd timers active</div>
+</div>
 
 <h3>Persistent services</h3>
 <table>
-  <tr><th>Service</th><th>What it does</th><th>Status</th></tr>
-  <tr><td><code>openclaw-gateway</code></td><td>Node.js Discord bot, WebSocket, agent session routing</td><td><span class="badge badge-live">LIVE</span></td></tr>
-  <tr><td><code>openclaw-inbound-server</code></td><td>HTTP API on <code>:18790</code> for operator replies</td><td><span class="badge badge-live">LIVE</span></td></tr>
-  <tr><td><code>openclaw-dashboard</code></td><td>Operator dashboard at <code>http://127.0.0.1:18793</code></td><td><span class="badge badge-live">LIVE</span></td></tr>
-  <tr><td><code>cadence-voice-daemon</code></td><td>Wake-word + VAD + STT + TTS</td><td><span class="badge badge-partial">PARTIAL</span> mic blocked on WSL2</td></tr>
+  <tr><th>Service</th><th>What it does</th><th>Port</th><th>Status</th></tr>
+  <tr><td><code>openclaw-gateway</code></td><td>Node.js Discord bot, WebSocket, agent session routing</td><td>18789</td><td><span class="badge badge-live">LIVE</span></td></tr>
+  <tr><td><code>openclaw-inbound-server</code></td><td>HTTP API for operator replies and approval routing</td><td>18790</td><td><span class="badge badge-live">LIVE</span></td></tr>
+  <tr><td><code>openclaw-dashboard</code></td><td>Operator dashboard</td><td>18793</td><td><span class="badge badge-live">LIVE</span></td></tr>
+  <tr><td><code>pulse-webhook</code></td><td>TradingView webhook receiver for Pulse alerts</td><td>18795</td><td><span class="badge badge-live">LIVE</span></td></tr>
+  <tr><td><code>cadence-voice-daemon</code></td><td>openWakeWord + Silero VAD + faster-whisper + Piper TTS</td><td>&mdash;</td><td><span class="badge badge-partial">PARTIAL</span></td></tr>
 </table>
 
 <h3>Timer-driven services</h3>
 <table>
   <tr><th>Timer</th><th>Interval</th><th>What it does</th></tr>
-  <tr><td><code>openclaw-ralph</code></td><td>10 min</td><td>Picks one queued task, dispatches to backend, requests review</td></tr>
-  <tr><td><code>openclaw-review-poller</code></td><td>30 sec</td><td>Polls <code>#review</code> for approve/reject reactions</td></tr>
-  <tr><td><code>lobster-todo-intake</code></td><td>2 min</td><td>Polls <code>#todo</code> for new task messages</td></tr>
+  <tr><td><code>openclaw-review-poller</code></td><td>30 sec</td><td>Polls <code>#review</code> for approve/reject text + emoji reactions</td></tr>
   <tr><td><code>openclaw-discord-outbox</code></td><td>60 sec</td><td>Delivers pending Discord messages via webhooks</td></tr>
-  <tr><td><code>openclaw-operator-status</code></td><td>5 min</td><td>Posts action summary to <code>#jarvis</code> when needed</td></tr>
+  <tr><td><code>openclaw-operator-status</code></td><td>5 min</td><td>Posts action summary to <code>#jarvis</code> when operator attention needed</td></tr>
+  <tr><td><code>openclaw-ralph</code></td><td>10 min</td><td>Picks one queued task, dispatches to backend, requests review</td></tr>
+  <tr><td><code>openclaw-kitt-paper</code></td><td>10 min</td><td>Kitt paper trading cycle &mdash; position tracking, proof sweeps</td></tr>
   <tr><td><code>quant-lane-b-cycle</code></td><td>4 hours</td><td>Quant intelligence cycle: Atlas &rarr; Fish &rarr; Hermes &rarr; Kitt</td></tr>
-  <tr><td><code>openclaw-factory-weekly</code></td><td>Sun 2 AM</td><td>Strategy Factory batch run</td></tr>
+  <tr><td><code>openclaw-factory-weekly</code></td><td>Sun 2 AM</td><td>Strategy Factory full batch run</td></tr>
   <tr><td><code>openclaw-ops-check</code></td><td>Sun 3 AM</td><td>Doctor + security audit + backup</td></tr>
+</table>
+
+<h3>Cron</h3>
+<table>
+  <tr><th>Schedule</th><th>What it does</th></tr>
+  <tr><td>Every 2 min</td><td><code>local_executor.py</code> &mdash; polls task queue (SQLite), dispatches strategy factory runs, posts results to Discord</td></tr>
 </table>
 
 <h3>LLM providers</h3>
@@ -130,127 +277,138 @@ Running on OpenClaw <code>v2026.3.13</code> &mdash; Qwen-primary, locally hosted
 </table>
 
 <!-- ============================================================ -->
-<h2>Architecture</h2>
+<!-- ARCHITECTURE DIAGRAM -->
+<!-- ============================================================ -->
+<h2 id="architecture">Architecture</h2>
 
 <div class="arch">
-<svg viewBox="0 0 880 520" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background groups -->
-  <rect x="10" y="10" width="860" height="90" rx="8" fill="none" stroke="#30363d" stroke-dasharray="4"/>
-  <text x="20" y="32" fill="#8b949e" font-size="11" font-weight="600">OPERATOR</text>
+<svg viewBox="0 0 900 540" xmlns="http://www.w3.org/2000/svg">
+  <!-- Layer backgrounds -->
+  <rect x="10" y="8" width="880" height="95" rx="10" fill="none" stroke="#30363d" stroke-dasharray="5,3" stroke-width="1.5"/>
+  <text x="22" y="28" fill="#8b949e" font-size="10.5" font-weight="700" font-family="system-ui" letter-spacing="0.08em">OPERATOR INTERFACES</text>
 
-  <rect x="10" y="115" width="860" height="175" rx="8" fill="none" stroke="#30363d" stroke-dasharray="4"/>
-  <text x="20" y="137" fill="#8b949e" font-size="11" font-weight="600">OPENCLAW RUNTIME</text>
+  <rect x="10" y="118" width="880" height="185" rx="10" fill="none" stroke="#30363d" stroke-dasharray="5,3" stroke-width="1.5"/>
+  <text x="22" y="138" fill="#8b949e" font-size="10.5" font-weight="700" font-family="system-ui" letter-spacing="0.08em">OPENCLAW RUNTIME</text>
 
-  <rect x="10" y="305" width="860" height="205" rx="8" fill="none" stroke="#30363d" stroke-dasharray="4"/>
-  <text x="20" y="327" fill="#8b949e" font-size="11" font-weight="600">QUANT SYSTEM</text>
+  <rect x="10" y="318" width="880" height="215" rx="10" fill="none" stroke="#30363d" stroke-dasharray="5,3" stroke-width="1.5"/>
+  <text x="22" y="338" fill="#8b949e" font-size="10.5" font-weight="700" font-family="system-ui" letter-spacing="0.08em">QUANT SYSTEM</text>
 
   <!-- Operator row -->
-  <rect x="30" y="45" width="130" height="42" rx="6" fill="#161b22" stroke="#58a6ff"/>
-  <text x="95" y="71" fill="#58a6ff" font-size="12" text-anchor="middle" font-weight="600">Discord</text>
+  <rect x="30" y="42" width="140" height="48" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="100" y="71" fill="#58a6ff" font-size="13" text-anchor="middle" font-weight="700" font-family="system-ui">Discord</text>
 
-  <rect x="185" y="45" width="130" height="42" rx="6" fill="#161b22" stroke="#58a6ff"/>
-  <text x="250" y="71" fill="#58a6ff" font-size="12" text-anchor="middle" font-weight="600">Dashboard</text>
+  <rect x="190" y="42" width="140" height="48" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="260" y="71" fill="#58a6ff" font-size="13" text-anchor="middle" font-weight="700" font-family="system-ui">Dashboard</text>
 
-  <rect x="340" y="45" width="130" height="42" rx="6" fill="#161b22" stroke="#58a6ff"/>
-  <text x="405" y="71" fill="#58a6ff" font-size="12" text-anchor="middle" font-weight="600">CLI Scripts</text>
+  <rect x="350" y="42" width="140" height="48" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="420" y="71" fill="#58a6ff" font-size="13" text-anchor="middle" font-weight="700" font-family="system-ui">CLI Scripts</text>
 
-  <rect x="495" y="45" width="130" height="42" rx="6" fill="#161b22" stroke="#bc8cff" stroke-dasharray="3"/>
-  <text x="560" y="71" fill="#bc8cff" font-size="12" text-anchor="middle" font-weight="600">Cadence Voice</text>
-  <text x="560" y="83" fill="#8b949e" font-size="9" text-anchor="middle">partial &mdash; mic blocked</text>
+  <rect x="510" y="42" width="160" height="48" rx="8" fill="#161b22" stroke="#bc8cff" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="590" y="64" fill="#bc8cff" font-size="13" text-anchor="middle" font-weight="700" font-family="system-ui">Cadence Voice</text>
+  <text x="590" y="80" fill="#8b949e" font-size="9.5" text-anchor="middle" font-family="system-ui">partial &mdash; mic blocked</text>
 
-  <!-- Runtime row -->
-  <rect x="30" y="150" width="110" height="42" rx="6" fill="#161b22" stroke="#3fb950"/>
-  <text x="85" y="176" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="600">Gateway</text>
+  <rect x="690" y="42" width="180" height="48" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="780" y="64" fill="#58a6ff" font-size="13" text-anchor="middle" font-weight="700" font-family="system-ui">Pulse Webhook</text>
+  <text x="780" y="80" fill="#8b949e" font-size="9.5" text-anchor="middle" font-family="system-ui">TradingView :18795</text>
 
-  <rect x="160" y="150" width="80" height="42" rx="6" fill="#161b22" stroke="#3fb950"/>
-  <text x="200" y="176" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="600">Ralph</text>
+  <!-- Runtime row — agents -->
+  <rect x="30" y="155" width="115" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="87" y="184" fill="#3fb950" font-size="13" text-anchor="middle" font-weight="700" font-family="system-ui">Gateway</text>
 
-  <rect x="260" y="150" width="80" height="42" rx="6" fill="#161b22" stroke="#3fb950"/>
-  <text x="300" y="176" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="600">HAL</text>
-  <text x="300" y="186" fill="#8b949e" font-size="8" text-anchor="middle">ACP</text>
+  <rect x="160" y="155" width="85" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="202" y="178" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Ralph</text>
+  <text x="202" y="192" fill="#8b949e" font-size="8.5" text-anchor="middle" font-family="system-ui">10 min cycle</text>
 
-  <rect x="360" y="150" width="90" height="42" rx="6" fill="#161b22" stroke="#3fb950"/>
-  <text x="405" y="176" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="600">Hermes</text>
+  <rect x="260" y="155" width="85" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="302" y="178" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">HAL</text>
+  <text x="302" y="192" fill="#8b949e" font-size="8.5" text-anchor="middle" font-family="system-ui">ACP / acpx</text>
 
-  <rect x="470" y="150" width="90" height="42" rx="6" fill="#161b22" stroke="#3fb950"/>
-  <text x="515" y="176" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="600">Archimedes</text>
-  <text x="515" y="186" fill="#8b949e" font-size="8" text-anchor="middle">code review</text>
+  <rect x="360" y="155" width="95" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="407" y="184" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Hermes</text>
 
-  <rect x="580" y="150" width="70" height="42" rx="6" fill="#161b22" stroke="#3fb950"/>
-  <text x="615" y="176" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="600">Anton</text>
-  <text x="615" y="186" fill="#8b949e" font-size="8" text-anchor="middle">supreme</text>
+  <rect x="470" y="155" width="100" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="520" y="178" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Archimedes</text>
+  <text x="520" y="192" fill="#8b949e" font-size="8.5" text-anchor="middle" font-family="system-ui">code review</text>
 
-  <rect x="670" y="150" width="70" height="42" rx="6" fill="#161b22" stroke="#3fb950"/>
-  <text x="705" y="176" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="600">Scout</text>
+  <rect x="585" y="155" width="75" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="622" y="178" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Anton</text>
+  <text x="622" y="192" fill="#8b949e" font-size="8.5" text-anchor="middle" font-family="system-ui">supreme</text>
 
-  <rect x="760" y="150" width="90" height="42" rx="6" fill="#161b22" stroke="#3fb950"/>
-  <text x="805" y="176" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="600">Muse / Bowser</text>
+  <rect x="675" y="155" width="70" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="710" y="184" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Scout</text>
+
+  <rect x="760" y="155" width="110" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <text x="815" y="184" fill="#3fb950" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Muse / Bowser</text>
 
   <!-- State store -->
-  <rect x="260" y="218" width="240" height="36" rx="6" fill="#161b22" stroke="#d29922"/>
-  <text x="380" y="241" fill="#d29922" font-size="12" text-anchor="middle" font-weight="600">Task Store &bull; Review &bull; Approval &bull; Artifacts</text>
+  <rect x="240" y="228" width="260" height="40" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1.5"/>
+  <text x="370" y="248" fill="#d29922" font-size="11" text-anchor="middle" font-weight="600" font-family="system-ui">Task Store &#8226; Reviews &#8226; Approvals</text>
+  <text x="370" y="261" fill="#8b949e" font-size="9" text-anchor="middle" font-family="system-ui">SQLite + JSON state files</text>
 
-  <rect x="540" y="218" width="180" height="36" rx="6" fill="#161b22" stroke="#d29922"/>
-  <text x="630" y="241" fill="#d29922" font-size="12" text-anchor="middle" font-weight="600">Outbox &rarr; Discord Webhooks</text>
+  <rect x="530" y="228" width="200" height="40" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1.5"/>
+  <text x="630" y="253" fill="#d29922" font-size="11" text-anchor="middle" font-weight="600" font-family="system-ui">Outbox &rarr; Discord Webhooks</text>
 
   <!-- Quant row -->
-  <rect x="30" y="340" width="110" height="50" rx="6" fill="#161b22" stroke="#bc8cff"/>
-  <text x="85" y="363" fill="#bc8cff" font-size="12" text-anchor="middle" font-weight="600">Kitt</text>
-  <text x="85" y="378" fill="#8b949e" font-size="9" text-anchor="middle">quant lead / briefs</text>
+  <rect x="30" y="355" width="115" height="55" rx="8" fill="#161b22" stroke="#bc8cff" stroke-width="1.5"/>
+  <text x="87" y="378" fill="#bc8cff" font-size="13" text-anchor="middle" font-weight="700" font-family="system-ui">Kitt</text>
+  <text x="87" y="396" fill="#8b949e" font-size="9.5" text-anchor="middle" font-family="system-ui">quant lead / briefs</text>
 
-  <rect x="160" y="340" width="100" height="50" rx="6" fill="#161b22" stroke="#db6d28"/>
-  <text x="210" y="363" fill="#db6d28" font-size="11" text-anchor="middle" font-weight="600">Atlas</text>
-  <text x="210" y="378" fill="#8b949e" font-size="9" text-anchor="middle">discovery</text>
-  <text x="210" y="388" fill="#db6d28" font-size="8" text-anchor="middle">lane service</text>
+  <rect x="165" y="355" width="105" height="55" rx="8" fill="#161b22" stroke="#db6d28" stroke-width="1.5"/>
+  <text x="217" y="378" fill="#db6d28" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Atlas</text>
+  <text x="217" y="393" fill="#8b949e" font-size="9.5" text-anchor="middle" font-family="system-ui">discovery</text>
+  <text x="217" y="405" fill="#db6d28" font-size="8" text-anchor="middle" font-family="system-ui" font-style="italic">lane service</text>
 
-  <rect x="280" y="340" width="100" height="50" rx="6" fill="#161b22" stroke="#db6d28"/>
-  <text x="330" y="363" fill="#db6d28" font-size="11" text-anchor="middle" font-weight="600">Fish</text>
-  <text x="330" y="378" fill="#8b949e" font-size="9" text-anchor="middle">scenarios</text>
-  <text x="330" y="388" fill="#db6d28" font-size="8" text-anchor="middle">lane service</text>
+  <rect x="290" y="355" width="105" height="55" rx="8" fill="#161b22" stroke="#db6d28" stroke-width="1.5"/>
+  <text x="342" y="378" fill="#db6d28" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Fish</text>
+  <text x="342" y="393" fill="#8b949e" font-size="9.5" text-anchor="middle" font-family="system-ui">scenarios</text>
+  <text x="342" y="405" fill="#db6d28" font-size="8" text-anchor="middle" font-family="system-ui" font-style="italic">lane service</text>
 
-  <rect x="400" y="340" width="100" height="50" rx="6" fill="#161b22" stroke="#db6d28"/>
-  <text x="450" y="363" fill="#db6d28" font-size="11" text-anchor="middle" font-weight="600">Sigma</text>
-  <text x="450" y="378" fill="#8b949e" font-size="9" text-anchor="middle">validation</text>
-  <text x="450" y="388" fill="#db6d28" font-size="8" text-anchor="middle">lane service</text>
+  <rect x="415" y="355" width="105" height="55" rx="8" fill="#161b22" stroke="#db6d28" stroke-width="1.5"/>
+  <text x="467" y="378" fill="#db6d28" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Sigma</text>
+  <text x="467" y="393" fill="#8b949e" font-size="9.5" text-anchor="middle" font-family="system-ui">validation</text>
+  <text x="467" y="405" fill="#db6d28" font-size="8" text-anchor="middle" font-family="system-ui" font-style="italic">lane service</text>
 
-  <rect x="520" y="340" width="100" height="50" rx="6" fill="#161b22" stroke="#db6d28"/>
-  <text x="570" y="363" fill="#db6d28" font-size="11" text-anchor="middle" font-weight="600">Pulse</text>
-  <text x="570" y="378" fill="#8b949e" font-size="9" text-anchor="middle">alerts</text>
-  <text x="570" y="388" fill="#db6d28" font-size="8" text-anchor="middle">lane service</text>
+  <rect x="540" y="355" width="105" height="55" rx="8" fill="#161b22" stroke="#db6d28" stroke-width="1.5"/>
+  <text x="592" y="378" fill="#db6d28" font-size="12" text-anchor="middle" font-weight="700" font-family="system-ui">Pulse</text>
+  <text x="592" y="393" fill="#8b949e" font-size="9.5" text-anchor="middle" font-family="system-ui">alerts</text>
+  <text x="592" y="405" fill="#db6d28" font-size="8" text-anchor="middle" font-family="system-ui" font-style="italic">lane service</text>
 
-  <rect x="650" y="340" width="200" height="50" rx="6" fill="#161b22" stroke="#bc8cff"/>
-  <text x="750" y="363" fill="#bc8cff" font-size="12" text-anchor="middle" font-weight="600">Strategy Factory</text>
-  <text x="750" y="378" fill="#8b949e" font-size="9" text-anchor="middle">weekly batch &bull; backtest &bull; promote</text>
+  <rect x="665" y="355" width="210" height="55" rx="8" fill="#161b22" stroke="#bc8cff" stroke-width="1.5"/>
+  <text x="770" y="378" fill="#bc8cff" font-size="13" text-anchor="middle" font-weight="700" font-family="system-ui">Strategy Factory</text>
+  <text x="770" y="396" fill="#8b949e" font-size="9.5" text-anchor="middle" font-family="system-ui">weekly batch &#8226; backtest &#8226; promote</text>
 
-  <!-- Lane B cycle arrow -->
-  <rect x="80" y="420" width="560" height="32" rx="6" fill="none" stroke="#bc8cff" stroke-dasharray="4"/>
-  <text x="360" y="441" fill="#bc8cff" font-size="11" text-anchor="middle" font-weight="500">Quant Lane B cycle (every 4h): Atlas &rarr; Fish &rarr; Hermes &rarr; Kitt brief</text>
+  <!-- Lane B cycle -->
+  <rect x="80" y="435" width="580" height="32" rx="8" fill="none" stroke="#bc8cff" stroke-dasharray="5,3" stroke-width="1.2"/>
+  <text x="370" y="456" fill="#bc8cff" font-size="11" text-anchor="middle" font-weight="600" font-family="system-ui">Lane B cycle (4h): Atlas &rarr; Fish &rarr; Hermes &rarr; Kitt brief</text>
 
   <!-- Strategy lifecycle -->
-  <rect x="80" y="470" width="690" height="28" rx="6" fill="none" stroke="#3fb950" stroke-dasharray="4"/>
-  <text x="425" y="489" fill="#3fb950" font-size="11" text-anchor="middle" font-weight="500">Strategy lifecycle: IDEA &rarr; CANDIDATE &rarr; VALIDATED &rarr; PROMOTED &rarr; PAPER_TRADING &rarr; LIVE (human approval required)</text>
+  <rect x="80" y="485" width="690" height="32" rx="8" fill="none" stroke="#3fb950" stroke-dasharray="5,3" stroke-width="1.2"/>
+  <text x="425" y="506" fill="#3fb950" font-size="11" text-anchor="middle" font-weight="600" font-family="system-ui">Strategy: IDEA &rarr; CANDIDATE &rarr; VALIDATED &rarr; PROMOTED &rarr; PAPER_TRADING &rarr; LIVE (human approval)</text>
 
   <!-- Connecting lines -->
-  <line x1="95" y1="87" x2="85" y2="150" stroke="#30363d" stroke-width="1"/>
-  <line x1="250" y1="87" x2="250" y2="150" stroke="#30363d" stroke-width="1"/>
-  <line x1="405" y1="87" x2="300" y2="150" stroke="#30363d" stroke-width="1"/>
-  <line x1="200" y1="192" x2="300" y2="218" stroke="#30363d" stroke-width="1"/>
-  <line x1="300" y1="192" x2="350" y2="218" stroke="#30363d" stroke-width="1"/>
-  <line x1="405" y1="192" x2="400" y2="218" stroke="#30363d" stroke-width="1"/>
-  <line x1="380" y1="254" x2="380" y2="340" stroke="#30363d" stroke-width="1" stroke-dasharray="3"/>
-  <line x1="630" y1="254" x2="630" y2="340" stroke="#30363d" stroke-width="1"/>
+  <line x1="100" y1="90" x2="87" y2="155" stroke="#30363d" stroke-width="1.2"/>
+  <line x1="260" y1="90" x2="260" y2="155" stroke="#30363d" stroke-width="1.2"/>
+  <line x1="420" y1="90" x2="302" y2="155" stroke="#30363d" stroke-width="1.2"/>
+  <line x1="780" y1="90" x2="592" y2="355" stroke="#30363d" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="202" y1="203" x2="310" y2="228" stroke="#30363d" stroke-width="1"/>
+  <line x1="302" y1="203" x2="350" y2="228" stroke="#30363d" stroke-width="1"/>
+  <line x1="407" y1="203" x2="400" y2="228" stroke="#30363d" stroke-width="1"/>
+  <line x1="370" y1="268" x2="370" y2="355" stroke="#30363d" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="630" y1="268" x2="630" y2="355" stroke="#30363d" stroke-width="1"/>
 </svg>
+
+<div class="arch-legend">
+  <strong style="color:var(--green);">Green</strong> = live interactive agent &nbsp;&bull;&nbsp;
+  <strong style="color:var(--orange);">Orange</strong> = quant lane service (outbound-only, jarvis fallback) &nbsp;&bull;&nbsp;
+  <strong style="color:var(--purple);">Purple</strong> = quant agent or subsystem &nbsp;&bull;&nbsp;
+  <strong>Dashed</strong> = partial or scaffolded
+</div>
 </div>
 
-<p style="font-size:0.85rem; color:var(--muted);">
-  <strong>Green border</strong> = live interactive agent &nbsp;|&nbsp;
-  <strong style="color:var(--orange);">Orange border</strong> = quant lane service (outbound-only, jarvis fallback for inbound) &nbsp;|&nbsp;
-  <strong style="color:var(--purple);">Purple border</strong> = quant agent or subsystem &nbsp;|&nbsp;
-  <strong>Dashed</strong> = partial or scaffolded
-</p>
-
 <!-- ============================================================ -->
-<h2>Agent Roster</h2>
+<!-- AGENT ROSTER -->
+<!-- ============================================================ -->
+<h2 id="agents">Agent Roster</h2>
 
 <table>
   <tr><th>Agent</th><th>Role</th><th>Model</th><th>Type</th></tr>
@@ -270,38 +428,38 @@ Running on OpenClaw <code>v2026.3.13</code> &mdash; Qwen-primary, locally hosted
 </table>
 
 <h3>Quant lane services <span class="badge badge-fallback">TEMPORARY FALLBACK</span></h3>
-<p style="font-size:0.9rem;">These have Discord channels for outbound event delivery (webhooks) but are <strong>not</strong> fully separate interactive OpenClaw agents. Inbound messages route to Jarvis as a temporary fallback.</p>
+<p>These have Discord channels for outbound event delivery (webhooks) but are <strong>not</strong> fully separate interactive OpenClaw agents. Inbound messages route to Jarvis as a temporary fallback until quant lane architecture is finalized.</p>
 
 <table>
-  <tr><th>Service</th><th>Channel</th><th>Purpose</th></tr>
-  <tr><td>Sigma</td><td><code>#sigma</code></td><td>Strategy validation gates</td></tr>
-  <tr><td>Atlas</td><td><code>#atlas</code></td><td>Strategy candidate generation</td></tr>
-  <tr><td>Fish</td><td><code>#fish</code></td><td>Market scenario analysis</td></tr>
-  <tr><td>Pulse</td><td><code>#pulse</code></td><td>Discretionary NQ alerts &amp; proposals</td></tr>
+  <tr><th>Service</th><th>Channel</th><th>Purpose</th><th>Lane B role</th></tr>
+  <tr><td>Atlas</td><td><code>#atlas</code></td><td>Strategy candidate generation &amp; experiment batches</td><td>Discovery</td></tr>
+  <tr><td>Fish</td><td><code>#fish</code></td><td>Market scenario analysis, risk maps, calibration</td><td>Scenarios</td></tr>
+  <tr><td>Sigma</td><td><code>#sigma</code></td><td>Validation gates &mdash; PF, Sharpe, drawdown thresholds</td><td>Validation</td></tr>
+  <tr><td>Pulse</td><td><code>#pulse</code></td><td>Discretionary NQ alerts &amp; review proposals</td><td>Alerts (real-time)</td></tr>
 </table>
 
 <!-- ============================================================ -->
-<h2>Discord Channel Model</h2>
+<!-- DISCORD CHANNEL MODEL -->
+<!-- ============================================================ -->
+<h2 id="channels">Discord Channel Model</h2>
 
-<div class="grid-2">
-  <div class="card">
-    <div class="card-title" style="color:var(--accent);">#review</div>
-    <div class="card-body"><strong>Operator action inbox.</strong> All review requests, approval requests, paper-trade approvals, and pulse proposals land here. Respond with <code>approve apr_xxx</code> or emoji reactions.</div>
+<h3>Operator-facing channels</h3>
+<div class="grid-3">
+  <div class="channel-card" style="border-left: 3px solid var(--accent);">
+    <div class="channel-name" style="color:var(--accent);">#review</div>
+    <div class="channel-desc"><strong>Operator action inbox.</strong> Review requests, approval requests, paper-trade approvals, pulse proposals. Respond with <code>approve apr_xxx</code> or emoji reactions.</div>
   </div>
-  <div class="card">
-    <div class="card-title" style="color:var(--green);">#worklog</div>
-    <div class="card-body"><strong>Audit trail.</strong> Review completed, approval completed, lifecycle confirmations. Read-only receipts. Nothing here needs action.</div>
+  <div class="channel-card" style="border-left: 3px solid var(--green);">
+    <div class="channel-name" style="color:var(--green);">#worklog</div>
+    <div class="channel-desc"><strong>Audit trail.</strong> Review completed, approval completed, lifecycle confirmations. Read-only receipts &mdash; nothing here needs action.</div>
   </div>
-  <div class="card">
-    <div class="card-title" style="color:var(--yellow);">#jarvis</div>
-    <div class="card-body"><strong>Escalations only.</strong> Failures, blocked tasks, quant alerts, factory summaries, warnings, errors. Low-noise &mdash; no routine approval receipts.</div>
-  </div>
-  <div class="card">
-    <div class="card-title">#todo</div>
-    <div class="card-body"><strong>Task intake.</strong> Post a message here to create a task. Picked up every 2 minutes.</div>
+  <div class="channel-card" style="border-left: 3px solid var(--yellow);">
+    <div class="channel-name" style="color:var(--yellow);">#jarvis</div>
+    <div class="channel-desc"><strong>Escalations only.</strong> Failures, blocked tasks, quant alerts, factory summaries, warnings, errors. Low-noise &mdash; only operator-action-needed events.</div>
   </div>
 </div>
 
+<h3>Agent channels</h3>
 <table>
   <tr><th>Channel</th><th>What goes there</th><th>Interactive?</th></tr>
   <tr><td><code>#hal</code></td><td>Builder execution output</td><td>Yes &mdash; HAL responds</td></tr>
@@ -311,15 +469,23 @@ Running on OpenClaw <code>v2026.3.13</code> &mdash; Qwen-primary, locally hosted
   <tr><td><code>#muse</code></td><td>Creative agent output</td><td>Yes &mdash; Muse responds</td></tr>
   <tr><td><code>#bowser</code></td><td>Browser automation output</td><td>Yes &mdash; Bowser responds</td></tr>
   <tr><td><code>#cadence</code></td><td>Voice/TTS events only</td><td>Voice-only channel</td></tr>
+  <tr><td><code>#qwen</code></td><td>Qwen-Agent output</td><td>Yes (ACP)</td></tr>
+  <tr><td><code>#ralph</code></td><td>Overflow / task runner output</td><td>Yes &mdash; Ralph responds</td></tr>
+</table>
+
+<h3>Quant lane channels</h3>
+<table>
+  <tr><th>Channel</th><th>What goes there</th><th>Interactive?</th></tr>
   <tr><td><code>#sigma</code></td><td>Validation events</td><td>Outbound only <span class="badge badge-fallback">jarvis fallback</span></td></tr>
   <tr><td><code>#atlas</code></td><td>Discovery events</td><td>Outbound only <span class="badge badge-fallback">jarvis fallback</span></td></tr>
   <tr><td><code>#fish</code></td><td>Scenario events</td><td>Outbound only <span class="badge badge-fallback">jarvis fallback</span></td></tr>
-  <tr><td><code>#pulse</code></td><td>Alert events</td><td>Outbound only <span class="badge badge-fallback">jarvis fallback</span></td></tr>
-  <tr><td><code>#qwen</code></td><td>Qwen-Agent output</td><td>Yes &mdash; ACP agent</td></tr>
+  <tr><td><code>#pulse</code></td><td>Alert events, TradingView webhooks</td><td>Outbound only <span class="badge badge-fallback">jarvis fallback</span></td></tr>
 </table>
 
 <!-- ============================================================ -->
-<h2>Task Lifecycle</h2>
+<!-- TASK LIFECYCLE -->
+<!-- ============================================================ -->
+<h2 id="tasks">Task Lifecycle</h2>
 
 <div class="flow">
   <span class="flow-step">QUEUED</span>
@@ -334,19 +500,21 @@ Running on OpenClaw <code>v2026.3.13</code> &mdash; Qwen-primary, locally hosted
   <span class="flow-arrow">&rarr;</span>
   <span class="flow-step" style="border-color:var(--green);">PROMOTED</span>
 </div>
-<div class="flow">
-  <span style="color:var(--muted); font-size:0.85rem; margin-left: 9rem;">&#8627;</span>
+<div class="flow flow-branch">
+  <span style="color:var(--muted); font-size:0.85rem;">&#8627;</span>
   <span class="flow-step" style="border-color:var(--red);">FAILED</span>
   <span style="color:var(--muted); font-size:0.85rem;">(retryable)</span>
-  <span style="color:var(--muted); margin: 0 0.5rem;">|</span>
+  <span style="color:var(--muted); margin: 0 0.3rem;">|</span>
   <span class="flow-step" style="border-color:var(--yellow);">BLOCKED</span>
   <span style="color:var(--muted); font-size:0.85rem;">(needs operator)</span>
 </div>
 
-<p style="margin-top:0.75rem; font-size:0.9rem;">Every task flows through this lifecycle. Nothing is auto-promoted to production. All promotions require explicit operator action.</p>
+<p style="margin-top:0.75rem; font-size:0.9rem;">Every task flows through this lifecycle. Nothing is auto-promoted to production. All promotions require explicit operator action. Task state is stored in SQLite (<code>tasks/tasks.db</code>).</p>
 
 <!-- ============================================================ -->
-<h2>Review &amp; Approval Flow</h2>
+<!-- REVIEW & APPROVAL FLOW -->
+<!-- ============================================================ -->
+<h2 id="review">Review &amp; Approval Flow</h2>
 
 <div class="flow">
   <span class="flow-step">Ralph dispatches</span>
@@ -360,26 +528,36 @@ Running on OpenClaw <code>v2026.3.13</code> &mdash; Qwen-primary, locally hosted
   <span class="flow-step" style="border-color:var(--green);">Promoted</span>
 </div>
 
-<ul style="margin-top:0.75rem; font-size:0.9rem; padding-left:1.2rem;">
-  <li>Review requests and approval requests appear in <code>#review</code></li>
-  <li>Approve via Discord: <code>approve apr_xxx</code> or emoji &#x2705; reaction</li>
-  <li>Approve via CLI: <code>python3 scripts/run_ralph_v1.py --approve task_xxx</code></li>
-  <li>Completion receipts go to <code>#worklog</code>, not <code>#review</code></li>
-  <li>High-stakes items (quant, deploy) escalate to Anton</li>
-</ul>
+<div class="card" style="margin-top:1rem;">
+  <div class="card-title">How to approve / reject</div>
+  <div class="card-body">
+    <table style="margin:0;">
+      <tr><th>Action</th><th>Discord command</th><th>Emoji shortcut</th></tr>
+      <tr><td>Approve</td><td><code>approve apr_xxx</code></td><td>&#x2705; or &#x1F44D;</td></tr>
+      <tr><td>Reject</td><td><code>reject apr_xxx [reason]</code></td><td>&#x274C; or &#x1F44E;</td></tr>
+      <tr><td>Rerun</td><td><code>rerun apr_xxx</code></td><td>&mdash;</td></tr>
+    </table>
+    <p style="margin-top:0.5rem;">ID patterns: <code>apr_*</code> (approvals), <code>qpt_*</code> (quant paper-trade), <code>pulse_*</code> (alerts), <code>promo_*</code> (promotions)</p>
+    <p>Completion receipts go to <code>#worklog</code>, not <code>#review</code>. High-stakes items escalate to Anton.</p>
+    <p>Review poller checks every 30 sec &rarr; inbound server &rarr; runtime &rarr; outbox &rarr; Discord.</p>
+  </div>
+</div>
 
 <!-- ============================================================ -->
-<h2>The Quant System</h2>
+<!-- THE QUANT SYSTEM -->
+<!-- ============================================================ -->
+<h2 id="quant">The Quant System</h2>
 
 <p>Strategy Factory is <strong>one part</strong> of the broader quant system. The full picture:</p>
 
 <table>
   <tr><th>Component</th><th>What it does</th><th>Schedule</th></tr>
-  <tr><td><strong>Quant Lane B</strong></td><td>Intelligence cycle: Atlas discovers candidates &rarr; Fish models scenarios &rarr; Hermes researches &rarr; Kitt generates briefs</td><td>Every 4 hours</td></tr>
-  <tr><td><strong>Strategy Factory</strong></td><td>Weekly batch: backtest candidates, run validation gates, promote survivors</td><td>Sunday 2 AM</td></tr>
+  <tr><td><strong>Quant Lane B</strong></td><td>Intelligence cycle: Atlas discovers &rarr; Fish models scenarios &rarr; Hermes researches &rarr; Kitt briefs</td><td>Every 4 hours</td></tr>
+  <tr><td><strong>Strategy Factory</strong></td><td>Weekly batch: backtest candidates, validation gates, promote survivors</td><td>Sunday 2 AM</td></tr>
   <tr><td><strong>Sigma</strong></td><td>Validation gates &mdash; PF, Sharpe, drawdown, trade count thresholds</td><td>Per-candidate</td></tr>
-  <tr><td><strong>Pulse</strong></td><td>Discretionary session alerts, setup detection, proposals to downstream lanes</td><td>Real-time</td></tr>
-  <tr><td><strong>Paper trading</strong></td><td>Approved strategies execute paper trades via executor</td><td>On approval</td></tr>
+  <tr><td><strong>Pulse</strong></td><td>Discretionary session alerts, TradingView webhook ingestion, proposals</td><td>Real-time (:18795)</td></tr>
+  <tr><td><strong>Kitt paper cycle</strong></td><td>Position tracking, proof sweeps, brief generation</td><td>Every 10 min</td></tr>
+  <tr><td><strong>Executor</strong></td><td>Paper position accounting, execution intents, rejection tracking</td><td>On event</td></tr>
 </table>
 
 <h3>Strategy lifecycle</h3>
@@ -398,66 +576,101 @@ Running on OpenClaw <code>v2026.3.13</code> &mdash; Qwen-primary, locally hosted
 </div>
 <p style="font-size:0.85rem; color:var(--muted); margin-top:0.5rem;">Paper-trade and live-trade transitions require explicit operator approval via <code>#review</code>.</p>
 
+<h3>Current state <span style="font-weight:400; color:var(--muted); font-size:0.85rem;">(as of 2026-03-19)</span></h3>
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">59 strategies in registry</div>
+    <div class="card-body">All at CANDIDATE stage with gate failures. Logic families: EMA crossover, breakout, mean reversion. Primary gate failures: insufficient trade count, Sharpe &lt; 0.5.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">0 promoted to paper trading</div>
+    <div class="card-body">Weekly runs producing full artifact chains (candidate &rarr; perturbation &rarr; regime &rarr; stress). Pipeline is end-to-end functional; strategies haven't cleared gates yet.</div>
+  </div>
+</div>
+
 <!-- ============================================================ -->
-<h2>Cadence Voice</h2>
+<!-- CADENCE VOICE -->
+<!-- ============================================================ -->
+<h2 id="cadence">Cadence Voice</h2>
 
 <div class="card">
   <div class="card-title">Status: <span class="badge badge-partial">PARTIAL</span></div>
   <div class="card-body">
-    <p>Cadence is a two-layer voice interface. The daemon is running but mic capture is blocked on WSL2 (RDPSource unavailable).</p>
+    <p><strong>Cadence</strong> is the operator-facing voice identity. Two-layer architecture:</p>
     <ul style="margin-top:0.5rem; padding-left:1.2rem;">
-      <li><strong>Layer 1 (command):</strong> openWakeWord &rarr; Silero VAD &rarr; faster-whisper STT &rarr; task routing &rarr; Piper TTS. Pipeline built, not proven end-to-end without live mic.</li>
+      <li><strong>Layer 1 (command):</strong> openWakeWord &rarr; Silero VAD &rarr; faster-whisper STT &rarr; task routing &rarr; Piper TTS. Pipeline built and daemon running. Mic capture blocked on WSL2 &mdash; RDPSource is silent; Windows ffmpeg pipe workaround (<code>win_capture.py</code>) exists but not wired into daemon.</li>
       <li><strong>Layer 2 (conversation):</strong> Persistent conversational copilot with live runtime context. Proven via replay mode.</li>
     </ul>
-    <p style="margin-top:0.5rem;">Test via: <code>python3 scripts/cadence_status.py --replay "What needs attention?"</code></p>
+    <p style="margin-top:0.5rem;">Test: <code>python3 scripts/cadence_status.py --replay "What needs attention?"</code></p>
+    <p style="margin-top:0.25rem; font-size:0.85rem; color:var(--muted);">Note: "Cadence" is the operator-facing name; "PersonaPlex" is the internal engine name.</p>
   </div>
 </div>
 
 <!-- ============================================================ -->
-<h2>OpenClaw Substrate</h2>
+<!-- OPENCLAW SUBSTRATE -->
+<!-- ============================================================ -->
+<h2 id="substrate">OpenClaw Substrate</h2>
 
 <p>Jarvis OS runs on the <strong>OpenClaw</strong> upstream runtime (<code>v2026.3.13</code>). OpenClaw provides:</p>
-<ul style="font-size:0.9rem; padding-left:1.2rem;">
-  <li>Discord bot gateway (Node.js, WebSocket)</li>
-  <li>Agent session management (per-channel, daily reset at 4 AM)</li>
-  <li>ACP (Agent Control Protocol) for sandboxed execution (HAL uses this)</li>
-  <li>Plugin system (acpx, qwen-agent, discord)</li>
-  <li>Health, backup, and security audit commands</li>
-</ul>
-<p style="font-size:0.9rem; margin-top:0.5rem;">Useful commands: <code>openclaw status</code>, <code>openclaw doctor</code>, <code>openclaw security audit</code></p>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Gateway</div>
+    <div class="card-body">Discord bot gateway (Node.js, WebSocket). Manages agent sessions per-channel with daily reset at 4 AM.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">ACP</div>
+    <div class="card-body">Agent Control Protocol for sandboxed execution. HAL uses acpx backend. Max 4 concurrent sessions.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Plugins</div>
+    <div class="card-body">Plugin system: acpx (sandboxed exec), qwen-agent (Qwen), discord (messaging).</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Operations</div>
+    <div class="card-body"><code>openclaw status</code>, <code>openclaw doctor</code>, <code>openclaw security audit</code></div>
+  </div>
+</div>
 
 <!-- ============================================================ -->
-<h2>What Is Still Partial</h2>
+<!-- WHAT IS STILL PARTIAL -->
+<!-- ============================================================ -->
+<h2 id="partial">What Is Still Partial</h2>
 
 <table>
   <tr><th>Area</th><th>Status</th><th>What is missing</th></tr>
-  <tr><td>Cadence voice</td><td><span class="badge badge-partial">PARTIAL</span></td><td>Live mic capture blocked on WSL2. Proven in replay mode only.</td></tr>
-  <tr><td>Bowser browser</td><td><span class="badge badge-partial">BOUNDED</span></td><td>Request/result protocol live, full external browser lane not proven e2e.</td></tr>
-  <tr><td>Sigma/Atlas/Fish/Pulse agents</td><td><span class="badge badge-fallback">FALLBACK</span></td><td>Outbound-only channel presence. No dedicated interactive agents &mdash; inbound routes to Jarvis.</td></tr>
-  <tr><td>OpenAI / GPT</td><td><span class="badge badge-scaffold">SCAFFOLD</span></td><td>Adapter wired but requires funded API billing to activate.</td></tr>
-  <tr><td>v5.2 multi-model routing</td><td><span class="badge badge-scaffold">SCAFFOLD</span></td><td>Scaffolding only &mdash; not active in production.</td></tr>
-  <tr><td>Daily data pull (4 AM)</td><td><span class="badge badge-scaffold">NOT SCHEDULED</span></td><td>FACTORY_RUNBOOK mentions it but no systemd timer exists. Only weekly batch is live.</td></tr>
+  <tr><td>Cadence voice</td><td><span class="badge badge-partial">PARTIAL</span></td><td>Live mic blocked on WSL2. Proven in replay only. <code>win_capture.py</code> workaround exists but not wired into daemon.</td></tr>
+  <tr><td>Bowser browser</td><td><span class="badge badge-partial">BOUNDED</span></td><td>Request/result protocol live; full external browser lane not proven e2e.</td></tr>
+  <tr><td>Sigma / Atlas / Fish / Pulse</td><td><span class="badge badge-fallback">FALLBACK</span></td><td>Outbound-only channel presence. No dedicated interactive agents &mdash; inbound routes to Jarvis.</td></tr>
+  <tr><td><code>#todo</code> intake</td><td><span class="badge badge-dead">DEAD</span></td><td><code>lobster-todo-intake</code> has no timer and is not running. Task intake via cron executor only.</td></tr>
+  <tr><td>OpenAI / GPT</td><td><span class="badge badge-scaffold">SCAFFOLD</span></td><td>Adapter wired but requires funded API billing.</td></tr>
+  <tr><td>v5.2 multi-model routing</td><td><span class="badge badge-scaffold">SCAFFOLD</span></td><td>Scaffolding exists but not active in production.</td></tr>
+  <tr><td>Daily data pull (4 AM)</td><td><span class="badge badge-scaffold">NOT SCHEDULED</span></td><td>Documented in FACTORY_RUNBOOK but no timer exists. Only weekly batch is live.</td></tr>
+  <tr><td>TASKS.jsonl / EXPERIMENTS.jsonl</td><td><span class="badge badge-scaffold">DEPRECATED</span></td><td>Both empty. Tasks migrated to SQLite (<code>tasks/tasks.db</code>).</td></tr>
 </table>
 
 <!-- ============================================================ -->
-<h2>Daily Operator Checklist</h2>
+<!-- DAILY OPERATOR CHECKLIST -->
+<!-- ============================================================ -->
+<h2 id="daily">Daily Operator Checklist</h2>
 
 <div class="card">
-  <div class="card-body" style="font-size:0.9rem;">
-    <ol style="padding-left:1.2rem;">
-      <li>Open the dashboard: <code>http://127.0.0.1:18793</code></li>
-      <li>Check <code>#review</code> in Discord &mdash; approve or reject pending items</li>
-      <li>Glance at <code>#jarvis</code> &mdash; any failures, alerts, or blocked tasks?</li>
-      <li>Run <code>python3 scripts/operator_status.py</code> for terminal summary</li>
-      <li>Review Kitt briefs in <code>#kitt</code> for quant awareness</li>
-      <li>If queue is backing up: <code>python3 scripts/run_ralph_v1.py</code> to burn one task manually</li>
-    </ol>
-  </div>
+  <ul class="checklist">
+    <li><span class="check-num">1</span> Open the dashboard: <code>http://127.0.0.1:18793</code></li>
+    <li><span class="check-num">2</span> Check <code>#review</code> in Discord &mdash; approve or reject pending items</li>
+    <li><span class="check-num">3</span> Glance at <code>#jarvis</code> &mdash; any failures, alerts, or blocked tasks?</li>
+    <li><span class="check-num">4</span> Run <code>python3 scripts/operator_status.py</code> for a terminal summary</li>
+    <li><span class="check-num">5</span> Review Kitt briefs in <code>#kitt</code> for quant awareness</li>
+    <li><span class="check-num">6</span> If queue is backing up: <code>python3 scripts/run_ralph_v1.py</code> to burn one task</li>
+  </ul>
 </div>
 
 <!-- ============================================================ -->
+<!-- FOOTER -->
+<!-- ============================================================ -->
 <footer>
-  Jarvis OS v5.1 &bull; OpenClaw v2026.3.13 &bull; Generated 2026-03-19 &bull; <a href="https://github.com/jdwebb26/JarvisOS" style="color:var(--accent);">GitHub</a>
+  <span>Jarvis OS v5.1 &bull; OpenClaw v2026.3.13 &bull; Generated 2026-03-19</span>
+  <span><a href="https://github.com/jdwebb26/JarvisOS">GitHub</a> &bull; <a href="OVERVIEW.md">Markdown source</a></span>
 </footer>
 
 </body>
