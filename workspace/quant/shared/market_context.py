@@ -187,6 +187,112 @@ def read_market_snapshot(root: Path) -> Optional[dict]:
     }
 
 
+def read_intraday_snapshot(root: Path, lookback_bars: int = 24) -> Optional[dict]:
+    """Read intraday market snapshot from hourly OHLCV+VIX data.
+
+    This is NOT live streaming data. It is the most recent hourly bars
+    from the cron-ingested NQ_hourly.csv file. Since the CSV has no
+    timestamps, freshness is inferred from the daily metadata.json.
+
+    The snapshot includes:
+        symbol, last_close (hourly), hourly_open, hourly_high, hourly_low,
+        intraday_change_pct (vs first bar in lookback window),
+        hourly_trend (up/down/flat from lookback),
+        intraday_high, intraday_low, intraday_range_pct,
+        vix, bars_used, data_source, data_freshness_hours, snapshot_at
+    """
+    data_dir = _find_data_dir(root)
+    csv_path = data_dir / "NQ_hourly.csv"
+    rows = _read_tail_csv(csv_path, n=lookback_bars)
+
+    if len(rows) < 2:
+        return None
+
+    latest = rows[-1]
+    first = rows[0]
+
+    last_close = latest.get("close")
+    first_close = first.get("close")
+    if last_close is None or first_close is None:
+        return None
+
+    intraday_change_pct = ((last_close - first_close) / first_close) * 100 if first_close else 0.0
+
+    intraday_high = max(r.get("high", 0) for r in rows)
+    intraday_low = min(r.get("low", float("inf")) for r in rows)
+    intraday_range_pct = ((intraday_high - intraday_low) / last_close) * 100 if last_close else 0.0
+
+    # Hourly trend: linear direction over lookback window
+    if len(rows) >= 4:
+        mid = len(rows) // 2
+        first_half_avg = sum(r["close"] for r in rows[:mid]) / mid
+        second_half_avg = sum(r["close"] for r in rows[mid:]) / (len(rows) - mid)
+        slope_pct = ((second_half_avg - first_half_avg) / first_half_avg) * 100
+        if slope_pct > 0.2:
+            hourly_trend = "up"
+        elif slope_pct < -0.2:
+            hourly_trend = "down"
+        else:
+            hourly_trend = "flat"
+    else:
+        hourly_trend = "up" if last_close > first_close else "down" if last_close < first_close else "flat"
+
+    vix = latest.get("vix", 0.0)
+
+    # Freshness from metadata (same source as daily)
+    metadata = _load_metadata(data_dir)
+    data_updated_at = metadata.get("last_updated", "")
+    freshness_hours = None
+    if data_updated_at:
+        try:
+            updated = datetime.fromisoformat(data_updated_at)
+            freshness_hours = (datetime.now(timezone.utc) - updated).total_seconds() / 3600
+        except (ValueError, TypeError):
+            pass
+
+    # Check for hourly-specific metadata
+    nq_hourly_meta = metadata.get("sources", {}).get("nq_hourly", {})
+    hourly_updated = nq_hourly_meta.get("last_updated", data_updated_at)
+    if hourly_updated and hourly_updated != data_updated_at:
+        try:
+            updated = datetime.fromisoformat(hourly_updated)
+            freshness_hours = (datetime.now(timezone.utc) - updated).total_seconds() / 3600
+        except (ValueError, TypeError):
+            pass
+
+    return {
+        "symbol": "NQ",
+        "timeframe": "hourly",
+        "last_close": round(last_close, 2),
+        "hourly_open": round(latest.get("open", last_close), 2),
+        "hourly_high": round(latest.get("high", last_close), 2),
+        "hourly_low": round(latest.get("low", last_close), 2),
+        "intraday_change_pct": round(intraday_change_pct, 2),
+        "hourly_trend": hourly_trend,
+        "intraday_high": round(intraday_high, 2),
+        "intraday_low": round(intraday_low, 2),
+        "intraday_range_pct": round(intraday_range_pct, 2),
+        "vix": round(vix, 2),
+        "bars_used": len(rows),
+        "data_source": "cron_ingest/NQ_hourly.csv (NOT live streaming)",
+        "data_file": str(csv_path),
+        "data_updated_at": hourly_updated or data_updated_at,
+        "data_freshness_hours": round(freshness_hours, 1) if freshness_hours is not None else None,
+        "snapshot_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def read_full_context(root: Path) -> dict:
+    """Read both daily and intraday snapshots. Returns {daily, intraday}.
+
+    Either may be None if data is unavailable.
+    """
+    return {
+        "daily": read_market_snapshot(root),
+        "intraday": read_intraday_snapshot(root),
+    }
+
+
 def format_market_read(snapshot: Optional[dict]) -> str:
     """Format a market snapshot into a human-readable market read for Kitt brief.
 
@@ -218,3 +324,50 @@ def format_market_read(snapshot: Optional[dict]) -> str:
     line2 = f"  Source: {snapshot['data_source']} ({age})"
 
     return f"{line1}\n{line2}"
+
+
+def format_intraday_read(intraday: Optional[dict]) -> Optional[str]:
+    """Format an intraday snapshot into a human-readable line for Kitt brief.
+
+    Returns None if no intraday data.
+    """
+    if intraday is None:
+        return None
+
+    parts = [
+        f"NQ hourly {intraday['last_close']:.0f}",
+        f"({intraday['intraday_change_pct']:+.1f}%)",
+        f"trend={intraday['hourly_trend']}",
+        f"range {intraday['intraday_low']:.0f}-{intraday['intraday_high']:.0f}",
+        f"({intraday['intraday_range_pct']:.1f}%)",
+        f"VIX {intraday['vix']:.1f}",
+    ]
+    line1 = "  ".join(parts)
+
+    freshness = intraday.get("data_freshness_hours")
+    if freshness is not None:
+        age = f"{freshness:.0f}h old" if freshness >= 1 else "< 1h old"
+    else:
+        age = "unknown age"
+
+    return f"{line1}\n  Source: {intraday['data_source']} ({age})"
+
+
+def format_full_market_read(root: Path) -> str:
+    """Format both daily and intraday into a combined market read for Kitt brief.
+
+    Prefers intraday when available, always shows provenance.
+    """
+    ctx = read_full_context(root)
+    daily = ctx["daily"]
+    intraday = ctx["intraday"]
+
+    parts = []
+    if intraday:
+        parts.append(format_intraday_read(intraday))
+    if daily:
+        parts.append(format_market_read(daily))
+    elif not intraday:
+        parts.append("No market data available (cron data pull may not have run yet).")
+
+    return "\n".join(p for p in parts if p)

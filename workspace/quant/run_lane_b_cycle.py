@@ -228,23 +228,32 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
     except Exception as e:
         summary["errors"].append(f"recovery: {e}")
 
-    # --- 1a. Read market context (cron-ingested OHLCV+VIX) ---
+    # --- 1a. Read market context (cron-ingested OHLCV+VIX — daily + intraday) ---
     market = None
+    intraday = None
     try:
-        from workspace.quant.shared.market_context import read_market_snapshot
+        from workspace.quant.shared.market_context import read_market_snapshot, read_intraday_snapshot
         market = read_market_snapshot(root)
+        intraday = read_intraday_snapshot(root)
         if market and verbose:
-            _log(f"Market context: NQ={market['last_close']:.0f} "
+            _log(f"Market daily: NQ={market['last_close']:.0f} "
                  f"({market['daily_change_pct']:+.1f}%) VIX={market['vix']:.1f} "
                  f"trend={market['trend_5d']} "
                  f"freshness={market.get('data_freshness_hours', '?')}h")
-        elif verbose:
+        if intraday and verbose:
+            _log(f"Market hourly: NQ={intraday['last_close']:.0f} "
+                 f"({intraday['intraday_change_pct']:+.1f}%) "
+                 f"trend={intraday['hourly_trend']} "
+                 f"range={intraday['intraday_range_pct']:.1f}%")
+        if not market and not intraday and verbose:
             _log("Market context: not available (no cron data)")
         summary["market_context"] = bool(market)
+        summary["intraday_context"] = bool(intraday)
     except Exception as e:
         if verbose:
             _log(f"Market context error: {e}")
         summary["market_context"] = False
+        summary["intraday_context"] = False
 
     # --- 1b. Bootstrap cold-start assistance ---
     # If lanes have never produced packets, bootstrap them (bounded, dedup-safe).
@@ -395,9 +404,9 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
         _log("Kitt: producing brief")
     try:
         from workspace.quant.kitt.brief_producer import produce_brief
-        if market:
-            from workspace.quant.shared.market_context import format_market_read
-            mkt_read = format_market_read(market)
+        if market or intraday:
+            from workspace.quant.shared.market_context import format_full_market_read
+            mkt_read = format_full_market_read(root)
         else:
             mkt_read = "No market data available (cron data pull may not have run yet)."
         produce_brief(root, market_read=mkt_read)
