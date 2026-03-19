@@ -59,7 +59,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 | Agent | Status | What's missing |
 |-------|--------|----------------|
 | **Cadence — wake-word command layer** | PARTIAL | Daemon running (`cadence-voice-daemon.service`, 596 MB). Full pipeline built: openWakeWord → Silero VAD → faster-whisper STT → command routing → Piper/Coqui TTS. Transcript routing and TTS independently proven. Mic blocked: RDPSource unavailable in WSL2. No end-to-end wake-to-command proof. |
-| **Cadence — PersonaPlex conversation layer** | MISSING | Does not exist. Current Cadence is one-shot command routing only. No multi-turn conversation, no workspace/context awareness, no copilot surface. |
+| **Cadence — PersonaPlex conversation layer** | LIVE (replay) | Persistent conversational copilot with live runtime context, multi-turn sessions, command safety (propose-not-execute). Bridged to Cadence wake pipeline. Mic blocked: same as L1. Proven via replay mode 2026-03-18. |
 | **Claude** | BLOCKED | `ANTHROPIC_API_KEY=REPLACE_ME` in `secrets.env`. No Python-track adapter exists (gateway config only). User must set a real key AND a `claude_executor` adapter would need to be built for Python-track dispatch. |
 
 ## 5. Core Runtime Systems
@@ -165,7 +165,7 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 ### Medium-leverage
 6. **Session monitoring dashboard** — surface session sizes, turn counts, stale sessions for operator visibility
 7. **Cadence wake-word layer unblocking** — mic blocked on WSL2 RDPSource. Investigate PulseAudio/pipewire WSL passthrough to complete end-to-end wake-to-command proof
-8. **Cadence PersonaPlex conversation layer** — does not exist yet. Needs persistent multi-turn conversation with workspace/context awareness as a copilot surface (distinct from the one-shot command layer)
+8. ~~Cadence PersonaPlex conversation layer~~ **DONE** — PersonaPlex live via Cadence bridge (a485ad6). Multi-turn sessions, live runtime context, command safety. Blocked only on WSL2 mic (same as L1).
 
 ---
 

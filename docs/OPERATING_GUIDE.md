@@ -526,18 +526,26 @@ Always-listening wake-word detection that captures a spoken command and routes i
 
 **What's blocked**: Mic capture via RDPSource is unavailable in WSL2. Without live mic input, there is no end-to-end wake-to-command proof. The daemon runs but receives no audio.
 
-### Layer 2: PersonaPlex conversation — MISSING
+### Layer 2: PersonaPlex conversation — LIVE (replay mode)
 
-Persistent conversational AI that can discuss what is happening across OpenClaw/Jarvis, access workspace context and runtime state, and act as an ongoing copilot — not just one-shot commands.
+Persistent conversational AI copilot that answers questions about live runtime state, proposes actions with confirmation, and maintains multi-turn context.
 
-**What exists**: Nothing. The current Cadence code is entirely one-shot: wake → capture → route single utterance → respond. There is no multi-turn conversation state, no workspace/context awareness beyond the routed command, and no copilot surface.
+**What exists**:
+* `runtime/personaplex/engine.py` — conversation loop with LLM (Qwen via LM Studio)
+* `runtime/personaplex/session.py` — persistent multi-turn session state with rolling summary
+* `runtime/personaplex/context.py` — live runtime context assembly (tasks, approvals, agents, health)
+* `runtime/personaplex/intent.py` — rule-based intent classifier (conversational / command / escalation / meta)
+* `runtime/personaplex/cli.py` — terminal REPL
+* Cadence → PersonaPlex bridge in `cadence_ingress.py`
+* Command safety: "approve task X" produces a proposal with confirmation prompt, never silently executes
 
-**What would be needed**:
-* Persistent conversation session with memory across turns
-* Access to live runtime state (task board, approvals, failures, agent status)
-* Access to relevant workspaces and artifacts
-* Dialogue management (follow-ups, clarification, context carry-over)
-* Distinction between command intent ("approve task X") and conversation intent ("what failed today?")
+**Proven via replay**:
+```bash
+python3 scripts/cadence_status.py --replay "Jarvis what needs my attention right now"
+python3 scripts/cadence_status.py --replay "Jarvis please approve task_a7d82c0f29f8"
+```
+
+**What's blocked**: Same as Layer 1 — live mic capture on WSL2.
 
 ---
 
