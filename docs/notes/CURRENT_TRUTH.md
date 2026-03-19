@@ -134,17 +134,16 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - Strategy lifecycle: IDEA → CANDIDATE → VALIDATING → PROMOTED → PAPER_QUEUED → PAPER_ACTIVE
 - Kitt brief shows pipeline, execution result, operator action items
 
-### Lane B — Intelligence Lanes (repeatable one-shot cycles)
-- **Cycle runner**: `quant_lanes.py lane-b-cycle` runs Hermes → Atlas → Fish → TradeFloor → Kitt brief in one shot. Restart-safe, idempotent, respects governor/scheduler/dedup. Ready for cron/systemd.
-- **Atlas exploration lane**: rejection-aware candidate generation, experiment batches, failure_learning. Scheduler/host-aware. Governor-integrated.
-- **Fish scenario/calibration lane**: forecast → calibrate → confidence adjustment. risk_map_packet. Scheduler-aware batch.
-- **Hermes research intake**: research/dataset/repo/theme packets. 24h dedup. Directed requests. Scheduler-aware batch.
-- **TradeFloor synthesis**: agreement tier 0-4, cadence enforcement (6h + override), degraded mode on scheduler block. Kitt consumes via TRADEFLOOR brief section.
+### Lane B — Intelligence Lanes (schedulable)
+- **Cycle runner**: `quant_lanes.py lane-b-cycle` runs Hermes → Atlas → Fish → TradeFloor → Kitt brief. Restart-safe, idempotent, file-locked against overlap, respects governor/scheduler/dedup.
+- **Systemd timer**: `ops/systemd/quant-lane-b-cycle.{service,timer}` — oneshot service + 4h timer. Install via `python3 scripts/quant_lane_b_timer.py install && python3 scripts/quant_lane_b_timer.py enable`. Override cadence with `systemctl --user edit quant-lane-b-cycle.timer`.
+- **Atlas exploration lane**: rejection-aware candidate generation. Scheduler/host-aware. Governor-integrated.
+- **Fish scenario/calibration lane**: forecast, calibrate, confidence adjustment. Scheduler-aware.
+- **Hermes research intake**: research/dataset/repo/theme packets. 24h dedup. Directed requests.
+- **TradeFloor synthesis**: agreement tier 0-4, 6h cadence enforcement, degraded on scheduler block. Kitt consumes via TRADEFLOOR brief section.
 - **Individual lane commands**: `atlas-batch`, `fish-batch`, `hermes-batch`, `tradefloor` in CLI.
-- **Scheduler**: host-aware (NIMO 2, SonLM 1, global 3), fcntl file-locked, stale auto-clear (30 min), context-managed slots.
-- **Governor**: threshold-based push/hold/backoff/pause. Persists to governor_state.json. Health summaries trigger evaluation.
-- **Restart recovery**: filesystem state survives restart. Scheduler stale cleanup. Cadence/dedup/registry/governor all durable.
-- **Proven**: 50+6 proof checks, 63+6 pytest. Repeated cycles verified: dedup holds, cadence blocks, state coherent.
+- **Overlap protection**: file lock prevents concurrent cycle runs from timer/manual invocation.
+- **Proven**: 132 pytest, 26+50 proof checks. Repeated cycles verified: dedup holds, cadence blocks, overlap blocked, state coherent.
 
 ## 7. Known State Quirks
 

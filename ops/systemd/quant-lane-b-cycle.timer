@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenClaw Quant Lane B Timer — every 4 hours
+
+[Timer]
+OnBootSec=300s
+OnUnitActiveSec=4h
+AccuracySec=60s
+
+# To override cadence without editing this file:
+#   systemctl --user edit quant-lane-b-cycle.timer
+#   [Timer]
+#   OnUnitActiveSec=6h
+
+[Install]
+WantedBy=timers.target

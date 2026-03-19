@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenClaw Quant Lane B — one intelligence cycle
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+ExecStart=/usr/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/quant_lanes.py lane-b-cycle
+EnvironmentFile=/home/rollan/.openclaw/secrets.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quant-lane-b
+TimeoutStartSec=300

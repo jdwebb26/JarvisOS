@@ -18,6 +18,7 @@ Never floods Discord — only TradeFloor tier 3+ emits a kitt-facing event.
 """
 from __future__ import annotations
 
+import fcntl
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,9 +34,23 @@ from workspace.quant.shared.discord_bridge import emit_quant_event
 
 _ts = lambda: datetime.now(timezone.utc).isoformat()  # noqa: E731
 
+LOCK_PATH = ROOT / "workspace" / "quant" / "shared" / "scheduler" / "lane_b_cycle.lock"
+
 
 def _log(msg: str):
     print(f"  {msg}")
+
+
+def acquire_cycle_lock():
+    """Try to acquire exclusive file lock. Returns open file or None if already locked."""
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fp = open(LOCK_PATH, "w")
+    try:
+        fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fp
+    except BlockingIOError:
+        fp.close()
+        return None
 
 
 def run_cycle(root: Path, verbose: bool = False) -> dict:
@@ -177,32 +192,39 @@ def main():
     p.add_argument("-v", "--verbose", action="store_true", help="Print progress")
     args = p.parse_args()
 
-    print("Lane B cycle starting")
-    s = run_cycle(ROOT, verbose=args.verbose)
+    lock = acquire_cycle_lock()
+    if lock is None:
+        print("Lane B cycle: another run is active, skipping")
+        return 0
 
-    # Summary line
-    parts = []
-    if s["hermes"]["emitted"]:
-        parts.append(f"hermes={s['hermes']['emitted']}")
-    if s["atlas"]["generated"]:
-        parts.append(f"atlas={s['atlas']['generated']}")
-    if s["fish"]["emitted"]:
-        parts.append(f"fish={s['fish']['emitted']}")
-    if s["tradefloor"]["ran"]:
-        parts.append(f"tradefloor=tier{s['tradefloor']['tier']}")
-    elif s["tradefloor"]["cadence_refused"]:
-        parts.append("tradefloor=cadence_wait")
-    if s["brief"]:
-        parts.append("brief=ok")
-    if s["errors"]:
-        parts.append(f"errors={len(s['errors'])}")
+    try:
+        print("Lane B cycle starting")
+        s = run_cycle(ROOT, verbose=args.verbose)
 
-    print(f"Lane B cycle done: {' '.join(parts) or 'nothing produced'}")
-    if s["errors"]:
-        for e in s["errors"]:
-            print(f"  ERROR: {e}")
-        return 1
-    return 0
+        parts = []
+        if s["hermes"]["emitted"]:
+            parts.append(f"hermes={s['hermes']['emitted']}")
+        if s["atlas"]["generated"]:
+            parts.append(f"atlas={s['atlas']['generated']}")
+        if s["fish"]["emitted"]:
+            parts.append(f"fish={s['fish']['emitted']}")
+        if s["tradefloor"]["ran"]:
+            parts.append(f"tradefloor=tier{s['tradefloor']['tier']}")
+        elif s["tradefloor"]["cadence_refused"]:
+            parts.append("tradefloor=cadence_wait")
+        if s["brief"]:
+            parts.append("brief=ok")
+        if s["errors"]:
+            parts.append(f"errors={len(s['errors'])}")
+
+        print(f"Lane B cycle done: {' '.join(parts) or 'nothing produced'}")
+        if s["errors"]:
+            for e in s["errors"]:
+                print(f"  ERROR: {e}")
+            return 1
+        return 0
+    finally:
+        lock.close()
 
 
 if __name__ == "__main__":
