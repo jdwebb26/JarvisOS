@@ -48,6 +48,10 @@ def _get_dataset_id(record):
         return "NQ_daily"
     if gran in ("1h", "hourly"):
         return "NQ_hourly"
+    if gran in ("4h", "4hr"):
+        return "NQ_4h"
+    if gran in ("15m", "15min"):
+        return "NQ_15m"
     return ev.get("data_source", "unknown")
 
 

@@ -66,6 +66,10 @@ def build_forward_validation(cycle_id, run_ids, art_dir, n_candidates):
                  and _get_dataset_id(r) == "NQ_daily"]
     hourly_all = [r for r in cycle_records
                   if _get_dataset_id(r) == "NQ_hourly"]
+    fourh_all = [r for r in cycle_records
+                 if _get_dataset_id(r) == "NQ_4h"]
+    fifteenm_all = [r for r in cycle_records
+                    if _get_dataset_id(r) == "NQ_15m"]
 
     def _family_summary(recs, label):
         if not recs:
@@ -92,6 +96,8 @@ def build_forward_validation(cycle_id, run_ids, art_dir, n_candidates):
     cd_summary = _family_summary(daily_cd, "ema_crossover_cd_daily")
     brk_summary = _family_summary(daily_brk, "breakout_daily")
     hourly_summary = _family_summary(hourly_all, "hourly_all_families")
+    fourh_summary = _family_summary(fourh_all, "4h_all_families")
+    fifteenm_summary = _family_summary(fifteenm_all, "15m_all_families")
 
     # --- Q1: Did cd outperform baseline? ---
     cd_vs_ema = "insufficient_data"
@@ -189,6 +195,8 @@ def build_forward_validation(cycle_id, run_ids, art_dir, n_candidates):
         "ema_crossover_cd_daily": cd_summary,
         "breakout_daily": brk_summary,
         "hourly_all": hourly_summary,
+        "4h_all": fourh_summary,
+        "15m_all": fifteenm_summary,
     }
     honest_failures = [k for k, v in families_summary.items()
                        if _family_is_honest_failure(v)]
@@ -322,7 +330,7 @@ def build_weekly_report(fv, art_dir):
         "|--------|-----------|--------|----------|-----------|--------|",
     ]
     for key in ["ema_crossover_daily", "ema_crossover_cd_daily",
-                "breakout_daily", "hourly_all"]:
+                "breakout_daily", "hourly_all", "4h_all", "15m_all"]:
         f = fam.get(key, {})
         if f.get("status") == "no_records":
             lines.append(f"| {key} | — | — | — | — | — |")

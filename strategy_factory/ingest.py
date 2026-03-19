@@ -114,6 +114,52 @@ def fetch_nq_hourly():
     return df[["open", "high", "low", "close", "volume"]]
 
 
+def fetch_nq_15m():
+    """Fetch NQ=F 15-minute OHLCV from yfinance (max ~60 days).
+
+    Returns pandas DataFrame with columns: open, high, low, close, volume.
+    Index is DatetimeIndex (datetime with tz).
+    """
+    _ensure_yfinance()
+    import yfinance as yf
+
+    df = yf.download("NQ=F", period="60d", interval="15m", progress=False)
+    if df.empty:
+        return df
+    df = _flatten_yf_columns(df)
+    df.columns = [c.lower() for c in df.columns]
+    df.index.name = "datetime"
+    return df[["open", "high", "low", "close", "volume"]]
+
+
+def resample_hourly_to_4h(hourly_df):
+    """Resample hourly OHLCV+VIX bars to 4-hour bars.
+
+    Uses standard OHLCV aggregation: first open, max high, min low,
+    last close, sum volume.  VIX takes the last value per 4h window.
+
+    Args:
+        hourly_df: DataFrame with OHLCV columns and optional 'vix',
+                   indexed by DatetimeIndex.
+
+    Returns:
+        DataFrame with 4-hour bars, same columns.
+    """
+    agg = {
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+    }
+    if "vix" in hourly_df.columns:
+        agg["vix"] = "last"
+
+    resampled = hourly_df.resample("4h").agg(agg).dropna(subset=["close"])
+    resampled.index.name = "datetime"
+    return resampled
+
+
 # ---------------------------------------------------------------------------
 # Merge helpers
 # ---------------------------------------------------------------------------
@@ -285,6 +331,36 @@ def bootstrap(data_dir=None):
     _write_canonical(final_hourly, hourly_dataset_path, granularity="1h",
                      instrument="NQ",
                      vix_source="yfinance ^VIX daily close, forward-filled to hourly")
+    # NQ_4h.csv — resampled from hourly
+    fourh_dataset_path = d / "NQ_4h.csv"
+    if final_hourly is not None and not final_hourly.empty:
+        final_4h = resample_hourly_to_4h(final_hourly)
+        _write_canonical(final_4h, fourh_dataset_path, granularity="4h",
+                         instrument="NQ",
+                         vix_source="yfinance ^VIX daily close, forward-filled via hourly")
+        print(f"  NQ_4h:    {len(final_4h)} bars  ({fourh_dataset_path})")
+    else:
+        final_4h = None
+    # NQ_15m — fetched from yfinance, accumulated like hourly
+    fifteenm_raw_path = d / "nq_15m.csv"
+    fifteenm_dataset_path = d / "NQ_15m.csv"
+    print("Fetching NQ=F 15m (60d window)...")
+    try:
+        nq_15m = fetch_nq_15m()
+        if not nq_15m.empty:
+            fifteenm_merged = merge_hourly_with_daily_vix(nq_15m, vix_daily)
+            existing_15m = _read_existing_csv(fifteenm_raw_path)
+            final_15m = _merge_incremental(existing_15m, fifteenm_merged)
+            _df_to_csv(final_15m, fifteenm_raw_path)
+            _write_canonical(final_15m, fifteenm_dataset_path, granularity="15m",
+                             instrument="NQ",
+                             vix_source="yfinance ^VIX daily close, forward-filled to 15m")
+            print(f"  NQ_15m:   {len(final_15m)} bars  ({fifteenm_dataset_path})")
+        else:
+            final_15m = None
+    except Exception as exc:
+        print(f"  WARNING: 15m fetch failed: {exc}")
+        final_15m = None
     # Legacy canonical (backward compat)
     _write_canonical(final_daily, canonical_path, granularity="daily",
                      instrument="NQ")
@@ -403,9 +479,49 @@ def update(data_dir=None):
     if final_daily is not None:
         _df_to_csv(final_daily, daily_path)
         _write_canonical(final_daily, canonical_path, granularity="daily")
+        # Update NQ_daily.csv named dataset
+        daily_dataset_path = d / "NQ_daily.csv"
+        _write_canonical(final_daily, daily_dataset_path, granularity="daily",
+                         instrument="NQ")
 
     if final_hourly is not None:
         _df_to_csv(final_hourly, hourly_path)
+        # Update NQ_hourly.csv named dataset
+        hourly_dataset_path = d / "NQ_hourly.csv"
+        _write_canonical(final_hourly, hourly_dataset_path, granularity="1h",
+                         instrument="NQ",
+                         vix_source="yfinance ^VIX daily close, forward-filled to hourly")
+        # Update NQ_4h.csv — resample from accumulated hourly
+        fourh_dataset_path = d / "NQ_4h.csv"
+        final_4h = resample_hourly_to_4h(final_hourly)
+        _write_canonical(final_4h, fourh_dataset_path, granularity="4h",
+                         instrument="NQ",
+                         vix_source="yfinance ^VIX daily close, forward-filled via hourly")
+        print(f"  4h:     {len(final_4h)} bars")
+    else:
+        final_4h = None
+
+    # Update NQ_15m — accumulate like hourly (raw pandas CSV + canonical)
+    fifteenm_raw_path = d / "nq_15m.csv"
+    fifteenm_dataset_path = d / "NQ_15m.csv"
+    try:
+        print("Updating 15m (60d)...")
+        nq_15m = fetch_nq_15m()
+        if not nq_15m.empty:
+            vix_for_15m = vix_for_hourly if vix_for_hourly is not None else vix_daily
+            fifteenm_merged = merge_hourly_with_daily_vix(nq_15m, vix_for_15m)
+            existing_15m = _read_existing_csv(fifteenm_raw_path)
+            final_15m = _merge_incremental(existing_15m, fifteenm_merged)
+            _df_to_csv(final_15m, fifteenm_raw_path)
+            _write_canonical(final_15m, fifteenm_dataset_path, granularity="15m",
+                             instrument="NQ",
+                             vix_source="yfinance ^VIX daily close, forward-filled to 15m")
+            print(f"  15m:    {len(final_15m)} bars")
+        else:
+            final_15m = None
+    except Exception as exc:
+        print(f"  WARNING: 15m update failed: {exc}")
+        final_15m = None
 
     # Update metadata
     daily_info = {
