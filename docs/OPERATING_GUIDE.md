@@ -53,43 +53,63 @@ Everything below describes what is **actually running right now** and how to ope
 | OpenAI / GPT | `openai_executor` | **WIRED (inactive)** | Adapter + dispatch + model registry wired. Requires `OPENAI_API_KEY` with funded billing. **A ChatGPT subscription does NOT fund API usage.** Check: `python3 scripts/check_openai_provider.py` |
 | Anthropic / Claude | gateway config only | **BLOCKED** | `ANTHROPIC_API_KEY=REPLACE_ME`. No Python-track adapter exists — gateway config only |
 
-### Health monitor (unified state assessment)
+### Substrate health tools
 
-Combines OpenClaw gateway health + Jarvis runtime into a single verdict with state distinction:
+Three scripts provide layered health visibility. Each runs both OpenClaw substrate checks and Jarvis-specific checks, and all include the unified health_monitor verdict.
 
+**Quick verdict** (one-line, scriptable):
 ```bash
-python3 scripts/health_monitor.py          # terminal summary
-python3 scripts/health_monitor.py --brief  # one-line verdict for scripts/cron
-python3 scripts/health_monitor.py --json   # machine-readable
+python3 scripts/health_monitor.py --brief
 ```
 
-States: `healthy`, `degraded` (running with issues), `stuck` (frozen queues/stale heartbeats), `disconnected` (services unreachable). Does not emit to #jarvis.
-
-### Preflight (before deploys / upgrades)
-
-Run the unified preflight to check both OpenClaw substrate and Jarvis runtime:
-
+**Pre-deploy gate** (blocking failures vs advisory warnings):
 ```bash
-bash scripts/preflight.sh            # standard check
-bash scripts/preflight.sh --strict   # treat warnings as blockers
-bash scripts/preflight.sh --backup   # create+verify backup first (recommended before upgrades)
+bash scripts/preflight.sh            # standard — fails on blockers, warns on advisory
+bash scripts/preflight.sh --strict   # treat warnings as blockers too
+bash scripts/preflight.sh --backup   # create+verify backup first (before upgrades)
 ```
 
-This checks: openclaw config validity, update status, gateway, secrets, security audit, then Jarvis validate.py and runtime_doctor.py.
-
-### Post-deploy verification
-
-After any deploy, upgrade, or config change:
-
+**Post-deploy verification**:
 ```bash
 bash scripts/postdeploy.sh
 ```
 
-This checks: gateway health, openclaw doctor, smoke_test.py, runtime_doctor.py, systemd drift, and HTTP endpoint probes.
+**Detailed health drill-down**:
+```bash
+python3 scripts/health_monitor.py          # full terminal report
+python3 scripts/health_monitor.py --json   # machine-readable
+```
+
+Health states: `healthy` | `degraded` (running with issues) | `stuck` (frozen queues, stale heartbeats) | `disconnected` (services unreachable).
+
+What each tool checks:
+
+| Check | preflight | postdeploy | health_monitor |
+|-------|-----------|------------|----------------|
+| openclaw config valid | blocking | blocking | — |
+| openclaw update available | advisory | — | — |
+| Gateway running | blocking | blocking | disconnected/healthy |
+| Secret refs unresolved | blocking | — | — |
+| Security audit critical | advisory | — | — |
+| Backup create+verify | opt-in (`--backup`) | — | — |
+| validate.py | blocking | — | — |
+| smoke_test.py | — | blocking | — |
+| runtime_doctor.py | advisory/blocking | blocking | — |
+| Systemd unit drift | — | advisory | — |
+| HTTP endpoint probes | — | blocking | disconnected/healthy |
+| Systemd unit active | — | — | disconnected/degraded |
+| Restart count | — | — | degraded |
+| Node heartbeats | — | — | stuck/degraded |
+| Outbox backlog | — | — | stuck/healthy |
+| Failed task count | — | — | degraded |
+| Memory index + embedding | — | — | degraded |
+| Unified verdict | included | included | is the verdict |
+
+Does not emit to #jarvis. All output is terminal/JSON only.
 
 ### OpenClaw substrate commands (standalone)
 
-These are useful independently of the preflight/postdeploy wrappers:
+Useful independently of the wrapper scripts:
 
 ```bash
 openclaw status                    # channel health + session summary
@@ -102,16 +122,16 @@ openclaw backup create --verify    # backup + verify (before risky changes)
 openclaw gateway status            # gateway service + RPC probe
 ```
 
-### Cron / session alignment
+### Cron / session alignment (audit only — no live migration)
 
-Current cron is systemd-based. The OpenClaw cron scheduler (`openclaw cron`) offers session-bound, agent-aware, light-context jobs. To audit migration readiness:
+Current cron is entirely systemd-based. The OpenClaw cron scheduler (`openclaw cron`) offers session-bound, agent-aware, light-context jobs but no timers have been migrated yet.
 
 ```bash
 python3 scripts/cron_migration_audit.py        # terminal table
 python3 scripts/cron_migration_audit.py --json  # machine-readable
 ```
 
-**Migration candidates** (agent-turn jobs that benefit from session binding):
+**Migration candidates** (agent-turn jobs that would benefit from session binding):
 - Ralph timer → `--session-key agent:ralph:main --light-context`
 - Operator status → `--session isolated --light-context --no-deliver`
 - Factory weekly → `--session-key agent:hal:factory-weekly`
@@ -119,7 +139,7 @@ python3 scripts/cron_migration_audit.py --json  # machine-readable
 
 **Keep as systemd** (fast-poll or non-agent jobs): review poller, todo intake, outbox sender.
 
-Session reset alignment: OpenClaw resets at hour 4 with 120min idle (`session.reset` in openclaw.json). Jarvis session hygiene (`session_hygiene.py`) rotates oversized transcripts before context build. Both use the `agent:{name}:main` key convention.
+Session key convention: both OpenClaw upstream and Jarvis `session_hygiene.py` use `agent:{name}:main`. Session reset: OpenClaw resets at hour 4 with 120min idle (`session.reset` in `openclaw.json`).
 
 ### Daily operator commands
 

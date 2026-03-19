@@ -237,7 +237,7 @@ def assess_health(root: Optional[Path] = None) -> dict[str, Any]:
     else:
         checks.append({"check": "failed_tasks", "state": "healthy", "detail": "0"})
 
-    # 8. OpenClaw memory index status
+    # 8. OpenClaw memory index + embedding provider validity
     try:
         r = subprocess.run(
             ["openclaw", "memory", "status", "--json"],
@@ -246,9 +246,30 @@ def assess_health(root: Optional[Path] = None) -> dict[str, Any]:
         mem_data = json.loads(r.stdout)
         dirty_agents = [a["agentId"] for a in mem_data if a.get("status", {}).get("dirty")]
         total_files = sum(a.get("status", {}).get("files", 0) for a in mem_data)
+
+        # Detect whether the embedding provider can actually run.
+        embed_usable = True
+        embed_reason = ""
+        if mem_data:
+            s = mem_data[0].get("status", {})
+            embed_provider = s.get("provider", "unknown")
+            if embed_provider == "openai":
+                try:
+                    cfg = json.loads(Path.home().joinpath(".openclaw/openclaw.json").read_text(encoding="utf-8"))
+                    key = cfg.get("models", {}).get("providers", {}).get("openai", {}).get("apiKey", "")
+                    if not key or key == "OPENAI_API_KEY" or key.startswith("REPLACE"):
+                        embed_usable = False
+                        embed_reason = f"provider={embed_provider} but OPENAI_API_KEY is placeholder"
+                except Exception:
+                    pass
+
         if total_files == 0 and dirty_agents:
-            checks.append({"check": "memory_index", "state": "degraded",
-                           "detail": f"0 files indexed, {len(dirty_agents)} dirty agents — run: openclaw memory index"})
+            if not embed_usable:
+                checks.append({"check": "memory_index", "state": "degraded",
+                               "detail": f"0 indexed — {embed_reason}. Blocked until key is funded or provider changed."})
+            else:
+                checks.append({"check": "memory_index", "state": "degraded",
+                               "detail": f"0 files indexed, {len(dirty_agents)} dirty — run: openclaw memory index"})
             degraded = True
         elif dirty_agents:
             checks.append({"check": "memory_index", "state": "healthy",

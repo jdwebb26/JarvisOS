@@ -133,6 +133,20 @@ else
   fail "runtime_doctor verdict: FAIL"
 fi
 
+# ── Unified health verdict ──
+
+section "Unified health monitor"
+HEALTH_BRIEF=$(python3 "$ROOT/scripts/health_monitor.py" --brief 2>/dev/null) || true
+if [ -z "$HEALTH_BRIEF" ]; then HEALTH_BRIEF="UNAVAILABLE"; fi
+echo "  $HEALTH_BRIEF"
+if echo "$HEALTH_BRIEF" | grep -qi "disconnected"; then
+  fail "Health monitor: $HEALTH_BRIEF"
+elif echo "$HEALTH_BRIEF" | grep -qi "stuck"; then
+  warn "Health monitor: $HEALTH_BRIEF"
+elif echo "$HEALTH_BRIEF" | grep -qi "degraded"; then
+  warn "Health monitor: $HEALTH_BRIEF — advisory, see: python3 scripts/health_monitor.py"
+fi
+
 # ── Summary ──
 
 section "Preflight summary"
