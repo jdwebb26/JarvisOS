@@ -60,6 +60,79 @@ def _check_risk_limits(root: Path, strategy_id: str, symbol: str, quantity: int)
     return True, "within_limits"
 
 
+# ---------------------------------------------------------------------------
+# Proof tracking — auto-record fills against paper runs
+# ---------------------------------------------------------------------------
+
+# Map strategy timeframe_scope → proof horizon_class
+_TIMEFRAME_TO_HORIZON = {
+    "1m": "scalp", "5m": "scalp", "15m": "intraday",
+    "30m": "intraday", "1H": "intraday", "1h": "intraday",
+    "4H": "swing", "4h": "swing", "1D": "swing", "1d": "swing",
+    "1W": "event", "1w": "event",
+}
+
+
+def _infer_horizon_class(root: Path, strategy_id: str) -> str:
+    """Infer proof horizon class from the strategy's candidate packet timeframe.
+
+    Falls back to 'intraday' if no timeframe info is found.
+    """
+    from workspace.quant.shared.packet_store import list_lane_packets
+    candidates = list_lane_packets(root, "atlas", "candidate_packet")
+    for c in reversed(candidates):
+        if c.strategy_id == strategy_id and c.timeframe_scope:
+            return _TIMEFRAME_TO_HORIZON.get(c.timeframe_scope, "intraday")
+    return "intraday"
+
+
+def _record_paper_fill(root: Path, strategy_id: str, fill, side: str) -> dict:
+    """Record a paper fill against the strategy's proof run.
+
+    Creates the paper run on first fill. Evaluates proof after every fill.
+    Returns a summary dict for operator visibility.
+
+    PnL per fill: derived from simulated slippage.
+    - Favorable slippage (negative) = small gain from better fill
+    - Adverse slippage (positive) = small cost from worse fill
+    This is a placeholder; real PnL requires entry/exit pair tracking.
+    """
+    try:
+        from workspace.quant.executor.proof_tracker import (
+            get_active_run, create_paper_run, record_fill, evaluate_proof,
+        )
+
+        # Find or create the paper run
+        run = get_active_run(root, strategy_id)
+        if run is None:
+            horizon = _infer_horizon_class(root, strategy_id)
+            run = create_paper_run(root, strategy_id, horizon)
+
+        # Compute fill PnL from slippage
+        # slippage is a percentage; positive = adverse (cost), negative = favorable
+        slippage_pct = fill.slippage if hasattr(fill, "slippage") else 0.0
+        fill_pnl = round(-slippage_pct * fill.fill_price / 100, 2)
+        is_winner = fill_pnl >= 0
+
+        # Record the fill
+        run = record_fill(root, run.paper_run_id, pnl=fill_pnl, is_winner=is_winner)
+
+        # Evaluate proof
+        eval_result = evaluate_proof(root, run.paper_run_id)
+
+        return {
+            "paper_run_id": run.paper_run_id,
+            "horizon_class": run.horizon_class,
+            "closed_count": run.closed_count,
+            "proof_status": run.proof_status,
+            "run_status": run.status,
+            "sufficient": eval_result["sufficient"],
+        }
+    except Exception as e:
+        # Proof tracking is never a reason to fail execution
+        return {"error": str(e)}
+
+
 def execute_paper_trade(
     root: Path,
     strategy_id: str,
@@ -207,6 +280,12 @@ def execute_paper_trade(
             )
     except (ValueError, TimeoutError):
         pass  # Non-fatal — execution succeeded even if registry update fails
+
+    # --- Proof tracking integration ---
+    # Record this fill against the strategy's paper run.
+    # Creates the run on first fill, evaluates proof after every fill.
+    proof_info = _record_paper_fill(root, strategy_id, fill, side)
+    result["proof"] = proof_info
 
     result["success"] = True
     result["fill"] = fill.to_dict()
