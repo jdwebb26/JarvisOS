@@ -76,22 +76,48 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
     except Exception as e:
         summary["errors"].append(f"recovery: {e}")
 
+    # --- 1b. Bootstrap cold-start assistance ---
+    # If lanes have never produced packets, bootstrap them (bounded, dedup-safe).
+    try:
+        from workspace.quant.bootstrap import get_all_bootstrap_status, bootstrap_hermes, bootstrap_fish
+        bs = get_all_bootstrap_status(root)
+        needs_bootstrap = [l for l, s in bs.items() if s == "not_started"]
+        if needs_bootstrap:
+            if verbose:
+                _log(f"Bootstrap needed for: {', '.join(needs_bootstrap)}")
+            if "hermes" in needs_bootstrap:
+                try:
+                    br = bootstrap_hermes(root)
+                    if verbose:
+                        _log(f"  Hermes bootstrap: {br.get('emitted', 0)} emitted")
+                except Exception as e:
+                    if verbose:
+                        _log(f"  Hermes bootstrap error: {e}")
+            if "fish" in needs_bootstrap:
+                try:
+                    br = bootstrap_fish(root)
+                    if verbose:
+                        _log(f"  Fish bootstrap: {br.get('scenarios_emitted', 0)} scenarios")
+                except Exception as e:
+                    if verbose:
+                        _log(f"  Fish bootstrap error: {e}")
+    except Exception:
+        pass  # Bootstrap is best-effort, never blocks the cycle
+
     # --- 2. Hermes ---
     if verbose:
         _log("Hermes: research batch")
     try:
-        from workspace.quant.hermes.research_lane import run_research_batch, emit_health_summary
+        from workspace.quant.hermes.research_lane import run_watchlist_batch, emit_health_summary
         params = get_lane_params(root, "hermes")
         if not params.get("paused"):
-            # Use stub requests — in real use these come from research_request_packets or watchlist
-            stubs = [
-                {"thesis": "NQ overnight volume profile analysis", "source": f"cycle-{_ts()[:10]}", "source_type": "web"},
-            ]
-            emitted, info = run_research_batch(root, stubs)
-            summary["hermes"]["emitted"] = len(emitted)
+            # Use real watchlist-driven research, not hardcoded stubs
+            emitted, info = run_watchlist_batch(root)
+            summary["hermes"]["emitted"] = info.get("emitted", 0)
             summary["hermes"]["deduped"] = info.get("deduped", 0)
             emit_health_summary(root, summary["started_at"], _ts(),
-                                packets_produced=len(emitted), research_emitted=len(emitted),
+                                packets_produced=summary["hermes"]["emitted"],
+                                research_emitted=summary["hermes"]["emitted"],
                                 dedup_skips=info.get("deduped", 0),
                                 host_used=info.get("host", "mixed"))
         elif verbose:

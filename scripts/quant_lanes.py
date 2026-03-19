@@ -505,6 +505,84 @@ def cmd_acceptance(args):
     print(f"\nACCEPTANCE  {passed}/{total} pass")
 
 
+# ---------------------------------------------------------------------------
+# Pulse stub handlers — real logic lives in Pulse worker; these prevent CLI crash
+# ---------------------------------------------------------------------------
+
+def cmd_pulse_status(args):
+    """Pulse lane status."""
+    try:
+        from workspace.quant.shared.packet_store import list_lane_packets
+        alerts = list_lane_packets(ROOT, "pulse", "pulse_alert_packet")
+        clusters = list_lane_packets(ROOT, "pulse", "pulse_cluster_packet")
+        proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
+        print(f"Pulse: {len(alerts)} alerts, {len(clusters)} clusters, {len(proposals)} proposals")
+    except Exception as e:
+        print(f"Pulse status unavailable: {e}")
+
+
+def cmd_pulse_ingest(args):
+    """Ingest a Pulse alert."""
+    try:
+        from workspace.quant.pulse.alert_lane import ingest_alert
+        pkt = ingest_alert(
+            ROOT, text=args.text, level=args.level,
+            direction=args.direction, symbol=args.symbol,
+        )
+        print(f"Ingested: {pkt.packet_id}")
+    except Exception as e:
+        print(f"Pulse ingest failed: {e}")
+
+
+def cmd_pulse_proposals(args):
+    """Show pending Pulse proposals."""
+    try:
+        from workspace.quant.shared.packet_store import list_lane_packets
+        proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
+        pending = [p for p in proposals if "status=pending" in (p.notes or "")]
+        if not pending:
+            print("No pending Pulse proposals.")
+            return
+        for p in pending:
+            print(f"  {p.packet_id[:40]}  {p.thesis[:80]}")
+    except Exception as e:
+        print(f"Pulse proposals unavailable: {e}")
+
+
+def cmd_pulse_approve(args):
+    """Approve a Pulse proposal."""
+    print(f"Pulse approve {args.proposal_id}: use #review channel or Pulse worker CLI.")
+
+
+def cmd_pulse_health(args):
+    """Pulse health summary."""
+    try:
+        from workspace.quant.shared.packet_store import list_lane_packets
+        alerts = list_lane_packets(ROOT, "pulse", "pulse_alert_packet")
+        outcomes = list_lane_packets(ROOT, "pulse", "pulse_outcome_packet")
+        learnings = list_lane_packets(ROOT, "pulse", "pulse_learning_packet")
+        print(f"Pulse health: {len(alerts)} alerts, {len(outcomes)} outcomes, {len(learnings)} learnings")
+        if outcomes:
+            hits = sum(1 for o in outcomes if "hit=true" in (o.notes or ""))
+            print(f"  Hit rate: {hits}/{len(outcomes)}")
+    except Exception as e:
+        print(f"Pulse health unavailable: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Cold-start proof
+# ---------------------------------------------------------------------------
+
+def cmd_cold_start_proof(args):
+    """Run deterministic cold-start/bootstrap proof."""
+    from workspace.quant.cold_start_proof import main as proof_main
+    sys.exit(proof_main())
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap commands
+# ---------------------------------------------------------------------------
+
 def cmd_bootstrap_hermes(args):
     """Bootstrap Hermes from its configured watchlist."""
     from workspace.quant.bootstrap import bootstrap_hermes
@@ -780,6 +858,7 @@ def main():
     sub.add_parser("observe", help="Operator observability surface")
     sub.add_parser("doctor", help="Operator health check")
     sub.add_parser("acceptance", help="Non-destructive acceptance test")
+    sub.add_parser("cold-start-proof", help="Prove bootstrap/cold-start behavior")
 
     # Bootstrap commands
     sub.add_parser("bootstrap-hermes", help="Cold-start Hermes from watchlist")
@@ -817,6 +896,7 @@ def main():
         "observe": cmd_observe,
         "doctor": cmd_doctor,
         "acceptance": cmd_acceptance,
+        "cold-start-proof": cmd_cold_start_proof,
         "bootstrap-hermes": cmd_bootstrap_hermes,
         "bootstrap-fish": cmd_bootstrap_fish,
         "bootstrap-atlas": cmd_bootstrap_atlas,

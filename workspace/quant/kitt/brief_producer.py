@@ -298,12 +298,28 @@ PIPELINE
     else:
         governor_line = "  Governor: no state"
 
+    # Bootstrap status
+    bootstrap_line = ""
+    try:
+        from workspace.quant.bootstrap import get_all_bootstrap_status
+        bs = get_all_bootstrap_status(root)
+        not_started = [l for l, s in bs.items() if s == "not_started"]
+        stale_bs = [l for l, s in bs.items() if s == "stale"]
+        if not_started:
+            bootstrap_line = f"\n  Bootstrap: NOT STARTED: {', '.join(not_started)}"
+        elif stale_bs:
+            bootstrap_line = f"\n  Bootstrap: STALE: {', '.join(stale_bs)}"
+        else:
+            bootstrap_line = "\n  Bootstrap: all lanes active"
+    except Exception:
+        pass
+
     brief_text += f"""
 
 HEALTH
   Active: {', '.join(lanes) if lanes else 'none'}
 {delivery_line}
-{governor_line}
+{governor_line}{bootstrap_line}
 
 OPERATOR ACTION NEEDED
 {_operator_actions(by_state, root)}"""
