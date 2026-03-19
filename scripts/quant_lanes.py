@@ -44,8 +44,60 @@ def _is_proof_artifact(strategy_id: str) -> bool:
     return any(m in sid for m in _PROOF_MARKERS)
 
 
+# Human-readable stage descriptions for operator surfaces
+_STAGE_LABELS = {
+    "IDEA": ("discovery", "idea generated, not yet a candidate"),
+    "CANDIDATE": ("discovery", "candidate awaiting validation"),
+    "VALIDATING": ("validation", "Sigma is checking backtest gates"),
+    "REJECTED": ("terminal", "failed validation — will not proceed"),
+    "PROMOTED": ("pre-paper", "passed validation, needs paper-trade request"),
+    "PAPER_QUEUED": ("paper", "paper-trade approved, awaiting execution"),
+    "PAPER_ACTIVE": ("paper", "paper-trading — accumulating proof"),
+    "PAPER_REVIEW": ("review", "paper proof complete — awaiting operator review"),
+    "ITERATE": ("iterate", "review said rerun with changes — back to Atlas"),
+    "PAPER_KILLED": ("terminal", "review rejected — permanently closed"),
+    "LIVE_QUEUED": ("pre-live", "review approved for live — needs live approval"),
+    "LIVE_ACTIVE": ("live", "live trading"),
+    "LIVE_REVIEW": ("live-review", "live performance under review"),
+    "LIVE_KILLED": ("terminal", "live terminated"),
+    "RETIRED": ("terminal", "retired by operator"),
+}
+
+_REVIEW_OUTCOME_LABELS = {
+    "advance_to_live": "approve_live_candidate — ready for live approval",
+    "iterate": "rerun_with_changes — back to Atlas with guidance",
+    "kill": "reject — permanently closed",
+}
+
+
+def _why_not_live(state: str, strategy_id: str, approvals) -> str:
+    """Return a one-line explanation of why this strategy is not live."""
+    if state == "PAPER_QUEUED":
+        return "paper trades not yet placed"
+    if state == "PAPER_ACTIVE":
+        return "still accumulating paper proof (trades, time, stats)"
+    if state == "PAPER_REVIEW":
+        return "awaiting operator review decision"
+    if state == "ITERATE":
+        return "review said rerun with changes — back to Atlas"
+    if state in ("PAPER_KILLED", "REJECTED"):
+        return "permanently closed"
+    if state == "LIVE_QUEUED":
+        has_live = any(a.strategy_id == strategy_id and not a.revoked
+                       and a.approved_actions.execution_mode == "live"
+                       for a in approvals)
+        if has_live:
+            return "approved for live — execution not yet triggered"
+        return "approved for live — needs live_trade approval"
+    if state == "PROMOTED":
+        return "needs paper-trade approval first"
+    if state in ("LIVE_ACTIVE", "LIVE_REVIEW"):
+        return ""  # Already live
+    return ""
+
+
 def cmd_status(args):
-    """Phone-scannable pipeline + action items."""
+    """Phone-scannable pipeline + action items + live-eligibility."""
     strategies = load_all_strategies(ROOT)
     approvals = load_all_approvals(ROOT)
     latest = get_all_latest(ROOT)
@@ -55,37 +107,70 @@ def cmd_status(args):
             continue
         by_state.setdefault(s.lifecycle_state, []).append(sid)
 
+    # Active positions
     paper = by_state.get("PAPER_ACTIVE", [])
     live = by_state.get("LIVE_ACTIVE", [])
     print(f"ACTIVE  paper={len(paper)} live={len(live)}")
     for sid in paper:
-        print(f"  paper: {sid}")
+        print(f"  paper: {sid}  (accumulating proof — not live-eligible)")
     for sid in live:
         print(f"  live:  {sid}")
 
-    promoted = by_state.get("PROMOTED", [])
-    queued = by_state.get("PAPER_QUEUED", [])
-    review = by_state.get("PAPER_REVIEW", [])
-    if promoted or queued or review:
+    # Action needed — expanded to cover full lifecycle
+    actions = []
+    for sid in by_state.get("PROMOTED", []):
+        pending = [a for a in approvals if a.strategy_id == sid and not a.revoked]
+        if pending:
+            actions.append(f"  approve {pending[-1].approval_ref}  (paper trade {sid})")
+        else:
+            actions.append(f"  request-paper {sid}  (passed validation, needs paper request)")
+    for sid in by_state.get("PAPER_QUEUED", []):
+        actions.append(f"  execute {sid}  (paper-trade approved, ready to place)")
+    for sid in by_state.get("PAPER_REVIEW", []):
+        actions.append(f"  review: {sid}  (paper proof ready — decide: approve_live / reject / continue / rerun)")
+    for sid in by_state.get("LIVE_QUEUED", []):
+        has_live_appr = any(a.strategy_id == sid and not a.revoked
+                            and a.approved_actions.execution_mode == "live"
+                            for a in approvals)
+        if has_live_appr:
+            actions.append(f"  execute-live {sid}  (live-approved, ready to go)")
+        else:
+            actions.append(f"  request-live {sid}  (review approved — needs live_trade approval)")
+    if actions:
         print(f"\nACTION NEEDED")
-        for sid in promoted:
-            pending = [a for a in approvals if a.strategy_id == sid and not a.revoked]
-            if pending:
-                print(f"  approve {pending[-1].approval_ref}  (paper trade {sid})")
-            else:
-                print(f"  request-paper {sid}")
-        for sid in queued:
-            print(f"  execute {sid}")
-        for sid in review:
-            print(f"  review paper: {sid}")
+        for a in actions:
+            print(a)
 
+    # Pipeline depth
     ideas = len(by_state.get("IDEA", []))
     cands = len(by_state.get("CANDIDATE", []))
     val = len(by_state.get("VALIDATING", []))
     rej = len(by_state.get("REJECTED", []))
-    if ideas + cands + val + rej > 0:
-        print(f"\nDEPTH  {ideas} idea, {cands} candidate, {val} validating, {rej} rejected")
+    iterate = len(by_state.get("ITERATE", []))
+    killed = len(by_state.get("PAPER_KILLED", []))
+    depth_parts = []
+    if ideas: depth_parts.append(f"{ideas} idea")
+    if cands: depth_parts.append(f"{cands} candidate")
+    if val: depth_parts.append(f"{val} validating")
+    if iterate: depth_parts.append(f"{iterate} iterating")
+    if rej: depth_parts.append(f"{rej} rejected")
+    if killed: depth_parts.append(f"{killed} paper-killed")
+    if depth_parts:
+        print(f"\nPIPELINE  {', '.join(depth_parts)}")
 
+    # Not-live-eligible strategies (explain why)
+    blocked = []
+    for state in ("PAPER_ACTIVE", "PAPER_REVIEW", "PAPER_QUEUED", "PROMOTED", "LIVE_QUEUED", "ITERATE"):
+        for sid in by_state.get(state, []):
+            reason = _why_not_live(state, sid, approvals)
+            if reason:
+                blocked.append((sid, state, reason))
+    if blocked:
+        print(f"\nLIVE BLOCKED")
+        for sid, state, reason in blocked:
+            print(f"  {sid:30s} {state:16s} {reason}")
+
+    # Last fill
     exec_pkt = None
     for key, pkt in latest.items():
         if pkt.packet_type == "execution_status_packet":
@@ -93,23 +178,26 @@ def cmd_status(args):
                 exec_pkt = pkt
     if exec_pkt:
         fill = f"@ {exec_pkt.fill_price}" if exec_pkt.fill_price else ""
-        print(f"\nLAST FILL  {exec_pkt.strategy_id} {exec_pkt.execution_mode} {exec_pkt.execution_status} {fill}")
+        print(f"\nLAST FILL  {exec_pkt.strategy_id} {exec_pkt.execution_mode} "
+              f"{exec_pkt.execution_status} {fill}")
 
-    active_appr = [a for a in approvals if not a.revoked and not _is_proof_artifact(a.strategy_id)]
+    # Approvals
+    active_appr = [a for a in approvals if not a.revoked
+                   and not _is_proof_artifact(a.strategy_id)]
     if active_appr:
         print(f"\nAPPROVALS  {len(active_appr)} active")
-        for a in active_appr[-3:]:
+        for a in active_appr[-5:]:
             v, r = a.is_valid()
-            print(f"  {a.approval_ref} {a.strategy_id} [{'valid' if v else r}]")
+            mode = a.approved_actions.execution_mode
+            print(f"  {a.approval_ref} {a.strategy_id} [{mode}] "
+                  f"{'valid' if v else r}")
 
     # Delivery health
     from workspace.quant.shared.discord_bridge import check_delivery_health
     health = check_delivery_health()
     problems = [f"{k}={v}" for k, v in health.items() if v != "ok"]
     if problems:
-        print(f"\nDELIVERY  {' '.join(f'{k}=ok' for k, v in health.items() if v == 'ok')}")
-        for p in problems:
-            print(f"  {p}")
+        print(f"\nDELIVERY  issues: {', '.join(problems)}")
     else:
         print(f"\nDELIVERY  all ok")
 
@@ -127,18 +215,54 @@ def cmd_strategies(args):
 
 
 def cmd_strategy(args):
-    """Show detailed strategy state."""
+    """Show detailed strategy state with stage explanation and live-eligibility."""
     s = get_strategy(ROOT, args.strategy_id)
     if s is None:
         print(f"Strategy {args.strategy_id} not found.")
         return
-    print(f"Strategy: {s.strategy_id}")
-    print(f"State:    {s.lifecycle_state}")
+
+    phase, explanation = _STAGE_LABELS.get(s.lifecycle_state, ("?", "unknown state"))
+    approvals = load_all_approvals(ROOT)
+
+    print(f"Strategy:  {s.strategy_id}")
+    print(f"State:     {s.lifecycle_state}  ({phase})")
+    print(f"Stage:     {explanation}")
+
+    reason = _why_not_live(s.lifecycle_state, s.strategy_id, approvals)
+    if reason:
+        print(f"Not live:  {reason}")
+    elif s.lifecycle_state in ("LIVE_ACTIVE", "LIVE_REVIEW"):
+        print(f"Live:      yes")
+
     if s.parent_id:
-        print(f"Parent:   {s.parent_id}")
+        print(f"Parent:    {s.parent_id}")
     if s.lineage_note:
-        print(f"Lineage:  {s.lineage_note}")
-    print(f"\nState History ({len(s.state_history)} entries):")
+        print(f"Lineage:   {s.lineage_note}")
+
+    # Show relevant approvals
+    strat_approvals = [a for a in approvals if a.strategy_id == s.strategy_id and not a.revoked]
+    if strat_approvals:
+        print(f"\nApprovals:")
+        for a in strat_approvals:
+            v, r = a.is_valid()
+            mode = a.approved_actions.execution_mode
+            print(f"  {a.approval_ref} [{mode}] {'valid' if v else r}")
+
+    # Show review outcome if in PAPER_REVIEW or post-review states
+    if s.lifecycle_state in ("PAPER_REVIEW", "ITERATE", "PAPER_KILLED", "LIVE_QUEUED"):
+        from workspace.quant.shared.packet_store import list_lane_packets
+        reviews = list_lane_packets(ROOT, "sigma", "paper_review_packet")
+        for r in reviews:
+            if r.strategy_id == s.strategy_id:
+                outcome = r.outcome or "?"
+                label = _REVIEW_OUTCOME_LABELS.get(outcome, outcome)
+                print(f"\nReview:    {label}")
+                if r.outcome_reasoning:
+                    print(f"  Reason:  {r.outcome_reasoning[:100]}")
+                if r.iteration_guidance:
+                    print(f"  Guidance: {r.iteration_guidance[:100]}")
+
+    print(f"\nHistory ({len(s.state_history)} transitions):")
     for h in s.state_history:
         line = f"  {h.at[:19]} | {h.state:16s} | by {h.by}"
         if h.approval_ref:
@@ -147,6 +271,8 @@ def cmd_strategy(args):
             line += f" | {h.note}"
         if h.retirement_reason:
             line += f" | reason={h.retirement_reason}"
+        if h.iteration_guidance:
+            line += f" | guidance={h.iteration_guidance[:50]}"
         print(line)
 
 
