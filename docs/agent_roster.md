@@ -41,14 +41,15 @@ It does not claim a second hidden orchestration mesh. It records the real repo-a
 ### HAL
 
 - Role: primary coding / implementation agent
-- Runtime truth: wired through routing/context policy, not a separate daemon
+- Runtime truth: ACP (acpx backend, live)
 - Owns:
   - code changes
   - patching
   - local engineering execution
   - tests/build loops
 - Routing intent:
-  - preferred model `Qwen3.5-35B`
+  - preferred model `Qwen3 Coder 30B` (primary in openclaw.json)
+  - fallback `Qwen3.5-122B`
 
 ### Archimedes
 
@@ -60,7 +61,8 @@ It does not claim a second hidden orchestration mesh. It records the real repo-a
   - bug/risk finding
   - second-pass critique
 - Routing intent:
-  - preferred model `Qwen3.5-122B`
+  - preferred model `Qwen3 Coder Next` (primary in openclaw.json)
+  - fallback `Qwen3.5-122B`
 - Review alignment:
   - default reviewer for code/runtime work
 
@@ -104,12 +106,12 @@ It does not claim a second hidden orchestration mesh. It records the real repo-a
 ### Bowser
 
 - Role: browser automation specialist
-- Runtime truth: scaffold-only
+- Runtime truth: outbound presence live (Discord channel + webhook active), browser bridge bounded
 - Owns:
   - browser actions
   - tab/workflow operations
 - Current limitation:
-  - browser bridge remains bounded/scaffolded, not a fully live external lane
+  - browser bridge remains bounded — policy enforcement and request/result protocol are live, but full external browser lane is not yet proven end-to-end
 
 ### Muse
 
@@ -131,6 +133,67 @@ It does not claim a second hidden orchestration mesh. It records the real repo-a
   - queue draining
   - maintenance-ish work
   - memory consolidation intent
+
+### Kitt
+
+- Role: quant lead — NQ brief generation, strategy oversight
+- Runtime truth: wired as OpenClaw agent with Kimi K2.5 primary model
+- Channel: `#kitt` (`1483320979185733722`)
+- Owns:
+  - NQ market briefs
+  - strategy scoring and promotion decisions
+  - paper trade approval flow
+- Routing intent:
+  - preferred model `Kimi K2.5` (NVIDIA)
+  - fallback `Qwen3.5-35B`
+
+### Qwen
+
+- Role: Qwen-Agent — ACP-backed agent using qwen-agent plugin
+- Runtime truth: ACP (`backend=qwen_agent` in openclaw.json)
+- Channel: `#qwen` (`1483131473543303208`)
+- Routing intent:
+  - preferred model `Qwen3.5-35B`
+  - fallback `Qwen3.5-122B`
+- Current status: Agent definition live in openclaw.json. Operational maturity below core agents.
+
+### Claude
+
+- Role: general-purpose external model agent (Anthropic)
+- Runtime truth: embedded, exec denied
+- Channel: none (channel_id null in agent_channel_map)
+- Routing intent:
+  - model `Claude Sonnet 4.6` (Anthropic API)
+- Current status: Agent definition live in openclaw.json. No dedicated Discord channel. Exec denied by policy.
+
+### Fish
+
+- Role: scenario modeling, forecasting, self-calibration for NQ
+- Runtime truth: embedded
+- Owns:
+  - market scenario generation with confidence levels
+  - directional forecasting with value targets
+  - calibration tracking (hit/miss, confidence adjustment)
+  - risk zone identification
+  - calibration feedback to Kitt
+- Backend: **Salmon Adapter** (`workspace/quant_infra/salmon/adapter.py`) — the quant_infra implementation that generates scenario data for the Fish lane. Salmon Adapter is not a separate lane or agent identity.
+- Routing intent:
+  - preferred model `Qwen3.5-35B`
+  - fallback `Qwen3.5-9B`
+- Channel: `#fish` (`1483916169672130754`)
+- Constraints: exec denied, write/edit denied — read/research/scenario only
+
+### Quant lane services (not interactive agents)
+
+The following are quant pipeline services that emit events to dedicated Discord channels via webhooks. They do NOT have interactive OpenClaw agent definitions — inbound messages to their channels are currently routed to Jarvis as a **temporary fallback**.
+
+| Service | Channel | Purpose | Has OpenClaw agent? |
+|---------|---------|---------|---------------------|
+| **Sigma** | `#sigma` (`1483916191046041811`) | Strategy validation gates | No — jarvis fallback |
+| **Atlas** | `#atlas` (`1483916149573025793`) | Strategy candidate generation | No — jarvis fallback |
+| **Pulse** | `#pulse` (`1484088366155698176`) | Discretionary NQ alerts | No — jarvis fallback |
+
+> **Temporary architecture**: These channels are in the gateway guild allowlist and bound to jarvis for inbound routing. This is a fallback — the operator can message in these channels and jarvis will respond, but there is no dedicated agent personality or context for sigma/atlas/pulse. When dedicated agents are needed, add them to `agents.list` in `openclaw.json` and create agent dirs in `~/.openclaw/agents/`. Fish has been promoted to a full agent (see above).
 
 ## Review hierarchy
 
@@ -173,6 +236,7 @@ Verify current state with: `python3 scripts/verify_openclaw_bootstrap_runtime.py
 | **bowser** | embedded | `browser`, `process`, `session_status`, `sessions_history`, `sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_yield` | `session-logs` |
 | **muse** | embedded | `image`, `message`, `read`, `tts` | `sag`, `session-logs`, `songsee`, `summarize` |
 | **ralph** | embedded | `cron`, `memory_get`, `memory_search`, `process`, `session_status`, `sessions_history`, `sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_yield` | `ordercli`, `session-logs` |
+| **fish** | embedded | `memory_get`, `memory_search`, `message`, `process`, `read`, `session_status`, `sessions_history`, `sessions_list` | `session-logs`, `model-usage` |
 
 **Delegation**: jarvis → hal (implementation), hal → archimedes (review), archimedes → anton (supreme review)<br>
 **Denied globally**: `clawhub`, `weather`, `gog` (in `COMMON_DENIED_SKILL_NAMES`)
@@ -251,14 +315,14 @@ These are backed by:
 
 All agents run **embedded** by default — their turns are handled inline inside the OpenClaw process during Discord / task sessions.
 
-**ACP (Agent Control Protocol)** is a separate harness mode where a long-running Claude Code process handles the agent's turns. It is fully scaffolded but **not active** (`acp.enabled=false` in `openclaw.json`).
+**ACP (Agent Control Protocol)** is a separate harness mode where a long-running Claude Code process handles the agent's turns. It is **active** (`acp.enabled=true`, `backend=acpx`, `allowedAgents=["hal"]` in `openclaw.json`).
 
 ### Runtime type labels
 
 | Agent      | runtime_type | Notes |
 |------------|-------------|-------|
 | jarvis     | embedded    | Must stay embedded — front door and control plane for all Discord sessions |
-| hal        | acp_ready   | First ACP candidate; designated but NOT active until `acp.enabled=true` |
+| hal        | acp (active) | ACP enabled — `acp.enabled=true`, `backend=acpx`, `allowedAgents=["hal"]` |
 | archimedes | embedded    | |
 | anton      | embedded    | |
 | hermes     | embedded    | Second ACP candidate; not flipped until HAL is validated end-to-end |
@@ -266,6 +330,7 @@ All agents run **embedded** by default — their turns are handled inline inside
 | bowser     | embedded    | |
 | muse       | embedded    | |
 | ralph      | embedded    | |
+| fish       | embedded    | Read/research/scenario only; exec denied |
 
 ### Why Jarvis stays embedded
 
@@ -275,12 +340,11 @@ Jarvis is the front door for all inbound Discord messages. Embedding it in the p
 
 HAL is the implementation builder — it receives delegated coding tasks from Jarvis, not direct Discord turns. Its work is naturally async and long-running, making the ACP harness model a good fit. It has no latency requirement from Discord response times.
 
-### How to activate ACP for HAL (when ready)
+### ACP for HAL — live
 
-1. Set `acp.enabled = true` and populate `acp.backend` / `acp.runtime.installCommand` in `openclaw.json`.
-2. Change HAL's `runtime.type` from `"acp_ready"` to `"acp"` in `openclaw.json`.
-3. Add `"hal"` to `acp.allowedAgents`.
-4. Verify with `scripts/verify_openclaw_bootstrap_runtime.py --agent hal`.
+HAL is currently running on ACP (`acp.enabled=true`, `backend=acpx`, `allowedAgents=["hal"]` in `openclaw.json`). HAL's runtime type in `openclaw.json` is `"acp"` with `cwd` pointing to the jarvis-v5 workspace.
+
+Verify with: `scripts/verify_openclaw_bootstrap_runtime.py --agent hal`.
 
 ### How to add Hermes as a second ACP agent (future)
 
