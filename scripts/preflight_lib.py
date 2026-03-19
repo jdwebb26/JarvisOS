@@ -1367,6 +1367,7 @@ def build_doctor_report(root: Path) -> dict:
     autoresearch_summary = build_autoresearch_summary(root=root)
     browser_action_summary = build_browser_action_summary(root=root)
     a2a_policy_summary = build_a2a_policy_summary(root=root)
+    shadowbroker_summary = summarize_shadowbroker_backend(root=root)
     extension_lane_status_summary = build_extension_lane_status_summary(
         shadowbroker_summary=shadowbroker_summary,
         world_ops_summary=world_ops_summary,
