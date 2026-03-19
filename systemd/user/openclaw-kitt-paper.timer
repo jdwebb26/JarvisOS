@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenClaw Kitt Paper Trading Timer — every 10 minutes
+
+[Timer]
+OnBootSec=300s
+OnUnitActiveSec=600s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
