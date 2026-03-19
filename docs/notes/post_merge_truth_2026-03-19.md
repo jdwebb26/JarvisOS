@@ -34,17 +34,34 @@ health_monitor: HEALTHY (13/13)
 ### Lane Runtime
 | Lane | Status | Key Capability |
 |------|--------|----------------|
-| **Kitt** | Live paper loop on timer | Thesis state, regime classification, enriched briefs (spec §7), target detection, thesis_changed/target_hit events |
-| **Fish/Salmon** | Live scenario lane on timer | Scenario generation, calibration, risk maps |
+| **Kitt** | Live paper loop on timer | Multi-strategy signals (5 families), thesis state, regime classification, enriched briefs, target detection |
+| **Fish/Salmon** | Live scenario lane on timer | Scenario generation, calibration, risk maps, regime-biased probabilities |
 | **Sigma** | Live validation lane | Structured validation, rejection packets, bottleneck classification |
-| **Atlas** | Live experiment lane | Experiment proposals, health summaries, failure learning |
+| **Atlas** | Live experiment lane | Rejection-aware proposals, cooldown biasing, health summaries |
 | **Hermes** | Live research lane | Datasets, research, theme extraction |
 
-### Atlas ↔ Sigma Feedback Loop (NEW)
+### Atlas ↔ Sigma Feedback Loop (AUTOMATED)
 - `sigma/feedback_extractor.py` — Extracts structured feedback from Sigma validation packets
-- `atlas/proposal_generator.py` — Consumes feedback, generates bounded experiment proposals
+- `atlas/proposal_generator.py` — Consumes feedback + rejection ledger, generates bounded experiment proposals
 - `run_feedback_loop.py` — Orchestrator entry point (CLI + programmatic)
-- Currently manually triggered (`python3 workspace/quant_infra/run_feedback_loop.py --submit`)
+- Runs automatically in handshake chain step 3 (no manual trigger needed)
+
+### Signal Diversification (NEW — 5 families)
+- `kitt/signals.py` — Pluggable signal registry: ema_mean_reversion, momentum, trend_following, breakout, vwap_reversion
+- Regime-based strategy selection via `strategy_config.json`
+- Kitt cycle auto-selects highest-confidence signal for current regime
+- Each family: configurable parameters, independent confidence scoring
+
+### Live Broker Integration (NEW — exchange simulator)
+- `exchange_simulator.py` — Simulated exchange with realistic fills, partials, rejections
+- Pluggable adapter interface (same as paper + live adapters)
+- Position reconciliation: `reconcile_positions()` cross-checks broker vs DB
+- Ready for real broker SDK (Alpaca, IBKR, TradeStation) — env var gated
+
+### Options-Aware Quant Layer (NEW)
+- `options_adapter.py` — VIX analysis, term structure, SPY put/call ratio, IV percentile, max pain
+- `generate_hedging_signal()` — actionable recommendations: reduce_exposure, consider_puts, consider_collars
+- Handshake chain step 7: automatic options context refresh
 
 ### Kitt Packet Hardening (NEW)
 - `check_targets()` — Take-profit detection with `target_hit` event emission
@@ -169,9 +186,11 @@ health_monitor: HEALTHY (13/13)
 
 ## Next Priority Order
 
-1. **Land consolidation pass** — Review, test, commit all 2026-03-19 consolidation changes
-2. **Delete stale branches** — Clean up 12+ merged/superseded branches
-3. **Live broker integration** — Connect fill_status tracking to live exchange API
-4. **Signal diversification** — Add strategy families beyond EMA mean-reversion
-5. **Options-aware quant layer** — Integrate options data for hedging decisions
-6. **Backtesting integration** — Feed strategy factory results into Atlas for automated candidate generation
+1. ~~Land consolidation pass~~ ✅ DONE — `aa4fa84`
+2. ~~Live broker integration~~ ✅ DONE — exchange simulator with realistic fills + position reconciliation
+3. ~~Signal diversification~~ ✅ DONE — 5 strategy families, regime-based selection
+4. ~~Options-aware quant layer~~ ✅ DONE — VIX analysis, term structure, hedging signals
+5. **Delete stale branches** — Clean up 12+ merged/superseded branches
+6. **Real broker SDK** — Integrate Alpaca/IBKR/TradeStation SDK into LiveBrokerAdapter
+7. **Backtesting integration** — Feed strategy factory results into Atlas for automated candidate generation
+8. **Strategy performance tracking** — Per-family P&L attribution, signal quality metrics
