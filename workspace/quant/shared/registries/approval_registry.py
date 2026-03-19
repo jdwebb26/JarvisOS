@@ -13,6 +13,7 @@ Rules:
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import time
 from dataclasses import asdict, dataclass, field
@@ -23,6 +24,15 @@ from typing import Optional
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _make_approval_ref(strategy_id: str, ts: str) -> str:
+    """Generate a short, review-poller-compatible approval ref.
+
+    Format: qpt_<12-char-hex>  (matches the review poller's ID pattern)
+    """
+    raw = f"{strategy_id}{ts}"
+    return "qpt_" + hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 
 # ---------------------------------------------------------------------------
@@ -140,14 +150,9 @@ def create_approval(
         raise ValueError(f"execution_mode must be paper or live, got {approved_actions.execution_mode!r}")
 
     ts = _now_iso()
-    date_part = ts[:10]
-    # Generate sequence number
-    existing = load_all_approvals(root)
-    today_count = sum(1 for a in existing if a.created_at.startswith(date_part))
-    seq = today_count + 1
 
     approval = ApprovalObject(
-        approval_ref=f"approval-{date_part}-{seq:03d}",
+        approval_ref=_make_approval_ref(strategy_id, ts),
         created_at=ts,
         approved_by=approved_by,
         approval_type=approval_type,

@@ -21,6 +21,15 @@ from workspace.quant.shared.packet_store import store_packet
 from workspace.quant.shared.registries.strategy_registry import transition_strategy, get_strategy
 
 
+def _emit_discord(packet: QuantPacket, root: Path):
+    """Best-effort Discord emission for sigma events."""
+    try:
+        from workspace.quant.shared.discord_bridge import emit_quant_event
+        emit_quant_event(packet, root=root)
+    except Exception:
+        pass
+
+
 def validate_candidate(
     root: Path,
     candidate_packet: QuantPacket,
@@ -72,6 +81,7 @@ def validate_candidate(
             escalation_level="team_only",
         )
         store_packet(root, rejection)
+        _emit_discord(rejection, root)
 
         # Transition registry
         try:
@@ -105,6 +115,7 @@ def validate_candidate(
         escalation_level="kitt_only",
     )
     store_packet(root, promotion)
+    _emit_discord(promotion, root)
 
     # Emit papertrade_candidate_packet for Kitt
     ptc = make_packet(

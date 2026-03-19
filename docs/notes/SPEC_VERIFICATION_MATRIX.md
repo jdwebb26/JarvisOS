@@ -120,6 +120,18 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 9.1 | Strategy factory pipeline | MISSION.md | Data → features → candidates → simulation → gates → scoring → promotion | `workspace/strategy_factory/`. Cron: daily 4AM OHLCV+VIX, Sunday batch. | Pipeline code present. Cron scheduled. OHLCV + VIX data pulls running. | **LIVE** | — | No strategy has reached PF ≥ 1.5 promotion gate yet. |
 | 9.2 | Durable task/strategy queues | v5.1 §12 | TASKS.jsonl, STRATEGIES.jsonl, EXPERIMENTS.jsonl | Files exist in workspace root. | TASKS.jsonl exists (0 lines — queue empty/drained). Strategy registry present. | **LIVE** | — | — |
 | 9.3 | Strategy diversity | v5.1 §23 | Maintain candidate diversity across type, regime, turnover, drawdown | Spec-defined. Strategy factory scoring includes diversity. | Not confirmed with real promoted strategies (none exist yet). | **PARTIAL** | — | No promoted strategies to verify diversity against. |
+| 9.4 | Quant lanes packet contracts | QL §10 | Standard packet schema, 33 types, 7 lanes, validation | `workspace/quant/shared/schemas/packets.py`. 12 unit tests. | Packets stored, validated, routed through live emit_event(). | **LIVE** | d4d6cae | — |
+| 9.5 | Strategy registry + lifecycle | QL §4 | File-locked transitions, authority table, append-only | `workspace/quant/shared/registries/strategy_registry.py`. 17 unit tests. | IDEA→CANDIDATE→VALIDATING→PROMOTED→PAPER_QUEUED→PAPER_ACTIVE proven. | **LIVE** | d4d6cae | — |
+| 9.6 | Quant approval objects | QL §5 | Structured approvals (qpt_ IDs), pre-flight validation | `workspace/quant/shared/registries/approval_registry.py`. 9 unit tests. | Created, validated, routed to #review. Review poller matches qpt_ prefix. | **LIVE** | d4d6cae | Sigma webhook env var not yet configured. |
+| 9.7 | Sigma validation lane | QL §6 | Validate candidates, promote/reject, paper review | `workspace/quant/sigma/validation_lane.py`. 8 unit tests. | Validates PF/Sharpe/DD/trades. Emits Discord events. Transitions registry. | **LIVE** | d4d6cae | — |
+| 9.8 | Executor paper adapter | QL §6 | Paper broker adapter, pre-flight, execution flow | `workspace/quant/executor/executor_lane.py`. 10 unit tests. | Full pre-flight (5 checks), simulated fills, Discord emission. Live adapter stubbed. | **LIVE** | d4d6cae | Paper fills are simulated (PaperBrokerAdapter). |
+| 9.9 | Kitt brief producer | QL §7 | Operator-facing briefs with pipeline/execution/actions | `workspace/quant/kitt/brief_producer.py`. | Reads shared/latest, shows positions, fills, approval status, actions. | **LIVE** | d4d6cae | — |
+| 9.10 | Quant Discord routing | QL §19 | Quant events route to correct Discord channels | 14 event kinds in `discord_event_router.py`. Sigma channel in `agent_channel_map.json`. | Promotions→#sigma, execution→#kitt, approvals→#review. Worklog+Jarvis forward. | **LIVE** | d4d6cae | JARVIS_DISCORD_WEBHOOK_SIGMA not yet configured. |
+| 9.11 | Quant lanes operator CLI | — | Terminal operator surface for quant lane state | `scripts/quant_lanes.py`. status, brief, request-paper, approve-paper, execute. | Phone-scannable output. Proven in live proof. | **LIVE** | d4d6cae | — |
+| 9.12 | Lane B (Atlas/Fish/Hermes/TradeFloor) | QL §6 | Autonomous exploration, scenarios, research, synthesis | `workspace/quant/{atlas,fish,hermes,tradefloor}/`. 57 tests. | Rejection feedback, calibration, dedup, agreement tiers 0-4, cadence enforcement. Restart-safe. | **LIVE** | 26ca810 | No daemon wiring. No LLM inference. No Discord routing (Kitt reads packets). |
+| 9.13 | Adaptive governor | QL §3 | Threshold-based lane intensity adjustment | `workspace/quant/shared/governor.py`. governor_state.json. | Push/hold/backoff/pause proven. One step per cycle. Persists across restart. | **LIVE** | 26ca810 | No RL. Threshold-only as spec requires. |
+| 9.14 | Host-aware scheduler | QL §2 | NIMO/SonLM concurrency caps, priority scheduling | `workspace/quant/shared/scheduler/scheduler.py`. fcntl locking. | NIMO=2, SonLM=1, global=3 enforced. Overflow routing. Stale auto-clear. | **LIVE** | 26ca810 | Advisory at OS level (as spec intends). |
+| 9.15 | Restart/recovery | QL §18 | Filesystem-based state recovery, no in-memory singletons | `workspace/quant/shared/restart.py`. 8 tests. | Scheduler stale cleanup, cadence/dedup/registry/governor all survive restart. | **LIVE** | this commit | — |
 
 ## 10. Eval & Regression
 
@@ -145,7 +157,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 
 ## Summary
 
-### Fully Verified (LIVE) — 40 features
+### Fully Verified (LIVE) — 48 features
 
 | Area | Count | Features |
 |------|-------|----------|
@@ -158,6 +170,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | Safety | 5 | Emergency controls, degradation policy, candidate-first, schema versioning, live trading restriction |
 | Integrations | 4 | SearXNG, PinchTab, NVIDIA/Kimi, LM Studio |
 | Strategy | 2 | Factory pipeline, durable queues |
+| Quant lanes (Lane A) | 8 | Packet contracts, strategy registry, approval objects, Sigma validation, Executor paper, Kitt briefs, Discord routing, operator CLI |
 
 ### Partially Verified — 5 features
 

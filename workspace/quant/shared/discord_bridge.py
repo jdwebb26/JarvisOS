@@ -102,6 +102,7 @@ def emit_quant_event(
 def emit_quant_approval_request(
     strategy_id: str,
     approval_type: str,
+    approval_ref: str,
     detail: str,
     *,
     root: Optional[Path] = None,
@@ -110,15 +111,17 @@ def emit_quant_approval_request(
 
     Uses the existing approval_requested event kind, which the
     discord_event_router routes to the #review channel (archimedes).
-    The review poller + inbound server handle operator response.
+    The approval_id field is set so the rendered message includes
+    approve/reject instructions that the review poller can parse.
     """
     resolved_root = Path(root or ROOT).resolve()
 
     return emit_event(
         kind="approval_requested",
         agent_id="kitt",
-        detail=f"Quant {approval_type} approval needed for strategy {strategy_id}. {detail}",
+        detail=f"Quant {approval_type}: {strategy_id}. {detail}",
         extra={
+            "approval_id": approval_ref,
             "approval_type": approval_type,
             "strategy_id": strategy_id,
             "source": "quant_lanes",

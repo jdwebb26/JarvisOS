@@ -20,14 +20,14 @@ sys.path.insert(0, str(ROOT))
 from workspace.quant.shared.schemas.packets import make_packet, QuantPacket
 from workspace.quant.shared.packet_store import store_packet, get_latest, get_all_latest
 from workspace.quant.shared.registries.strategy_registry import load_all_strategies
+from workspace.quant.shared.registries.approval_registry import load_all_approvals
 
 
 def _now_ts() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _count_strategies_by_state(root: Path) -> dict[str, list[str]]:
-    """Count strategies grouped by lifecycle state."""
+def _strategies_by_state(root: Path) -> dict[str, list[str]]:
     strategies = load_all_strategies(root)
     by_state: dict[str, list[str]] = {}
     for sid, s in strategies.items():
@@ -35,86 +35,109 @@ def _count_strategies_by_state(root: Path) -> dict[str, list[str]]:
     return by_state
 
 
-def _lane_summary(latest: dict[str, QuantPacket], lane: str) -> str:
-    """Extract 1-line summary for a lane from latest packets."""
-    # Look for the most relevant packet from this lane
-    for key, pkt in latest.items():
-        if pkt.lane == lane:
-            return f"{pkt.packet_type}: {pkt.thesis[:100]}"
-    return "no recent packets"
-
-
-def _execution_summary(latest: dict[str, QuantPacket]) -> Optional[str]:
-    """Build execution section if executor packets exist."""
-    exec_pkts = [p for p in latest.values() if p.lane == "executor"]
-    if not exec_pkts:
-        return None
+def _pipeline_section(by_state: dict[str, list[str]], root: Path) -> str:
     lines = []
-    for p in exec_pkts:
-        mode = p.execution_mode or "unknown"
-        status = p.execution_status or "unknown"
-        sid = p.strategy_id or "unknown"
-        lines.append(f"  {sid}: mode={mode}, status={status}")
-        if p.fill_price:
-            lines.append(f"    fill={p.fill_price}, slippage={p.slippage}")
+    paper_active = by_state.get("PAPER_ACTIVE", [])
+    live_active = by_state.get("LIVE_ACTIVE", [])
+    if paper_active:
+        lines.append(f"  PAPER: {', '.join(paper_active)}")
+    if live_active:
+        lines.append(f"  LIVE:  {', '.join(live_active)}")
+    if not paper_active and not live_active:
+        lines.append("  No active positions")
+
+    promoted = by_state.get("PROMOTED", [])
+    queued = by_state.get("PAPER_QUEUED", [])
+    review = by_state.get("PAPER_REVIEW", [])
+    approvals = load_all_approvals(root)
+    for sid in promoted:
+        has_appr = any(a.strategy_id == sid and not a.revoked for a in approvals)
+        if has_appr:
+            ref = next(a.approval_ref for a in approvals if a.strategy_id == sid and not a.revoked)
+            lines.append(f"  AWAITING APPROVAL: {sid} ({ref})")
+        else:
+            lines.append(f"  PROMOTED: {sid} (needs paper request)")
+    for sid in queued:
+        lines.append(f"  PAPER_QUEUED: {sid}")
+    for sid in review:
+        lines.append(f"  PAPER_REVIEW: {sid}")
+
+    ideas = len(by_state.get("IDEA", []))
+    candidates = len(by_state.get("CANDIDATE", []))
+    rejected = len(by_state.get("REJECTED", []))
+    if ideas + candidates + rejected > 0:
+        lines.append(f"  Depth: {ideas} ideas, {candidates} candidates, {rejected} rejected")
+    return "\n".join(lines) if lines else "  Empty pipeline"
+
+
+def _exec_section(latest: dict[str, QuantPacket]) -> Optional[str]:
+    pkt = None
+    for key, p in latest.items():
+        if p.packet_type == "execution_status_packet":
+            pkt = p
+    if pkt is None:
+        return None
+    sid = pkt.strategy_id or "?"
+    line = f"  {sid}: {pkt.execution_mode or '?'} {pkt.execution_status or '?'}"
+    if pkt.fill_price is not None:
+        line += f" @ {pkt.fill_price}"
+    if pkt.slippage is not None:
+        line += f" (slip {pkt.slippage:.4f})"
+    return line
+
+
+def _top_signal(latest: dict[str, QuantPacket]) -> str:
+    for ptype in ["execution_rejection_packet", "promotion_packet",
+                   "paper_review_packet", "papertrade_candidate_packet"]:
+        for key, pkt in latest.items():
+            if pkt.packet_type == ptype:
+                return f"[{pkt.lane}] {pkt.thesis[:140]}"
+    high = [p for p in latest.values() if p.priority in {"high", "critical"}]
+    if high:
+        top = max(high, key=lambda p: (p.priority == "critical", p.created_at))
+        return f"[{top.lane}] {top.thesis[:140]}"
+    return "No high-priority signals."
+
+
+def _lane_activity(latest: dict[str, QuantPacket]) -> str:
+    lines = []
+    for lane in ["sigma", "atlas", "hermes", "fish"]:
+        pkts = [(k, p) for k, p in latest.items() if p.lane == lane]
+        if pkts:
+            _, best = max(pkts, key=lambda x: x[1].created_at)
+            label = best.packet_type.replace("_packet", "").replace("_", " ")
+            lines.append(f"  {lane:8s} {label}: {best.thesis[:80]}")
+        else:
+            lines.append(f"  {lane:8s} silent")
     return "\n".join(lines)
 
 
-def _tradefloor_summary(latest: dict[str, QuantPacket]) -> Optional[str]:
-    """Build tradefloor section if tradefloor packets exist."""
-    tf = None
-    for key, pkt in latest.items():
-        if pkt.packet_type == "tradefloor_packet":
-            tf = pkt
-    if tf is None:
-        return None
-    tier = tf.agreement_tier if tf.agreement_tier is not None else "N/A"
-    return f"  Agreement tier: {tier}\n  Key finding: {tf.thesis[:120]}"
+def _operator_actions(by_state: dict[str, list[str]], root: Path) -> str:
+    actions = []
+    promoted = by_state.get("PROMOTED", [])
+    approvals = load_all_approvals(root)
+    for sid in promoted:
+        pending = [a for a in approvals if a.strategy_id == sid and not a.revoked]
+        if pending:
+            actions.append(f"Approve paper: approve {pending[-1].approval_ref}")
+        else:
+            actions.append(f"Request paper: quant_lanes.py request-paper {sid}")
+    for sid in by_state.get("PAPER_REVIEW", []):
+        actions.append(f"Review paper results: {sid}")
+    return "\n".join(f"  {a}" for a in actions) if actions else "  none"
 
 
-def produce_brief(root: Path, market_read: str = "No live market data consumed.") -> QuantPacket:
-    """Produce a Kitt brief packet from current lane state.
-
-    Per spec §7: structured, scannable, includes all relevant sections.
-    """
+def produce_brief(root: Path, market_read: str = "No live market data.") -> QuantPacket:
+    """Produce a Kitt brief. Spec section 7, phone-scannable."""
     ts = _now_ts()
     latest = get_all_latest(root)
-    by_state = _count_strategies_by_state(root)
-
-    # Build sections
+    by_state = _strategies_by_state(root)
     paper_active = by_state.get("PAPER_ACTIVE", [])
-    paper_queued = by_state.get("PAPER_QUEUED", [])
     live_active = by_state.get("LIVE_ACTIVE", [])
-    near_promotion = by_state.get("PROMOTED", []) + by_state.get("PAPER_REVIEW", [])
 
-    pipeline_section = (
-        f"  PAPER_ACTIVE: {len(paper_active)} strategies ({', '.join(paper_active) or 'none'})\n"
-        f"  PAPER_QUEUED: {len(paper_queued)} strategies ({', '.join(paper_queued) or 'none'})\n"
-        f"  LIVE_ACTIVE:  {len(live_active)} strategies ({', '.join(live_active) or 'none'})\n"
-        f"  Near promotion: {', '.join(near_promotion) or 'none'}"
-    )
+    exec_section = _exec_section(latest)
+    lanes = sorted(set(p.lane for p in latest.values()))
 
-    # Top signal — find the highest-priority recent packet
-    top_signal = "No high-priority signals."
-    high_priority_pkts = [p for p in latest.values() if p.priority in {"high", "critical"}]
-    if high_priority_pkts:
-        top = max(high_priority_pkts, key=lambda p: (p.priority == "critical", p.created_at))
-        top_signal = f"[{top.lane}/{top.packet_type}] {top.thesis[:150]}"
-
-    # Lane activity
-    lane_lines = []
-    for lane in ["atlas", "fish", "sigma", "hermes"]:
-        summary = _lane_summary(latest, lane)
-        lane_lines.append(f"  {lane.capitalize():8s}: {summary}")
-    lane_section = "\n".join(lane_lines)
-
-    # Execution section
-    exec_section = _execution_summary(latest)
-
-    # TradeFloor section
-    tf_section = _tradefloor_summary(latest)
-
-    # Build brief text
     brief_text = f"""KITT BRIEF — {ts}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -122,60 +145,41 @@ MARKET READ
 {market_read}
 
 TOP SIGNAL
-{top_signal}
+{_top_signal(latest)}
 
 PIPELINE
-{pipeline_section}
-
-LANE ACTIVITY
-{lane_section}"""
-
-    if tf_section:
-        brief_text += f"\n\nTRADEFLOOR\n{tf_section}"
+{_pipeline_section(by_state, root)}"""
 
     if exec_section:
         brief_text += f"\n\nEXECUTION\n{exec_section}"
 
+    # TradeFloor section — surface synthesis for operator if present
+    tf_pkt = None
+    for key, pkt in latest.items():
+        if pkt.packet_type == "tradefloor_packet":
+            tf_pkt = pkt
+    if tf_pkt is not None:
+        tier = tf_pkt.agreement_tier if tf_pkt.agreement_tier is not None else "?"
+        brief_text += f"\n\nTRADEFLOOR\n  Agreement tier: {tier}\n  {tf_pkt.thesis[:120]}"
+
     brief_text += f"""
 
-SYSTEM HEALTH
-  Active lanes: {', '.join(sorted(set(p.lane for p in latest.values()))) or 'none'}
-  Silent/errored: checking...
+LANES
+{_lane_activity(latest)}
+
+HEALTH
+  Active: {', '.join(lanes) if lanes else 'none'}
   Governor: not yet active
 
 OPERATOR ACTION NEEDED
-  {'none' if not near_promotion else ', '.join(near_promotion) + ' — may need paper trade decision'}"""
+{_operator_actions(by_state, root)}"""
 
-    # Create and store the brief packet
     brief = make_packet(
         "brief_packet", "kitt",
-        f"Kitt brief at {ts}. Pipeline: {len(paper_active)} paper-active, {len(live_active)} live-active.",
+        f"Kitt brief {ts}. {len(paper_active)} paper, {len(live_active)} live.",
         priority="medium",
         notes=brief_text,
         escalation_level="none",
     )
-
     store_packet(root, brief)
     return brief
-
-
-def produce_execution_summary(
-    root: Path,
-    strategy_id: str,
-    mode: str,
-    status: str,
-    trade_count: int = 0,
-    pnl: float = 0.0,
-    drawdown: float = 0.0,
-    slippage: float = 0.0,
-    anomalies: str = "none",
-    next_review: str = "",
-) -> str:
-    """Produce spec §7 execution summary format string."""
-    return f"""EXECUTION UPDATE — {strategy_id}
-Mode: {mode}
-Status: {status}
-Trades: {trade_count} | PnL: {pnl} | Drawdown: {drawdown}
-Slippage: {slippage}
-Anomalies: {anomalies}
-Next review: {next_review}"""

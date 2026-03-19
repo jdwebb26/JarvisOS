@@ -32,16 +32,17 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 REVIEW_CHANNEL_ID = "1483132981177618482"
 
-# Approval ID pattern: apr_ followed by hex
-APPROVAL_ID_PATTERN = re.compile(r"\bapr_[a-f0-9]{8,}\b", re.IGNORECASE)
+# Approval ID pattern: apr_ or qpt_ followed by hex
+APPROVAL_ID_PATTERN = re.compile(r"\b(?:apr|qpt)_[a-f0-9]{8,}\b", re.IGNORECASE)
 
 # Text command patterns (case-insensitive)
+# Matches both Jarvis approvals (apr_xxx) and quant approvals (qpt_xxx)
 APPROVE_PATTERN = re.compile(
-    r"^\s*(?:approve|approved|yes|lgtm|ship\s*it)\s+(apr_[a-f0-9]+)\s*(.*)?$",
+    r"^\s*(?:approve|approved|yes|lgtm|ship\s*it)\s+((?:apr|qpt)_[a-f0-9]+)\s*(.*)?$",
     re.IGNORECASE,
 )
 REJECT_PATTERN = re.compile(
-    r"^\s*(?:reject|rejected|no|nack)\s+(apr_[a-f0-9]+)\s*(.*)?$",
+    r"^\s*(?:reject|rejected|no|nack)\s+((?:apr|qpt)_[a-f0-9]+)\s*(.*)?$",
     re.IGNORECASE,
 )
 
@@ -143,6 +144,38 @@ def _load_gateway_token() -> str:
     raise RuntimeError("No gateway token found")
 
 
+def _handle_quant_approval(
+    approval_ref: str,
+    decision: str,
+) -> dict[str, Any]:
+    """Handle a quant lane paper/live trade approval locally.
+
+    Quant approvals (qpt_xxx) are handled directly via the quant approval
+    bridge, not through the Jarvis /operator/approval endpoint.
+    """
+    try:
+        from workspace.quant.shared.registries.approval_registry import get_approval
+        approval = get_approval(ROOT, approval_ref)
+        if approval is None:
+            return {"ok": False, "error": f"quant approval {approval_ref} not found"}
+        if decision == "approved":
+            from workspace.quant.shared.approval_bridge import approve_paper_trade
+            result = approve_paper_trade(ROOT, approval.strategy_id, approval_ref=approval_ref)
+            if result["error"]:
+                return {"ok": False, "error": result["error"]}
+            return {"ok": True, "approval_id": approval_ref, "strategy_id": approval.strategy_id,
+                    "decision": "approved", "strategy_state": result["strategy_state"]}
+        elif decision == "rejected":
+            from workspace.quant.shared.registries.approval_registry import revoke_approval
+            revoke_approval(ROOT, approval_ref)
+            return {"ok": True, "approval_id": approval_ref, "strategy_id": approval.strategy_id,
+                    "decision": "rejected"}
+        else:
+            return {"ok": False, "error": f"unsupported decision: {decision}"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def call_approval_endpoint(
     approval_id: str,
     decision: str,
@@ -150,7 +183,14 @@ def call_approval_endpoint(
     reason: str = "",
     port: int = 18790,
 ) -> dict[str, Any]:
-    """Call POST /operator/approval on the inbound server."""
+    """Route approval to the correct handler.
+
+    - qpt_xxx: quant lane approval (handled locally)
+    - apr_xxx: Jarvis approval (handled via inbound server)
+    """
+    if approval_id.startswith("qpt_"):
+        return _handle_quant_approval(approval_id, decision)
+
     token = _load_gateway_token()
     payload = json.dumps({
         "approval_id": approval_id,

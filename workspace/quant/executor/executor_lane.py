@@ -78,21 +78,30 @@ def execute_paper_trade(
     """
     result = {"success": False, "packets": [], "fill": None, "rejection_reason": None}
 
+    def _emit_pkt(pkt):
+        try:
+            from workspace.quant.shared.discord_bridge import emit_quant_event
+            emit_quant_event(pkt, root=root)
+        except Exception:
+            pass
+
+    def _reject(pkt, reason):
+        store_packet(root, pkt)
+        result["packets"].append(pkt.to_dict())
+        result["rejection_reason"] = reason
+        _emit_pkt(pkt)
+        return result
+
     # Pre-flight 1: Kill switch
     if _kill_switch_engaged(root):
-        rejection = make_packet(
+        return _reject(make_packet(
             "execution_rejection_packet", "executor",
             f"Execution refused for {strategy_id}: kill switch engaged",
-            priority="critical",
-            strategy_id=strategy_id,
+            priority="critical", strategy_id=strategy_id,
             execution_rejection_reason="kill_switch_engaged",
             execution_rejection_detail="Kill switch is currently engaged. All execution halted.",
             order_details={"symbol": symbol, "side": side, "quantity": quantity},
-        )
-        store_packet(root, rejection)
-        result["packets"].append(rejection.to_dict())
-        result["rejection_reason"] = "kill_switch_engaged"
-        return result
+        ), "kill_switch_engaged")
 
     # Pre-flight 2-4: Approval validation
     valid, reason = validate_approval_for_execution(
@@ -110,54 +119,38 @@ def execute_paper_trade(
         elif "symbol_not_approved" in reason:
             rej_reason = "symbol_not_approved"
 
-        rejection = make_packet(
+        return _reject(make_packet(
             "execution_rejection_packet", "executor",
             f"Execution refused for {strategy_id}: {reason}",
-            priority="high",
-            strategy_id=strategy_id,
-            execution_rejection_reason=rej_reason,
-            execution_rejection_detail=reason,
+            priority="high", strategy_id=strategy_id,
+            execution_rejection_reason=rej_reason, execution_rejection_detail=reason,
             order_details={"symbol": symbol, "side": side, "quantity": quantity, "approval_ref": approval_ref},
-        )
-        store_packet(root, rejection)
-        result["packets"].append(rejection.to_dict())
-        result["rejection_reason"] = rej_reason
-        return result
+        ), rej_reason)
 
     # Pre-flight 5: Risk limits
     risk_ok, risk_reason = _check_risk_limits(root, strategy_id, symbol, quantity)
     if not risk_ok:
-        rejection = make_packet(
+        return _reject(make_packet(
             "execution_rejection_packet", "executor",
             f"Execution refused for {strategy_id}: {risk_reason}",
-            priority="high",
-            strategy_id=strategy_id,
+            priority="high", strategy_id=strategy_id,
             execution_rejection_reason="strategy_limit_breach",
             execution_rejection_detail=risk_reason,
             order_details={"symbol": symbol, "side": side, "quantity": quantity},
-        )
-        store_packet(root, rejection)
-        result["packets"].append(rejection.to_dict())
-        result["rejection_reason"] = "strategy_limit_breach"
-        return result
+        ), "strategy_limit_breach")
 
     # Pre-flight 6: Broker health
     state_dir = root / "state" / "quant" / "executor"
     adapter = get_adapter("paper", state_dir)
     if not adapter.health_check():
-        rejection = make_packet(
+        return _reject(make_packet(
             "execution_rejection_packet", "executor",
             f"Execution refused for {strategy_id}: broker unhealthy",
-            priority="critical",
-            strategy_id=strategy_id,
+            priority="critical", strategy_id=strategy_id,
             execution_rejection_reason="broker_unhealthy",
             execution_rejection_detail="Paper broker adapter health check failed",
             order_details={"symbol": symbol, "side": side, "quantity": quantity},
-        )
-        store_packet(root, rejection)
-        result["packets"].append(rejection.to_dict())
-        result["rejection_reason"] = "broker_unhealthy"
-        return result
+        ), "broker_unhealthy")
 
     # Emit execution intent
     intent = make_packet(
@@ -215,4 +208,9 @@ def execute_paper_trade(
 
     result["success"] = True
     result["fill"] = fill.to_dict()
+
+    # Emit Discord events for execution packets
+    _emit_pkt(intent)
+    _emit_pkt(status_pkt)
+
     return result

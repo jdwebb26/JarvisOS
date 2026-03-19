@@ -40,7 +40,7 @@ def _make_actions(**overrides):
 def test_create_approval(approval_root):
     actions = _make_actions()
     approval = create_approval(approval_root, "test-001", "paper_trade", actions)
-    assert approval.approval_ref.startswith("approval-")
+    assert approval.approval_ref.startswith("qpt_")
     assert approval.strategy_id == "test-001"
     assert approval.approval_type == "paper_trade"
     assert not approval.revoked
