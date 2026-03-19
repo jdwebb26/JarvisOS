@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for Kitt quant events — triggers handshake chain
+
+[Path]
+PathModified=/home/rollan/.openclaw/workspace/jarvis-v5/workspace/quant_infra/events/kitt/pending
+Unit=openclaw-quant-handshake.service
+
+[Install]
+WantedBy=default.target

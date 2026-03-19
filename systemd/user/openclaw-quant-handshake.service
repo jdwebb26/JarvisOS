@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenClaw Quant Event Handshake
+Documentation=workspace/quant_infra/handshake.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+ExecStart=/home/rollan/.openclaw/workspace/jarvis-v5/.venv/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/workspace/quant_infra/handshake.py
+TimeoutStartSec=120
+EnvironmentFile=-/home/rollan/.openclaw/secrets.env

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Jarvis Quant Observability — operator-facing summary of quant lane activity.
 
-Reads all lane packets and warehouse state to produce an operator summary.
+Reads all lane packets, event queue state, and warehouse state to produce
+an operator summary including the quant event handshake chain.
 
 Usage:
     .venv/bin/python3 workspace/quant_infra/jarvis/observability.py
@@ -15,10 +16,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from packets.writer import read_all_latest
+from packets.writer import read_all_latest, read_packet
+from events.emitter import read_pending, get_latest_event
 
 QUANT_INFRA = Path(__file__).resolve().parent.parent
 WAREHOUSE_PATH = QUANT_INFRA / "warehouse" / "quant.duckdb"
+HANDSHAKE_LOG = QUANT_INFRA / "logs" / "handshake"
+VALIDATION_DIR = QUANT_INFRA / "research" / "sigma_validations"
 
 
 def get_warehouse_summary() -> dict:
@@ -85,6 +89,81 @@ def get_lane_packet_summary() -> dict:
     return summary
 
 
+def get_event_queue_summary() -> dict:
+    """Get summary of Kitt event queue state."""
+    pending = read_pending("kitt")
+    latest = get_latest_event("kitt")
+
+    processed_dir = QUANT_INFRA / "events" / "kitt" / "processed"
+    processed_count = len(list(processed_dir.glob("*.json"))) if processed_dir.exists() else 0
+
+    return {
+        "pending": len(pending),
+        "processed": processed_count,
+        "latest_event": {
+            "id": latest["event_id"],
+            "type": latest["event_type"],
+            "timestamp": latest["timestamp"][:19],
+        } if latest else None,
+    }
+
+
+def get_handshake_summary() -> dict | None:
+    """Get latest handshake run summary."""
+    latest_path = HANDSHAKE_LOG / "latest.json"
+    if not latest_path.exists():
+        return None
+    try:
+        data = json.loads(latest_path.read_text())
+        return {
+            "started_at": data.get("started_at", "?")[:19],
+            "completed_at": data.get("completed_at", "?")[:19],
+            "steps": {
+                k: v.get("status", "?") for k, v in data.get("steps", {}).items()
+            },
+        }
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def get_sigma_validation_summary() -> dict | None:
+    """Get latest Sigma paper-trade validation summary."""
+    sigma_pkt = read_packet("sigma")
+    if not sigma_pkt:
+        return None
+
+    data = sigma_pkt.get("data", {})
+    return {
+        "verdict": data.get("verdict", "?"),
+        "flags": data.get("flags", 0),
+        "positions_checked": data.get("positions_checked", 0),
+        "summary": data.get("summary", ""),
+        "timestamp": sigma_pkt.get("timestamp", "?")[:19],
+    }
+
+
+def get_fish_scenario_summary() -> dict | None:
+    """Get latest Fish scenario summary from packet."""
+    fish_pkt = read_packet("fish")
+    if not fish_pkt:
+        return None
+
+    data = fish_pkt.get("data", {})
+    scenarios = data.get("scenarios", [])
+
+    # Summarize by type and impact
+    negative = [s for s in scenarios if s.get("impact") == "negative"]
+    high_prob = [s for s in scenarios if (s.get("probability") or 0) >= 0.25]
+
+    return {
+        "count": data.get("scenario_count", len(scenarios)),
+        "negative_count": len(negative),
+        "high_prob_count": len(high_prob),
+        "market_context": data.get("market_context", {}),
+        "timestamp": fish_pkt.get("timestamp", "?")[:19],
+    }
+
+
 def generate_operator_report() -> str:
     """Generate the full operator report."""
     now = datetime.now(timezone.utc)
@@ -116,6 +195,48 @@ KITT PAPER TRADING
     report += f"""
 FISH SCENARIOS
   Active scenarios: {warehouse.get('active_scenarios', 0)}
+"""
+
+    # Event queue
+    events = get_event_queue_summary()
+    report += f"""
+KITT EVENT QUEUE
+  Pending events:  {events['pending']}
+  Processed:       {events['processed']}
+"""
+    if events["latest_event"]:
+        le = events["latest_event"]
+        report += f"  Latest event:    {le['type']} [{le['timestamp']}]\n"
+
+    # Fish scenario detail
+    fish = get_fish_scenario_summary()
+    if fish:
+        report += f"""
+FISH SCENARIO DETAIL [{fish['timestamp']}]
+  Total scenarios:     {fish['count']}
+  Negative impact:     {fish['negative_count']}
+  High probability:    {fish['high_prob_count']}
+"""
+
+    # Sigma validation
+    sigma = get_sigma_validation_summary()
+    if sigma:
+        verdict_display = sigma["verdict"].upper()
+        report += f"""
+SIGMA PAPER-TRADE VALIDATION [{sigma['timestamp']}]
+  Verdict:  {verdict_display}
+  Flags:    {sigma['flags']}
+  Checked:  {sigma['positions_checked']} position(s)
+  {sigma['summary'][:80]}
+"""
+
+    # Handshake chain
+    hs = get_handshake_summary()
+    if hs:
+        steps = "  ".join(f"{k}={v}" for k, v in hs["steps"].items())
+        report += f"""
+HANDSHAKE CHAIN [{hs['completed_at']}]
+  {steps}
 """
 
     report += "\nLANE PACKETS\n"

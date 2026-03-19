@@ -41,6 +41,7 @@ from warehouse.loader import (
     mark_position,
 )
 from packets.writer import write_packet, read_packet
+from events.emitter import emit_event
 
 THIS_DIR = Path(__file__).resolve().parent
 QUANT_INFRA = THIS_DIR.parent
@@ -141,6 +142,15 @@ def close_position_by_id(position_id: str, exit_price: float) -> None:
 
         _write_kitt_packet(con)
         _write_brief(con, f"Closed {position_id} @ {exit_price}")
+
+        # Emit close event
+        emit_event(
+            "kitt", "position_closed",
+            position_id=position_id,
+            current_mark=exit_price,
+            reason=f"Closed position {position_id} at {exit_price}",
+            source_packet="kitt_quant",
+        )
 
         print(f"[kitt] Closed {position_id} @ {exit_price}")
     finally:

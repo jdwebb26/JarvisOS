@@ -35,6 +35,7 @@ from kitt.paper_trader import (
 )
 from packets.writer import write_packet, read_packet
 from warehouse.loader import get_connection, insert_trade_decision
+from events.emitter import emit_event
 
 THIS_DIR = Path(__file__).resolve().parent
 QUANT_INFRA = THIS_DIR.parent
@@ -224,9 +225,26 @@ def run_cycle(dry_run: bool = False) -> dict:
     open_positions = status["open_positions"]
 
     if open_positions and not dry_run:
+        # Snapshot positions before stop check to detect state changes
+        pre_stop_ids = {p["position_id"] for p in open_positions}
         stopped = check_stops(current_price)
         if stopped:
             print(f"[kitt] Stopped out: {stopped}")
+            for sid in stopped:
+                # Find the stopped position details from pre-check snapshot
+                stopped_pos = next((p for p in open_positions if p["position_id"] == sid), None)
+                if stopped_pos:
+                    emit_event(
+                        "kitt", "stop_triggered",
+                        side=stopped_pos["direction"],
+                        entry=stopped_pos["entry_price"],
+                        stop=stopped_pos["stop_loss"],
+                        target=stopped_pos["take_profit"],
+                        current_mark=current_price,
+                        position_id=sid,
+                        reason=f"Stop loss triggered at {stopped_pos['stop_loss']}",
+                        source_packet="kitt_cycle",
+                    )
         mark_all_positions(current_price)
 
     # Refresh status after potential stop-outs
@@ -271,6 +289,19 @@ def run_cycle(dry_run: bool = False) -> dict:
 
     pos_id = open_position(direction, entry, stop, target, reason)
     print(f"[kitt] Opened: {pos_id}")
+
+    # Emit event for new position
+    emit_event(
+        "kitt", "position_opened",
+        side=direction,
+        entry=entry,
+        stop=stop,
+        target=target,
+        current_mark=current_price,
+        position_id=pos_id,
+        reason=reason,
+        source_packet="kitt_cycle",
+    )
 
     return _record_decision(f"open_{direction}", reason, reason,
                             dry_run=False, position_id=pos_id,
