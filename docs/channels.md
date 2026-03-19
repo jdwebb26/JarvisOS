@@ -118,6 +118,21 @@ Important:
 
 ---
 
+### Agent-per-channel model (live)
+
+The live system uses one Discord channel per agent. Each channel has:
+- An outbound webhook (for the outbox sender to post events)
+- A gateway allowlist entry (so the bot listens)
+- A binding to an agent (for inbound message routing)
+
+The canonical mapping is in `config/agent_channel_map.json`. The gateway bindings are in `~/.openclaw/openclaw.json`.
+
+**Quant lane channels** (sigma, atlas, pulse) have outbound webhooks and gateway allowlist entries, but their inbound binding routes to **jarvis as a temporary fallback** — they do not have dedicated OpenClaw agent definitions. Fish has been promoted to a full agent with its own binding and identity (see agent_roster.md).
+
+See `config/agent_channel_map.json` and `runtime/core/discord_outbox_sender.py` for the live channel→webhook→env var mapping.
+
+---
+
 ## Explicit task trigger
 
 Only this trigger is supported for durable task creation in `#jarvis`:

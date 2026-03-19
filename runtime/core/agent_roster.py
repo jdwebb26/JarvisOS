@@ -57,6 +57,7 @@ AGENT_SKILL_ALLOWLIST: dict[str, tuple[str, ...]] = {
     "muse": ("summarize", "songsee", "sag", "session-logs"),
     "ralph": ("ordercli", "session-logs"),
     "kitt": ("session-logs", "model-usage"),
+    "fish": ("session-logs", "model-usage"),
 }
 
 AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
@@ -195,6 +196,16 @@ AGENT_TOOL_ALLOWLIST: dict[str, tuple[str, ...]] = {
         "memory_get",
     ),
     "kitt": (
+        "read",
+        "process",
+        "memory_search",
+        "memory_get",
+        "message",
+        "session_status",
+        "sessions_list",
+        "sessions_history",
+    ),
+    "fish": (
         "read",
         "process",
         "memory_search",
@@ -542,6 +553,39 @@ CANONICAL_AGENT_ROSTER: dict[str, dict[str, Any]] = {
         "preferred_skill_backends": ["qwen_planner", "qwen_executor"],
         "preferred_channels": ["kitt"],
     },
+    "fish": {
+        "agent_id": "fish",
+        "display_name": "Fish",
+        "role": "scenario modeling, forecasting, and self-calibration for NQ",
+        "status": "wired",
+        "kind": "specialist",
+        "responsibilities": [
+            "market scenario generation with confidence levels",
+            "directional forecasting with value targets",
+            "calibration tracking (hit/miss, confidence adjustment)",
+            "risk zone identification (VIX, FOMC, gaps, liquidity)",
+            "calibration feedback to Kitt for brief synthesis",
+        ],
+        "avoid": [
+            "strategy validation (Sigma's job)",
+            "promotion decisions (Sigma's job)",
+            "trade execution (Executor's job)",
+            "code implementation (HAL's job)",
+            "general operator chat (Jarvis's job)",
+        ],
+        "task_classes": ["quant", "research"],
+        "routing_intent": {
+            "preferred_model": "Qwen3.5-35B",
+            "fallbacks": ["Qwen3.5-9B"],
+            "primary_backend": "salmon_adapter",
+        },
+        "allowed_tool_categories": ["coordination", "research", "repo_read", "general"],
+        "denied_tool_categories": ["browser", "engineering", "maintenance", "voice", "creative"],
+        "denied_tool_name_tokens": ["clawhub", "weather", "exec", "shell", "bash", "write", "edit", "patch"],
+        "preferred_skill_task_classes": ["quant", "research"],
+        "preferred_skill_backends": ["salmon_adapter", "qwen_executor"],
+        "preferred_channels": ["fish"],
+    },
 }
 
 
@@ -632,6 +676,7 @@ AGENT_RUNTIME_TYPES: dict[str, str] = {
     "ralph":      "embedded",
     "qwen":       "embedded",
     "kitt":       "embedded",
+    "fish":       "embedded",
 }
 
 

@@ -73,6 +73,7 @@ Jarvis OS coordinates a fleet of specialized AI agents that receive work through
 | **Cadence** | Voice ingress — wake-word, STT, TTS | Qwen 3.5 9B | Daemon (partial) |
 | **Qwen** | Qwen-Agent — ACP-backed qwen-agent plugin | Qwen 3.5 35B | ACP |
 | **Claude** | External model agent (Anthropic) | Claude Sonnet 4.6 | Embedded |
+| **Fish** | Scenario modeling & forecasting (powered by Salmon Adapter) | Qwen 3.5 35B | Embedded |
 
 ### Quant lane services (temporary fallback)
 
@@ -82,7 +83,6 @@ These have Discord channels for outbound event delivery but are **not** fully se
 |---------|---------|---------|
 | Sigma | `#sigma` | Strategy validation gates |
 | Atlas | `#atlas` | Strategy candidate generation |
-| Fish | `#fish` | Market scenario analysis |
 | Pulse | `#pulse` | Discretionary NQ alerts & proposals |
 
 ---
@@ -217,7 +217,7 @@ Commands: `openclaw status`, `openclaw doctor`, `openclaw security audit`
 |------|--------|----------------|
 | Cadence voice | PARTIAL | Live mic blocked on WSL2. Proven in replay only. `win_capture.py` workaround exists but not wired into daemon. |
 | Bowser browser | BOUNDED | Request/result protocol live, full external browser lane not proven e2e. |
-| Sigma/Atlas/Fish/Pulse agents | FALLBACK | Outbound-only channel presence. No dedicated interactive agents — inbound routes to Jarvis. |
+| Sigma/Atlas/Pulse agents | FALLBACK | Outbound-only channel presence. No dedicated interactive agents — inbound routes to Jarvis. Fish is now a full agent. |
 | `#todo` intake | DEAD | `lobster-todo-intake` service has no timer and is not running. Task intake via cron executor only. |
 | OpenAI / GPT | SCAFFOLD | Adapter wired but requires funded API billing to activate. |
 | v5.2 multi-model routing | SCAFFOLD | Scaffolding exists but not active in production. |
