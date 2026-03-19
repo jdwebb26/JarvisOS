@@ -25,7 +25,7 @@ def _print_response(result: dict) -> None:
     usage = result.get("llm_usage", {})
 
     print()
-    print(f"\033[36mPersonaPlex\033[0m: {response}")
+    print(f"\033[36mCadence\033[0m: {response}")
 
     # Show metadata in dim text
     parts: list[str] = []
@@ -45,7 +45,7 @@ def _print_response(result: dict) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="PersonaPlex terminal chat")
+    parser = argparse.ArgumentParser(description="Cadence conversational copilot")
     parser.add_argument("--resume", nargs="?", const="__latest__", default=None,
                         help="Resume a session (latest if no ID given)")
     parser.add_argument("--one", type=str, default="",
@@ -89,7 +89,7 @@ def main() -> int:
         s = create_session(root=root)
         conversation_id = s.conversation_id
 
-    print("\033[1mPersonaPlex\033[0m — OpenClaw conversational copilot")
+    print("\033[1mCadence\033[0m — OpenClaw conversational copilot")
     print(f"\033[2mSession: {conversation_id} | Type 'help' for commands, 'quit' to exit\033[0m")
     print()
 

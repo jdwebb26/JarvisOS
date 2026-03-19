@@ -278,9 +278,9 @@ def _delegate_browser(utterance: str, url: str, *, actor: str, lane: str, root: 
 
 
 def _delegate_personaplex(utterance: str, *, base: dict, vsid: str, root: Path) -> dict:
-    """Route an utterance to PersonaPlex for conversational handling.
+    """Route an utterance to the conversational engine for handling.
 
-    PersonaPlex is read-only for conversational intents and proposes (never
+    The engine is read-only for conversational intents and proposes (never
     auto-executes) for command intents, so this is safe even without execute
     gating.
     """
@@ -310,7 +310,7 @@ def _delegate_personaplex(utterance: str, *, base: dict, vsid: str, root: Path) 
             "route_reason": "personaplex_error",
             "delegation_result": {
                 "error": str(exc),
-                "note": "PersonaPlex delegation failed; utterance not handled.",
+                "note": "Conversation delegation failed; utterance not handled.",
             },
         }
 
@@ -379,8 +379,8 @@ def route_cadence_utterance(
         "execute": execute,
     }
 
-    # PersonaPlex-eligible intents are safe in both preview and execute mode
-    # (PersonaPlex is read-only for conversational, proposes for commands).
+    # Conversation-eligible intents are safe in both preview and execute mode
+    # (the conversational engine is read-only for conversational, proposes for commands).
     # Route them early before the execute gate.
     _personaplex_intents = {"jarvis_orchestration", "unclassified", "approval_confirmation"}
     if intent in _personaplex_intents:
@@ -459,5 +459,5 @@ def route_cadence_utterance(
             },
         }
 
-    # --- fallback: route to PersonaPlex ---
+    # --- fallback: route to conversational engine ---
     return _delegate_personaplex(utterance, base=base, vsid=vsid, root=resolved_root)

@@ -526,7 +526,7 @@ Always-listening wake-word detection that captures a spoken command and routes i
 
 **What's blocked**: Mic capture via RDPSource is unavailable in WSL2. Without live mic input, there is no end-to-end wake-to-command proof. The daemon runs but receives no audio.
 
-### Layer 2: PersonaPlex conversation — LIVE (replay mode)
+### Layer 2: Cadence conversation — LIVE (replay mode)
 
 Persistent conversational AI copilot that answers questions about live runtime state, proposes actions with confirmation, and maintains multi-turn context.
 
@@ -536,7 +536,7 @@ Persistent conversational AI copilot that answers questions about live runtime s
 * `runtime/personaplex/context.py` — live runtime context assembly (tasks, approvals, agents, health)
 * `runtime/personaplex/intent.py` — rule-based intent classifier (conversational / command / escalation / meta)
 * `runtime/personaplex/cli.py` — terminal REPL
-* Cadence → PersonaPlex bridge in `cadence_ingress.py`
+* Cadence voice → conversation bridge in `cadence_ingress.py`
 * Command safety: "approve task X" produces a proposal with confirmation prompt, never silently executes
 
 **Proven via replay**:

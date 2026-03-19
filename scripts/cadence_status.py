@@ -92,7 +92,7 @@ def _show_status(*, as_json: bool = False) -> int:
         if last_route_at:
             print(f"  Last route at:   {last_route_at}")
 
-    # PersonaPlex routing info
+    # Conversation routing info
     routing_mode = status.get("last_routing_mode", "")
     ppx_session = status.get("last_personaplex_session_id", "")
     ppx_response = status.get("last_response_preview", "")
@@ -100,7 +100,7 @@ def _show_status(*, as_json: bool = False) -> int:
         print()
         print(f"  Routing mode:    {routing_mode}")
         if ppx_session:
-            print(f"  PersonaPlex session: {ppx_session}")
+            print(f"  Conversation session: {ppx_session}")
         if ppx_response:
             preview = ppx_response[:120].replace("\n", " ")
             if len(ppx_response) > 120:
@@ -136,7 +136,7 @@ def _replay(*, transcript: str, command: str = "", execute: bool = False, verbos
         ok = result.get("route_ok", False)
         cmd = result.get("command", "")
         intent = intent_result.get("intent", "?")
-        mode = "PersonaPlex" if is_ppx else "command"
+        mode = "conversation" if is_ppx else "command"
         print(f"Phase:     {phase}")
         print(f"OK:        {ok}")
         print(f"Command:   {cmd!r}")
@@ -160,7 +160,7 @@ def _replay(*, transcript: str, command: str = "", execute: bool = False, verbos
                 print(f"Action:    {action.get('description', '?')} (PROPOSED — needs confirmation)")
             if ppx_response:
                 print()
-                print("--- PersonaPlex Response ---")
+                print("--- Cadence Response ---")
                 print(ppx_response)
                 print("---")
         else:

@@ -62,7 +62,7 @@ PERSONAPLEX_MAX_TOKENS = int(os.environ.get("PERSONAPLEX_MAX_TOKENS", "2048"))
 PERSONAPLEX_TEMPERATURE = float(os.environ.get("PERSONAPLEX_TEMPERATURE", "0.3"))
 
 SYSTEM_PROMPT = """\
-You are PersonaPlex, the conversational copilot for OpenClaw/Jarvis — a multi-agent \
+You are Cadence, the voice assistant and conversational copilot for OpenClaw/Jarvis — a multi-agent \
 AI system for discovering NQ futures trading strategies.
 
 Your role:
@@ -231,7 +231,7 @@ def _handle_meta(
     cmd = intent["command_type"]
     if cmd == "help":
         response = (
-            "I'm PersonaPlex, your conversational copilot. I can:\n"
+            "I'm Cadence, your conversational copilot. I can:\n"
             "- Tell you what needs approval, what failed, what's queued\n"
             "- Summarize what agents did recently\n"
             "- Show recent git commits and repo changes\n"

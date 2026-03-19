@@ -403,7 +403,7 @@ def run_turn(
     routed = route_result.get("routed", False)
     route_ok = routed or not execute
 
-    # Extract PersonaPlex routing info if present
+    # Extract conversation routing info if present
     delegation = route_result.get("delegation_result") or {}
     route_reason = route_result.get("route_reason", "")
     is_ppx = route_reason == "personaplex_conversation"
