@@ -205,6 +205,58 @@ def _build_fish_cycle_input(root: Path, market: dict | None = None) -> list[dict
     }]
 
 
+def sweep_proof_ready(root: Path) -> dict:
+    """Scan PAPER_ACTIVE strategies and promote any with sufficient proof.
+
+    This is a bounded, safe sweep:
+      - Only touches PAPER_ACTIVE strategies with active paper runs
+      - Evaluates proof via proof_tracker (read + update proof_status)
+      - Transitions sufficient strategies to PAPER_REVIEW as sigma
+      - Does NOT create live approvals or execute trades
+      - Safe to call every cycle (idempotent for already-promoted)
+
+    Returns {scanned: int, promoted: [str], still_accumulating: [str]}.
+    """
+    from workspace.quant.executor.proof_tracker import (
+        get_active_run, evaluate_proof,
+    )
+    from workspace.quant.shared.registries.strategy_registry import (
+        get_strategies_by_state, get_strategy, transition_strategy,
+    )
+
+    result = {"scanned": 0, "promoted": [], "still_accumulating": []}
+
+    paper_active = get_strategies_by_state(root, "PAPER_ACTIVE")
+    for s in paper_active:
+        run = get_active_run(root, s.strategy_id)
+        if run is None:
+            continue  # No paper run — skip (operator can reconcile)
+
+        result["scanned"] += 1
+        try:
+            ev = evaluate_proof(root, run.paper_run_id)
+        except Exception:
+            continue  # Non-fatal — skip this strategy
+
+        if ev["sufficient"] and ev["run"].status == "paper_proof_ready":
+            # Verify strategy is still PAPER_ACTIVE (could have changed since scan)
+            current = get_strategy(root, s.strategy_id)
+            if current and current.lifecycle_state == "PAPER_ACTIVE":
+                try:
+                    transition_strategy(
+                        root, s.strategy_id, "PAPER_REVIEW", actor="sigma",
+                        note=f"Proof sweep: sufficient ({ev['run'].closed_count} trades, "
+                             f"run={run.paper_run_id})",
+                    )
+                    result["promoted"].append(s.strategy_id)
+                except (ValueError, TimeoutError):
+                    pass  # Non-fatal
+        else:
+            result["still_accumulating"].append(s.strategy_id)
+
+    return result
+
+
 def run_cycle(root: Path, verbose: bool = False) -> dict:
     """Run one Lane B cycle. Returns a summary dict."""
     summary = {
@@ -376,6 +428,18 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
                 _log("  Fish: no config-driven input available this cycle")
     except Exception as e:
         summary["errors"].append(f"fish: {e}")
+
+    # --- 4b. Proof sweep — promote proof-ready paper strategies ---
+    try:
+        swept = sweep_proof_ready(root)
+        summary["proof_sweep"] = swept
+        if swept["promoted"] and verbose:
+            for sid in swept["promoted"]:
+                _log(f"  Proof sweep: {sid} → PAPER_REVIEW")
+    except Exception as e:
+        summary["proof_sweep"] = {"error": str(e)}
+        if verbose:
+            _log(f"  Proof sweep error: {e}")
 
     # --- 5. TradeFloor ---
     if verbose:
