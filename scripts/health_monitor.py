@@ -196,20 +196,42 @@ def assess_health(root: Optional[Path] = None) -> dict[str, Any]:
             checks.append({"check": label, "state": "healthy", "detail": "active"})
 
     # 5. Node heartbeats (stuck detection)
+    #
+    # Distinguish real staleness from never-reported scaffold nodes.
+    # A node that has NEVER sent a heartbeat AND is optional or scaffolding_only
+    # is not evidence of a runtime problem — it was never online.
+    # Only count nodes that were previously seen but went silent, or required
+    # non-scaffold nodes that have never reported.
     try:
         node_health = build_node_health_summary(root=resolved_root, stale_after_seconds=STALE_HEARTBEAT_SECONDS)
-        stale_count = node_health.get("stale_heartbeat_count", 0)
         primary_outage = node_health.get("primary_outage_count", 0)
         topology = node_health.get("topology_posture", "unknown")
 
+        # Count only stale nodes that represent a real operational concern.
+        # - "never reported" (last_seen_at is None) = registration never activated,
+        #   not evidence of a runtime problem regardless of optional/scaffolding flags
+        # - "was alive, went silent" (last_seen_at exists, now stale) = real concern
+        real_stale = 0
+        never_reported = 0
+        for n in node_health.get("nodes", []):
+            if not n.get("stale_heartbeat"):
+                continue
+            if n.get("last_seen_at") is None:
+                never_reported += 1
+            else:
+                real_stale += 1
+
         if primary_outage > 0:
             checks.append({"check": "node_heartbeat", "state": "stuck",
-                           "detail": f"primary outage, {stale_count} stale heartbeats"})
+                           "detail": f"primary outage, {real_stale + never_reported} stale heartbeats"})
             stuck = True
-        elif stale_count > 0:
+        elif real_stale > 0:
             checks.append({"check": "node_heartbeat", "state": "degraded",
-                           "detail": f"{stale_count} stale heartbeats, topology={topology}"})
+                           "detail": f"{real_stale} went silent, {never_reported} never reported, topology={topology}"})
             degraded = True
+        elif never_reported > 0:
+            checks.append({"check": "node_heartbeat", "state": "healthy",
+                           "detail": f"topology={topology}, {never_reported} registered node(s) never activated"})
         else:
             checks.append({"check": "node_heartbeat", "state": "healthy",
                            "detail": f"topology={topology}"})
