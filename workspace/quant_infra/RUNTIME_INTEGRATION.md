@@ -26,7 +26,10 @@ How the live OpenClaw runtime consumes and uses the quant infra spine.
 | Paper positions | `kitt/paper_trader.py` | DuckDB + kitt packet + briefs |
 | Scenarios | `salmon/adapter.py` (Salmon Adapter) | DuckDB + fish packet + scenario artifacts |
 | Experiments | `atlas/experiment_surface.py` | DuckDB + atlas packet |
+| Experiment proposals | `atlas/proposal_generator.py` | atlas packet + proposal artifacts |
 | Validations | `sigma/validation_surface.py` | DuckDB + sigma packet |
+| Sigma feedback | `sigma/feedback_extractor.py` | sigma packet + feedback artifacts |
+| Feedback loop | `run_feedback_loop.py` | runs Sigma feedback → Atlas proposal |
 | Token usage | `jarvis/token_ledger.py` | DuckDB |
 | Operator reports | `jarvis/observability.py` | logs/ |
 

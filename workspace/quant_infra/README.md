@@ -18,7 +18,10 @@ workspace/quant_infra/env/.venv-openbb/bin/python3 workspace/quant_infra/openbb/
 # 4. Generate Fish scenarios via Salmon Adapter
 .venv/bin/python3 workspace/quant_infra/salmon/adapter.py
 
-# 5. Operator summary
+# 5. Run Sigma → Atlas feedback loop
+.venv/bin/python3 workspace/quant_infra/run_feedback_loop.py
+
+# 6. Operator summary
 .venv/bin/python3 workspace/quant_infra/jarvis/observability.py
 ```
 
@@ -47,7 +50,10 @@ quant_infra/
 ├── kitt/paper_trader.py        # Paper trading state machine
 ├── salmon/adapter.py           # Salmon Adapter (scenario feeder for Fish lane)
 ├── atlas/experiment_surface.py # Experiment ingestion interface
+├── atlas/proposal_generator.py # Sigma feedback → experiment proposals
 ├── sigma/validation_surface.py # Validation ingestion interface
+├── sigma/feedback_extractor.py # Extract structured feedback from Sigma packets
+├── run_feedback_loop.py        # Sigma → Atlas closed-loop runner
 ├── jarvis/
 │   ├── token_ledger.py         # LLM token usage tracking
 │   └── observability.py        # Operator summary surface
