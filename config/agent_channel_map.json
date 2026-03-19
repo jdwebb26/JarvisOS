@@ -53,6 +53,7 @@
     "quant_execution_rejected",
     "quant_paper_review",
     "quant_alert",
+    "factory_weekly_summary",
     "warning",
     "error"
   ],
@@ -64,6 +65,7 @@
     "quant_papertrade_request",
     "quant_execution_rejected",
     "quant_alert",
+    "factory_weekly_summary",
     "warning",
     "error"
   ]

@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenClaw Strategy Factory — weekly Sunday 02:00 CT
+
+[Timer]
+OnCalendar=Sun *-*-* 02:00:00
+Persistent=true
+AccuracySec=60s
+
+[Install]
+WantedBy=timers.target

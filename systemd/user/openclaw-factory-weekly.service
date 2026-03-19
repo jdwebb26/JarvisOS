@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenClaw Strategy Factory — weekly research cycle
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rollan/.openclaw/workspace/strategy_factory
+ExecStart=/bin/bash /home/rollan/.openclaw/workspace/jarvis-v5/scripts/run_factory_weekly.sh
+EnvironmentFile=/home/rollan/.openclaw/secrets.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-factory-weekly
+TimeoutStartSec=3600

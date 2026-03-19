@@ -142,6 +142,7 @@ _EMOJI: dict[str, str] = {
     "quant_alert": "\U0001f6a8",              # 🚨
     "quant_setup": "\U0001f3af",              # 🎯
     "quant_health": "\U0001f3e5",             # 🏥
+    "factory_weekly_summary": "\U0001f4ca",  # 📊
 }
 
 
@@ -383,6 +384,10 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
     if kind == "cockpit_status":
         # detail carries the pre-formatted cockpit block
         return detail if detail else f"{e} **Mission Control**"
+
+    if kind == "factory_weekly_summary":
+        # detail carries the pre-rendered factory adapter message (multi-line)
+        return detail if detail else f"{e} **Strategy Factory** weekly summary"
 
     if kind == "warning":
         err = _extract_error_summary(detail) if len(detail) > 120 else clean
