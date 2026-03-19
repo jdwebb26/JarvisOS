@@ -25,6 +25,45 @@ from workspace.quant.shared.registries.approval_registry import load_all_approva
 _PROOF_MARKERS = ("proof", "smoke", "phase0", "test-", "la-001", "bad-001")
 
 
+def _live_approval_state(strategy_id: str, approvals) -> dict:
+    """Resolve live-approval state for a LIVE_QUEUED strategy.
+
+    Returns {state, approval_ref, action, label}.
+    """
+    live_approvals = [a for a in approvals
+                      if a.strategy_id == strategy_id
+                      and a.approval_type == "live_trade"]
+    if not live_approvals:
+        return {
+            "state": "no_request",
+            "approval_ref": None,
+            "action": f"request-live {strategy_id}",
+            "label": "needs live_trade approval request",
+        }
+    latest = live_approvals[-1]
+    if latest.revoked:
+        return {
+            "state": "revoked",
+            "approval_ref": latest.approval_ref,
+            "action": f"request-live {strategy_id}",
+            "label": f"live approval revoked ({latest.approval_ref})",
+        }
+    valid, reason = latest.is_valid()
+    if not valid:
+        return {
+            "state": "expired",
+            "approval_ref": latest.approval_ref,
+            "action": f"request-live {strategy_id}",
+            "label": f"live approval expired ({latest.approval_ref})",
+        }
+    return {
+        "state": "approved",
+        "approval_ref": latest.approval_ref,
+        "action": f"execute-live {strategy_id}",
+        "label": f"live-approved, ready for execute-live ({latest.approval_ref})",
+    }
+
+
 def _is_proof_artifact(strategy_id: str) -> bool:
     sid = strategy_id.lower()
     return any(m in sid for m in _PROOF_MARKERS)
@@ -58,6 +97,7 @@ def _pipeline_section(by_state: dict[str, list[str]], root: Path) -> str:
     promoted = by_state.get("PROMOTED", [])
     queued = by_state.get("PAPER_QUEUED", [])
     review = by_state.get("PAPER_REVIEW", [])
+    live_queued = by_state.get("LIVE_QUEUED", [])
     approvals = load_all_approvals(root)
     for sid in promoted:
         has_appr = any(a.strategy_id == sid and not a.revoked for a in approvals)
@@ -70,6 +110,9 @@ def _pipeline_section(by_state: dict[str, list[str]], root: Path) -> str:
         lines.append(f"  PAPER_QUEUED: {sid}")
     for sid in review:
         lines.append(f"  PAPER_REVIEW: {sid}")
+    for sid in live_queued:
+        la = _live_approval_state(sid, approvals)
+        lines.append(f"  LIVE_QUEUED: {sid} — {la['label']}")
 
     ideas = len(by_state.get("IDEA", []))
     candidates = len(by_state.get("CANDIDATE", []))
@@ -302,6 +345,11 @@ def _operator_actions(by_state: dict[str, list[str]], root: Path) -> str:
                 actions.append(f"Proof ready: quant_lanes.py proof-promote {run.paper_run_id}")
     except Exception:
         pass
+
+    # LIVE_QUEUED strategies needing live approval action
+    for sid in by_state.get("LIVE_QUEUED", []):
+        la = _live_approval_state(sid, approvals)
+        actions.append(f"Live: quant_lanes.py {la['action']}")
 
     return "\n".join(f"  {a}" for a in actions) if actions else "  none"
 

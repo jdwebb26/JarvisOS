@@ -84,6 +84,59 @@ def _get_proof_summary(root: Path, strategy_id: str) -> str:
         return "(proof data unavailable)"
 
 
+# ---------------------------------------------------------------------------
+# Live approval state resolution — single source of truth for all surfaces
+# ---------------------------------------------------------------------------
+
+def _live_approval_state(strategy_id: str, approvals) -> dict:
+    """Resolve the live-approval state for a LIVE_QUEUED strategy.
+
+    Returns {
+        state: "no_request" | "pending" | "approved" | "revoked" | "expired",
+        approval_ref: str | None,
+        action: str,          # phone-readable next action
+        label: str,           # phone-readable one-liner
+    }
+    """
+    live_approvals = [a for a in approvals
+                      if a.strategy_id == strategy_id
+                      and a.approval_type == "live_trade"]
+    if not live_approvals:
+        return {
+            "state": "no_request",
+            "approval_ref": None,
+            "action": f"request-live {strategy_id}",
+            "label": "needs live_trade approval request",
+        }
+
+    latest = live_approvals[-1]
+    if latest.revoked:
+        return {
+            "state": "revoked",
+            "approval_ref": latest.approval_ref,
+            "action": f"request-live {strategy_id}  (previous revoked)",
+            "label": f"live approval revoked ({latest.approval_ref})",
+        }
+
+    valid, reason = latest.is_valid()
+    if not valid:
+        return {
+            "state": "expired",
+            "approval_ref": latest.approval_ref,
+            "action": f"request-live {strategy_id}  (previous expired)",
+            "label": f"live approval expired ({latest.approval_ref})",
+        }
+
+    # Valid and not revoked — check if operator has confirmed it
+    # (approval exists and is valid = approved, ready for execution)
+    return {
+        "state": "approved",
+        "approval_ref": latest.approval_ref,
+        "action": f"execute-live {strategy_id}  --approval-ref {latest.approval_ref}",
+        "label": f"live-approved, ready for execute-live ({latest.approval_ref})",
+    }
+
+
 # Human-readable stage descriptions for operator surfaces
 _STAGE_LABELS = {
     "IDEA": ("discovery", "idea generated, not yet a candidate"),
@@ -123,12 +176,8 @@ def _why_not_live(state: str, strategy_id: str, approvals) -> str:
     if state in ("PAPER_KILLED", "REJECTED"):
         return "permanently closed"
     if state == "LIVE_QUEUED":
-        has_live = any(a.strategy_id == strategy_id and not a.revoked
-                       and a.approved_actions.execution_mode == "live"
-                       for a in approvals)
-        if has_live:
-            return "approved for live — execution not yet triggered"
-        return "approved for live — needs live_trade approval"
+        la = _live_approval_state(strategy_id, approvals)
+        return la["label"]
     if state == "PROMOTED":
         return "needs paper-trade approval first"
     if state in ("LIVE_ACTIVE", "LIVE_REVIEW"):
@@ -170,13 +219,8 @@ def cmd_status(args):
     for sid in by_state.get("PAPER_REVIEW", []):
         actions.append(f"  review: {sid}  (paper proof ready — decide: approve_live / reject / continue / rerun)")
     for sid in by_state.get("LIVE_QUEUED", []):
-        has_live_appr = any(a.strategy_id == sid and not a.revoked
-                            and a.approved_actions.execution_mode == "live"
-                            for a in approvals)
-        if has_live_appr:
-            actions.append(f"  execute-live {sid}  (live-approved, ready to go)")
-        else:
-            actions.append(f"  request-live {sid}  (review approved — needs live_trade approval)")
+        la = _live_approval_state(sid, approvals)
+        actions.append(f"  {la['action']}  ({la['label']})")
     if actions:
         print(f"\nACTION NEEDED")
         for a in actions:
@@ -274,6 +318,14 @@ def cmd_strategy(args):
         print(f"Not live:  {reason}")
     elif s.lifecycle_state in ("LIVE_ACTIVE", "LIVE_REVIEW"):
         print(f"Live:      yes")
+
+    # Live approval detail for LIVE_QUEUED
+    if s.lifecycle_state == "LIVE_QUEUED":
+        la = _live_approval_state(s.strategy_id, approvals)
+        print(f"\nLive approval: {la['state']}")
+        if la["approval_ref"]:
+            print(f"  Ref:     {la['approval_ref']}")
+        print(f"  Next:    {la['action']}")
 
     # Proof progress for paper states
     if s.lifecycle_state in ("PAPER_ACTIVE", "PAPER_REVIEW", "PAPER_QUEUED", "LIVE_QUEUED"):
@@ -1422,15 +1474,27 @@ def cmd_observe(args):
     else:
         print("  Pipeline: empty")
 
-    # Pending approvals
+    # Pending approvals — with live/paper distinction
     approvals = load_all_approvals(ROOT)
     active_approvals = [a for a in approvals if not a.revoked]
     if active_approvals:
         print(f"  Pending approvals: {len(active_approvals)}")
         for a in active_approvals[-3:]:
-            print(f"    {a.approval_ref} → {a.strategy_id}")
+            v, r = a.is_valid()
+            tag = a.approval_type.replace("_", " ")
+            status = "valid" if v else r
+            print(f"    {a.approval_ref} → {a.strategy_id} [{tag}] {status}")
     else:
         print("  Pending approvals: none")
+
+    # LIVE_QUEUED strategies — explicit approval state
+    live_queued = [s for s in strats.values() if s.lifecycle_state == "LIVE_QUEUED"]
+    if live_queued:
+        print(f"\n  LIVE_QUEUED ({len(live_queued)}):")
+        for s in live_queued:
+            la = _live_approval_state(s.strategy_id, approvals)
+            print(f"    {s.strategy_id}: {la['label']}")
+            print(f"      → {la['action']}")
 
     # Fish pending forecasts
     try:
