@@ -34,11 +34,13 @@ Updated by proven facts only. Supersedes narrative in older trackers.
 
 ## 2. Discord Delivery
 
-12 original webhooks verified HTTP 200 on 2026-03-18:
-JARVIS, REVIEW, COUNCIL, BOWSER, HAL, KITT, WORKLOG, SCOUT, CADENCE, HERMES, MUSE, QWEN.
+14 webhooks verified HTTP 200 on 2026-03-19:
+JARVIS, REVIEW, COUNCIL, BOWSER, HAL, KITT, WORKLOG, SCOUT, CADENCE, HERMES, MUSE, QWEN, ATLAS, FISH.
 
-Quant lane Discord delivery verified 2026-03-18:
+Quant lane Discord delivery verified 2026-03-19:
 - **Kitt (#kitt)**: delivered — briefs, execution results
+- **Atlas (#atlas)**: delivered — candidate_packet events route to own channel (was previously mis-routed to #kitt)
+- **Fish (#fish)**: delivered — scenario_packet events route to own channel (was previously skipped with "no event mapping")
 - **#review**: delivered — approval requests with `approve qpt_xxx` / `reject qpt_xxx` instructions
 - **Worklog**: delivered — mirrors for promotions, execution, approvals
 - **Jarvis forward**: delivered — approval requests forwarded
@@ -124,12 +126,14 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Sigma validation lane**: validates candidates (PF/Sharpe/DD/trades gates), promotes or rejects, emits Discord events directly. `workspace/quant/sigma/validation_lane.py`
 - **Executor lane**: paper adapter with full pre-flight (kill switch, approval, risk limits, broker health), emits Discord events directly. Live adapter stubbed. `workspace/quant/executor/executor_lane.py`
 - **Kitt brief producer**: reads shared/latest, shows pipeline/execution/approvals/operator actions. Spec §7 format. `workspace/quant/kitt/brief_producer.py`
-- **Discord routing**: 14 quant event kinds routed through `emit_event()`. Sigma → #sigma, execution → #kitt, approvals → #review, briefs → #kitt. Worklog mirror + Jarvis forward for key events
+- **Discord routing**: 15 quant event kinds routed through `emit_event()`. Atlas → #atlas, Fish → #fish, Sigma → #sigma, execution → #kitt, approvals → #review, briefs → #kitt. Worklog mirror + Jarvis forward for key events
 - **Review poller integration**: `qpt_` approval IDs matched by review poller, routed to quant approval bridge. Operator types `approve qpt_xxx` in #review
 - **Operator CLI**: `scripts/quant_lanes.py` — status, brief, request-paper, approve-paper, execute, strategies, approvals
 
-### Live Discord delivery (verified 2026-03-18)
+### Live Discord delivery (verified 2026-03-19)
 - Kitt briefs → #kitt: **delivered**
+- Atlas candidates → #atlas: **delivered** (was previously mis-routed to #kitt)
+- Fish scenarios → #fish: **delivered** (was previously skipped — no event mapping)
 - Approval requests → #review: **delivered** (with approve/reject commands)
 - Worklog mirrors: **delivered**
 - Sigma → #sigma: **skipped** (webhook not configured — content still reaches worklog)
