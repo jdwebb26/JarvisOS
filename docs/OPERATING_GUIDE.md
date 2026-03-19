@@ -141,6 +141,36 @@ python3 scripts/cron_migration_audit.py --json  # machine-readable
 
 Session key convention: both OpenClaw upstream and Jarvis `session_hygiene.py` use `agent:{name}:main`. Session reset: OpenClaw resets at hour 4 with 120min idle (`session.reset` in `openclaw.json`).
 
+### Safe repo workflow (worktrees)
+
+**Problem**: Multiple Claude Code sessions and the gateway's HAL agent all share the primary worktree at `~/.openclaw/workspace/jarvis-v5`. Any `git commit` in that directory lands on whatever branch is currently checked out. If someone checks out a feature branch in the primary worktree, other sessions' commits pollute it.
+
+**Rule**: The primary worktree must stay on `main` at all times. Never check out a feature branch there.
+
+**For feature branch work**, use a separate git worktree:
+
+```bash
+# Create a worktree for your feature branch
+bash scripts/worktree.sh create feat/my-feature
+
+# Work in the worktree (separate directory, separate branch)
+cd ~/.openclaw/workspace/jarvis-v5-work/feat/my-feature
+
+# List active worktrees
+bash scripts/worktree.sh list
+
+# When done, merge from the primary worktree
+cd ~/.openclaw/workspace/jarvis-v5
+bash scripts/worktree.sh merge feat/my-feature
+
+# Clean up
+bash scripts/worktree.sh remove feat/my-feature
+```
+
+Worktrees live in `~/.openclaw/workspace/jarvis-v5-work/<branch>/`. They share the same `.git` storage as the primary repo — no disk waste, refs stay in sync.
+
+**Why this matters**: HAL (workspace: this repo, tools: exec+write+edit), other Claude Code sessions, and systemd timers all commit to the primary worktree. If it's on a feature branch, their unrelated commits land there.
+
 ### Daily operator commands
 
 Open the dashboard in a browser:
