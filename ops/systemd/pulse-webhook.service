@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenClaw Pulse — TradingView Webhook Receiver
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/rollan/.openclaw/workspace/jarvis-v5
+ExecStart=/usr/bin/python3 /home/rollan/.openclaw/workspace/jarvis-v5/scripts/pulse_webhook.py --port 18795 --host 0.0.0.0
+EnvironmentFile=/home/rollan/.openclaw/secrets.env
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pulse-webhook
+TimeoutStartSec=10
+
+[Install]
+WantedBy=default.target

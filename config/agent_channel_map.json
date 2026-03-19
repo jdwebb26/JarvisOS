@@ -18,7 +18,7 @@
     "ralph":      { "channel_id": "1484083970151813151", "purpose": "overflow",         "voice_only": false },
     "atlas":      { "channel_id": "1483916149573025793", "purpose": "quant_discovery",  "voice_only": false },
     "fish":       { "channel_id": "1483916169672130754", "purpose": "quant_scenarios",  "voice_only": false },
-    "pulse":      { "channel_id": null,                  "purpose": "discretionary_alerts", "voice_only": false }
+    "pulse":      { "channel_id": "1484088366155698176", "purpose": "discretionary_alerts", "voice_only": false }
   },
   "logical_channels": {
     "worklog": { "channel_id": "1483539374854639761", "purpose": "mirror_log" },

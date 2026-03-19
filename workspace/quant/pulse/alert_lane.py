@@ -28,6 +28,15 @@ from workspace.quant.shared.packet_store import store_packet, list_lane_packets
 
 LANE = "pulse"
 
+
+def _emit_discord(packet: QuantPacket, root: Path):
+    """Best-effort Discord emission for pulse events."""
+    try:
+        from workspace.quant.shared.discord_bridge import emit_quant_event
+        emit_quant_event(packet, root=root)
+    except Exception:
+        pass
+
 # Dedup: alerts within this many points of each other cluster together
 _CLUSTER_DISTANCE = 10.0
 # Cooldown: minimum seconds between alerts at the same cluster
@@ -178,6 +187,7 @@ def ingest_alert(
         escalation_level="none",
     )
     store_packet(root, pkt)
+    _emit_discord(pkt, root)
 
     return pkt, parsed
 
@@ -490,6 +500,7 @@ def propose_downstream(
               + "; status=pending",
     )
     store_packet(root, pkt)
+    _emit_discord(pkt, root)
     return pkt
 
 

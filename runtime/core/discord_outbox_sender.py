@@ -64,6 +64,7 @@ CHANNEL_WEBHOOK_ENV: dict[str, str] = {
     "1483916149573025793": "JARVIS_DISCORD_WEBHOOK_ATLAS",   # atlas (quant discovery)
     "1483916169672130754": "JARVIS_DISCORD_WEBHOOK_FISH",    # fish (quant scenarios)
     "1484083970151813151": "JARVIS_DISCORD_WEBHOOK_RALPH",   # ralph (overflow)
+    "1484088366155698176": "JARVIS_DISCORD_WEBHOOK_PULSE",   # pulse (discretionary alerts)
 }
 
 

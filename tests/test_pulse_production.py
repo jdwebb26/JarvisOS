@@ -196,3 +196,89 @@ class TestKittPulseVisibility:
         notes = brief.notes or ""
         assert "PULSE (discretionary)" in notes
         assert "FEEDBACK LOOPS" in notes  # Core section still separate
+
+
+# ---- Outbox sender mapping ----
+
+class TestOutboxSenderMapping:
+    def test_pulse_channel_mapped_in_sender(self):
+        from runtime.core.discord_outbox_sender import CHANNEL_WEBHOOK_ENV
+        pulse_ch = "1484088366155698176"
+        assert pulse_ch in CHANNEL_WEBHOOK_ENV
+        assert CHANNEL_WEBHOOK_ENV[pulse_ch] == "JARVIS_DISCORD_WEBHOOK_PULSE"
+
+    def test_pulse_channel_not_null_in_config(self):
+        import json
+        from pathlib import Path
+        config_path = Path(__file__).resolve().parents[1] / "config" / "agent_channel_map.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        pulse = data["agents"]["pulse"]
+        assert pulse["channel_id"] is not None
+        assert pulse["channel_id"] == "1484088366155698176"
+
+
+# ---- Discord emission on ingest ----
+
+class TestDiscordEmissionOnIngest:
+    def test_ingest_creates_outbox_entry(self, clean_root):
+        """Ingesting an alert should attempt Discord emission (outbox entry)."""
+        from workspace.quant.pulse.alert_lane import ingest_alert
+
+        # Set up state/discord_outbox so emit_event can write
+        (clean_root / "state" / "discord_outbox").mkdir(parents=True, exist_ok=True)
+        (clean_root / "state" / "dispatch_events").mkdir(parents=True, exist_ok=True)
+        # Need agent_channel_map for routing
+        import json, shutil
+        src = Path(__file__).resolve().parents[1] / "config" / "agent_channel_map.json"
+        dst = clean_root / "config" / "agent_channel_map.json"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+
+        pkt, parsed = ingest_alert(clean_root, "18450 liquidity sweep")
+
+        # Check that a dispatch event was created
+        dispatch_dir = clean_root / "state" / "dispatch_events"
+        dispatch_files = list(dispatch_dir.glob("*.json"))
+        assert len(dispatch_files) >= 1
+
+        # Verify the dispatch event is for pulse
+        found_pulse = False
+        for f in dispatch_files:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if data.get("kind") == "quant_pulse_alert":
+                found_pulse = True
+                break
+        assert found_pulse, "No dispatch event with kind=quant_pulse_alert found"
+
+
+# ---- Approval path isolation ----
+
+class TestApprovalPathIsolation:
+    def test_pulse_approve_only_path(self, clean_root):
+        """Verify approve_proposal is the ONLY path from Pulse to other lanes."""
+        from workspace.quant.pulse.alert_lane import (
+            ingest_alert, cluster_alerts, propose_downstream, approve_proposal,
+            record_outcome, build_learning_state,
+        )
+
+        # Full lifecycle without approval
+        a1, _ = ingest_alert(clean_root, "18450 liquidity sweep")
+        a2, _ = ingest_alert(clean_root, "18455 sweep again")
+        cluster_alerts(clean_root)
+        record_outcome(clean_root, a1.packet_id, hit=True)
+        build_learning_state(clean_root)
+        propose_downstream(clean_root, "fish_scenario", "Scenario from cluster", symbol="NQ")
+        propose_downstream(clean_root, "atlas_seed", "Seed from cluster", symbol="NQ")
+
+        # Nothing in any other lane
+        for lane in ["fish", "atlas", "hermes", "sigma", "kitt", "tradefloor"]:
+            assert len(list_lane_packets(clean_root, lane)) == 0, f"Leaked to {lane}"
+
+        # Now approve one — only that target gets a packet
+        proposals = list_lane_packets(clean_root, "pulse", "pulse_review_proposal_packet")
+        fish_proposal = [p for p in proposals if "fish_scenario" in (p.notes or "")][0]
+        downstream = approve_proposal(clean_root, fish_proposal.packet_id)
+        assert downstream.lane == "fish"
+        assert len(list_lane_packets(clean_root, "fish")) == 1
+        # Atlas still empty (that proposal wasn't approved)
+        assert len(list_lane_packets(clean_root, "atlas")) == 0
