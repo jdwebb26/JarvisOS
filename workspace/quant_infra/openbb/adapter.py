@@ -219,7 +219,8 @@ def _yfinance_fallback_news() -> dict:
                             })
             except Exception:
                 continue
-        # Deduplicate by title
+        # Sort by date descending (most recent first), then deduplicate by title
+        items.sort(key=lambda x: x.get("date") or "", reverse=True)
         seen = set()
         deduped = []
         for item in items:
@@ -316,13 +317,22 @@ def build_environment_record(snapshot: dict) -> dict:
     vix_level = None
     sources_used: list[str] = []
 
+    def _round_price(val: Any) -> float | None:
+        """Round a price to 2 decimal places, handling None/non-numeric."""
+        if val is None:
+            return None
+        try:
+            return round(float(val), 2)
+        except (TypeError, ValueError):
+            return None
+
     # Extract equity prices from quotes
     if snapshot.get("quotes", {}).get("status") == "ok":
         source = snapshot["quotes"].get("source", "unknown")
         for item in snapshot["quotes"].get("data", []):
             if isinstance(item, dict):
                 sym = item.get("symbol", "")
-                price = (
+                price = _round_price(
                     item.get("last_price")
                     or item.get("close")
                     or item.get("regular_market_previous_close")
@@ -343,7 +353,7 @@ def build_environment_record(snapshot: dict) -> dict:
         vix_data = snapshot["vix"].get("data", [])
         if isinstance(vix_data, list) and vix_data:
             last_vix = vix_data[-1] if isinstance(vix_data[-1], dict) else {}
-            vix_level = last_vix.get("close") or last_vix.get("last_price")
+            vix_level = _round_price(last_vix.get("close") or last_vix.get("last_price"))
         if source not in sources_used:
             sources_used.append(source)
 

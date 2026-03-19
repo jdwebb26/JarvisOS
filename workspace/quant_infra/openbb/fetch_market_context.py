@@ -157,22 +157,26 @@ def _write_scout_packet(snapshot: dict) -> None:
     now = datetime.now(timezone.utc).isoformat()
     report = snapshot.get("fetch_report", {})
 
-    # Build headline list from news
+    # Build headline list from news, sorted by date (most recent first)
     headlines = []
     news_data = snapshot.get("news", {})
     news_source = news_data.get("source", "unknown")
     if news_data.get("status") == "ok":
-        for item in (news_data.get("data") or [])[:15]:
-            if isinstance(item, dict):
-                title = item.get("title") or item.get("headline") or ""
-                if title:
-                    headlines.append({
-                        "title": title,
-                        "source": item.get("source") or item.get("publisher") or news_source,
-                        "url": item.get("url") or item.get("link") or "",
-                        "date": str(item.get("date") or item.get("published_at") or ""),
-                        "symbols": item.get("symbols") or "",
-                    })
+        raw_items = sorted(
+            [i for i in (news_data.get("data") or []) if isinstance(i, dict)],
+            key=lambda x: x.get("date") or x.get("published_at") or "",
+            reverse=True,
+        )
+        for item in raw_items[:15]:
+            title = item.get("title") or item.get("headline") or ""
+            if title:
+                headlines.append({
+                    "title": title,
+                    "source": item.get("source") or item.get("publisher") or news_source,
+                    "url": item.get("url") or item.get("link") or "",
+                    "date": str(item.get("date") or item.get("published_at") or ""),
+                    "symbols": item.get("symbols") or "",
+                })
 
     # Build event watchlist from calendar
     events = []
@@ -286,15 +290,19 @@ def _write_hermes_packet(snapshot: dict) -> None:
     sections_total = max(len(report), 1)
     confidence = round(0.3 + 0.7 * (sections_ok / sections_total), 2)
 
-    # News digest for Hermes (condensed)
+    # News digest for Hermes — most recent 5 headlines
     news_digest: list[str] = []
     news_data = snapshot.get("news", {})
     if news_data.get("status") == "ok":
-        for item in (news_data.get("data") or [])[:5]:
-            if isinstance(item, dict):
-                title = item.get("title") or item.get("headline") or ""
-                if title:
-                    news_digest.append(title)
+        sorted_news = sorted(
+            [i for i in (news_data.get("data") or []) if isinstance(i, dict)],
+            key=lambda x: x.get("date") or x.get("published_at") or "",
+            reverse=True,
+        )
+        for item in sorted_news[:5]:
+            title = item.get("title") or item.get("headline") or ""
+            if title:
+                news_digest.append(title)
 
     data = {
         "environment": {
@@ -432,6 +440,12 @@ def _write_news_artifact(snapshot: dict) -> None:
     if news_data.get("status") == "ok":
         items = news_data.get("data") or []
         if isinstance(items, list) and items:
+            # Sort by date descending (most recent first)
+            items = sorted(
+                [i for i in items if isinstance(i, dict)],
+                key=lambda x: x.get("date") or x.get("published_at") or "",
+                reverse=True,
+            )
             md += "## Headlines\n\n"
             for i, item in enumerate(items[:20], 1):
                 if isinstance(item, dict):
