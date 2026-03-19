@@ -9,7 +9,9 @@ sys.path.insert(0, str(ROOT))
 
 import pytest
 from workspace.quant.shared.schemas.packets import make_packet
-from workspace.quant.shared.discord_bridge import emit_quant_event, _PACKET_TO_EVENT_KIND
+from workspace.quant.shared.discord_bridge import (
+    emit_quant_event, _PACKET_TO_EVENT_KIND, check_delivery_health,
+)
 from runtime.core.discord_event_router import _render_status_text, _EMOJI
 
 
@@ -125,3 +127,92 @@ def test_render_quant_execution_fill():
     text = _render_status_text("quant_execution_status", payload)
     assert "Executor" in text
     assert "fill" in text
+
+
+# ---------------------------------------------------------------------------
+# Atlas / Fish owner-channel routing
+# ---------------------------------------------------------------------------
+
+def _make_channel_map(tmp_path, extra_agents=None):
+    """Helper: write a channel map with atlas/fish and return tmp_path."""
+    agents = {
+        "kitt": {"channel_id": "kitt_ch", "voice_only": False},
+        "sigma": {"channel_id": "sigma_ch", "voice_only": False},
+        "atlas": {"channel_id": "atlas_ch", "voice_only": False},
+        "fish": {"channel_id": "fish_ch", "voice_only": False},
+    }
+    if extra_agents:
+        agents.update(extra_agents)
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(exist_ok=True)
+    for d in [tmp_path / "state" / "dispatch_events", tmp_path / "state" / "discord_outbox"]:
+        d.mkdir(parents=True, exist_ok=True)
+    (config_dir / "agent_channel_map.json").write_text(json.dumps({
+        "agents": agents,
+        "logical_channels": {"worklog": {"channel_id": "wl_ch"}, "jarvis": {"channel_id": "j_ch"}},
+        "voice_only_event_kinds": [],
+        "worklog_mirror_event_kinds": [],
+        "jarvis_forward_event_kinds": [],
+    }))
+    return tmp_path
+
+
+def test_atlas_candidate_routes_to_atlas_channel(tmp_path):
+    """candidate_packet from atlas lane must create outbox for atlas owner channel."""
+    root = _make_channel_map(tmp_path)
+    pkt = make_packet("candidate_packet", "atlas", "NQ mean-reversion candidate",
+                      strategy_id="atlas-test-001")
+    result = emit_quant_event(pkt, root=root)
+    assert result["owner_channel_id"] == "atlas_ch"
+    # Verify outbox entry written
+    outbox_files = list((root / "state" / "discord_outbox").glob("outbox_*.json"))
+    assert len(outbox_files) >= 1
+    entry = json.loads(outbox_files[0].read_text())
+    assert entry["channel_id"] == "atlas_ch"
+
+
+def test_fish_scenario_routes_to_fish_channel(tmp_path):
+    """scenario_packet from fish lane must create outbox for fish owner channel."""
+    root = _make_channel_map(tmp_path)
+    pkt = make_packet("scenario_packet", "fish", "NQ consolidation breakout scenario")
+    result = emit_quant_event(pkt, root=root)
+    assert result["owner_channel_id"] == "fish_ch"
+    outbox_files = list((root / "state" / "discord_outbox").glob("outbox_*.json"))
+    assert len(outbox_files) >= 1
+    entry = json.loads(outbox_files[0].read_text())
+    assert entry["channel_id"] == "fish_ch"
+
+
+def test_scenario_packet_has_event_mapping():
+    """scenario_packet must be in _PACKET_TO_EVENT_KIND (was missing before fix)."""
+    assert "scenario_packet" in _PACKET_TO_EVENT_KIND
+    assert _PACKET_TO_EVENT_KIND["scenario_packet"] == "quant_scenario_submitted"
+
+
+def test_scenario_event_has_emoji():
+    """quant_scenario_submitted must have an emoji defined."""
+    assert "quant_scenario_submitted" in _EMOJI
+
+
+def test_delivery_health_includes_atlas_fish(tmp_path, monkeypatch):
+    """check_delivery_health must report atlas and fish channels."""
+    # Write a fake secrets.env
+    secrets = tmp_path / "secrets.env"
+    secrets.write_text(
+        "JARVIS_DISCORD_WEBHOOK_KITT=https://ok\n"
+        "JARVIS_DISCORD_WEBHOOK_SIGMA=https://ok\n"
+        "JARVIS_DISCORD_WEBHOOK_ATLAS=https://ok\n"
+        "JARVIS_DISCORD_WEBHOOK_FISH=https://ok\n"
+        "REVIEW_WEBHOOK_URL=https://ok\n"
+        "JARVIS_DISCORD_WEBHOOK_WORKLOG=https://ok\n"
+    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path.parent)
+    # Trick: secrets.env lives at home/.openclaw/secrets.env
+    ocdir = tmp_path.parent / ".openclaw"
+    ocdir.mkdir(exist_ok=True)
+    (ocdir / "secrets.env").write_text(secrets.read_text())
+    health = check_delivery_health()
+    assert "atlas" in health
+    assert "fish" in health
+    assert health["atlas"] == "ok"
+    assert health["fish"] == "ok"

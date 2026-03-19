@@ -40,8 +40,10 @@ _PACKET_TO_EVENT_KIND: dict[str, str] = {
     "execution_status_packet": "quant_execution_status",
     "execution_rejection_packet": "quant_execution_rejected",
     "fill_packet": "quant_fill",
-    # Atlas outputs → #kitt (high-value only)
+    # Atlas outputs → #atlas
     "candidate_packet": "quant_candidate_submitted",
+    # Fish outputs → #fish
+    "scenario_packet": "quant_scenario_submitted",
     # Health → owner channel
     "health_summary": "quant_health",
 }
@@ -50,8 +52,8 @@ _PACKET_TO_EVENT_KIND: dict[str, str] = {
 _LANE_TO_AGENT_ID: dict[str, str] = {
     "kitt": "kitt",
     "sigma": "sigma",
-    "atlas": "kitt",        # Atlas escalation goes through Kitt
-    "fish": "kitt",         # Fish escalation goes through Kitt
+    "atlas": "atlas",       # Atlas owns #atlas channel
+    "fish": "fish",         # Fish owns #fish channel
     "hermes": "hermes",
     "executor": "kitt",     # Executor has no standalone channel per spec §19
     "tradefloor": "kitt",   # TradeFloor routes through Kitt
@@ -138,6 +140,8 @@ def emit_quant_approval_request(
 _QUANT_DELIVERY_CHANNELS = {
     "sigma":   "JARVIS_DISCORD_WEBHOOK_SIGMA",
     "kitt":    "JARVIS_DISCORD_WEBHOOK_KITT",
+    "atlas":   "JARVIS_DISCORD_WEBHOOK_ATLAS",
+    "fish":    "JARVIS_DISCORD_WEBHOOK_FISH",
     "review":  "REVIEW_WEBHOOK_URL",
     "worklog": "JARVIS_DISCORD_WEBHOOK_WORKLOG",
 }

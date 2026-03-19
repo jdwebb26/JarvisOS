@@ -72,7 +72,8 @@ def _outbox_dir(root: Optional[Path] = None) -> Path:
 _AGENT_DISPLAY: dict[str, str] = {
     "jarvis": "Jarvis", "hal": "HAL", "scout": "Scout",
     "anton": "Anton", "archimedes": "Archimedes", "hermes": "Hermes",
-    "kitt": "Kitt", "sigma": "Sigma", "claude": "Claude", "qwen": "Qwen",
+    "kitt": "Kitt", "sigma": "Sigma", "atlas": "Atlas", "fish": "Fish",
+    "claude": "Claude", "qwen": "Qwen",
     "bowser": "Bowser", "cadence": "Cadence", "muse": "Muse", "ralph": "Ralph",
 }
 
@@ -137,6 +138,7 @@ _EMOJI: dict[str, str] = {
     "quant_execution_rejected": "\U0001f6d1",  # 🛑
     "quant_fill": "\U0001f4b0",               # 💰
     "quant_candidate_submitted": "\U0001f9ea", # 🧪
+    "quant_scenario_submitted": "\U0001f3a3", # 🎣
     "quant_alert": "\U0001f6a8",              # 🚨
     "quant_setup": "\U0001f3af",              # 🎯
     "quant_health": "\U0001f3e5",             # 🏥
