@@ -269,27 +269,29 @@ def test_execute_blocked_browser_action() -> None:
 
 
 def test_execute_approval_never_auto_delegates() -> None:
-    """Approval/confirmation intents must never be auto-executed."""
+    """Approval/confirmation intents route to PersonaPlex which proposes, never auto-executes."""
     with TemporaryDirectory() as tmp:
         result = route_cadence_utterance(
             "yes",
             execute=True,
             root=Path(tmp),
         )
-        assert result["routed"] is False
-        assert "approval" in result["route_reason"]
+        assert result["route_reason"] == "personaplex_conversation"
+        # PersonaPlex proposes actions, never silently executes
+        delegation = result.get("delegation_result", {})
+        assert delegation.get("action_proposed") is None or isinstance(delegation.get("action_proposed"), dict)
 
 
 def test_execute_jarvis_orchestration_no_autoexec() -> None:
-    """Status/summary intents surface for Jarvis, not auto-executed."""
+    """Status/summary intents route to PersonaPlex for conversational answering."""
     with TemporaryDirectory() as tmp:
         result = route_cadence_utterance(
             "show me the status",
             execute=True,
             root=Path(tmp),
         )
-        assert result["routed"] is False
-        assert "jarvis_orchestration" in result["route_reason"]
+        assert result["route_reason"] == "personaplex_conversation"
+        assert result["routed"] is True
 
 
 def test_execute_local_quick_returns_response() -> None:

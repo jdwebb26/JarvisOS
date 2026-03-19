@@ -277,6 +277,44 @@ def _delegate_browser(utterance: str, url: str, *, actor: str, lane: str, root: 
     }
 
 
+def _delegate_personaplex(utterance: str, *, base: dict, vsid: str, root: Path) -> dict:
+    """Route an utterance to PersonaPlex for conversational handling.
+
+    PersonaPlex is read-only for conversational intents and proposes (never
+    auto-executes) for command intents, so this is safe even without execute
+    gating.
+    """
+    try:
+        from runtime.personaplex.engine import chat
+        ppx_result = chat(utterance, root=root, voice_session_id=vsid)
+        response = ppx_result.get("response", "")
+        ppx_intent = ppx_result.get("intent", {})
+        action_proposed = ppx_result.get("action_proposed")
+        session = ppx_result.get("session")
+        return {
+            **base,
+            "routed": True,
+            "route_reason": "personaplex_conversation",
+            "delegation_result": {
+                "response": response,
+                "personaplex_intent": ppx_intent.get("intent", ""),
+                "action_proposed": action_proposed,
+                "conversation_id": session.conversation_id if session else "",
+                "llm_usage": ppx_result.get("llm_usage", {}),
+            },
+        }
+    except Exception as exc:
+        return {
+            **base,
+            "routed": False,
+            "route_reason": "personaplex_error",
+            "delegation_result": {
+                "error": str(exc),
+                "note": "PersonaPlex delegation failed; utterance not handled.",
+            },
+        }
+
+
 def _delegate_intake_task(utterance: str, *, actor: str, lane: str, channel: str, root: Path) -> dict:
     """Queue an intake task for hal/kitt/scout by prepending 'task:' and routing through intake."""
     from runtime.core.intake import create_task_from_message_result
@@ -341,6 +379,13 @@ def route_cadence_utterance(
         "execute": execute,
     }
 
+    # PersonaPlex-eligible intents are safe in both preview and execute mode
+    # (PersonaPlex is read-only for conversational, proposes for commands).
+    # Route them early before the execute gate.
+    _personaplex_intents = {"jarvis_orchestration", "unclassified", "approval_confirmation"}
+    if intent in _personaplex_intents:
+        return _delegate_personaplex(utterance, base=base, vsid=vsid, root=resolved_root)
+
     if not execute:
         return {
             **base,
@@ -403,30 +448,6 @@ def route_cadence_utterance(
             "delegation_result": delegation,
         }
 
-    # --- jarvis_orchestration: surface as notification/status preview ---
-    if intent == "jarvis_orchestration":
-        return {
-            **base,
-            "routed": False,
-            "route_reason": "jarvis_orchestration_preview",
-            "delegation_result": {
-                "note": "Jarvis orchestration intents are surfaced for Jarvis to handle; Cadence does not auto-execute status/summary/approval flows.",
-                "utterance": utterance,
-            },
-        }
-
-    # --- approval_confirmation: conservative — never auto-approve ---
-    if intent == "approval_confirmation":
-        return {
-            **base,
-            "routed": False,
-            "route_reason": "approval_confirmation_requires_explicit_flow",
-            "delegation_result": {
-                "note": "Approval/confirmation intents are not auto-executed. Surface to the pending approval flow explicitly.",
-                "utterance": utterance,
-            },
-        }
-
     # --- local_quick: inline response ---
     if intent == "local_quick":
         return {
@@ -438,13 +459,5 @@ def route_cadence_utterance(
             },
         }
 
-    # --- unclassified: preview only ---
-    return {
-        **base,
-        "routed": False,
-        "route_reason": "unclassified_no_delegation",
-        "delegation_result": {
-            "note": "Utterance did not match any intent class. No delegation performed.",
-            "utterance": utterance,
-        },
-    }
+    # --- fallback: route to PersonaPlex ---
+    return _delegate_personaplex(utterance, base=base, vsid=vsid, root=resolved_root)

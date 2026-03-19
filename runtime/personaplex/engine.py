@@ -427,6 +427,7 @@ def chat(
     user_input: str,
     *,
     conversation_id: Optional[str] = None,
+    voice_session_id: Optional[str] = None,
     root: Optional[Path] = None,
 ) -> dict[str, Any]:
     """Top-level chat entry point. Loads or creates session, processes turn, returns result."""
@@ -436,6 +437,9 @@ def chat(
     if conversation_id:
         session = load_session(conversation_id, root=root_path)
     if session is None:
-        session = create_session(root=root_path)
+        session = create_session(voice_session_id=voice_session_id or "", root=root_path)
+    elif voice_session_id and not session.voice_session_id:
+        session.voice_session_id = voice_session_id
+        save_session(session, root=root_path)
 
     return process_turn(user_input, session, root=root_path)
