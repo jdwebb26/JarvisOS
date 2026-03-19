@@ -91,7 +91,7 @@ Scout → Hermes → Kitt → Fish → Atlas/Sigma → Jarvis (operator visibili
 | `market_news_items` | Structured news/catalyst items | Scout | Hermes, Kitt |
 | `kitt_paper_positions` | Open and closed paper positions | Kitt paper trader | Kitt, Fish, Sigma, Jarvis |
 | `kitt_trade_decisions` | Paper trade decision log with reasoning | Kitt paper trader | Kitt, Fish, Sigma, Jarvis |
-| `fish_scenarios` | Scenario outputs and invalidation cases | Fish | Atlas, Sigma, Jarvis |
+| `fish_scenarios` | Scenario outputs and invalidation cases | Salmon Adapter (for Fish) | Atlas, Sigma, Jarvis |
 | `sigma_validation_inputs` | Validation-ready strategy data | Sigma | Sigma |
 | `atlas_experiment_inputs` | Experiment configurations and results | Atlas | Atlas, Sigma |
 | `ohlcv_daily` | Daily OHLCV bars (loaded from CSV) | Loader | All lanes |
@@ -184,7 +184,7 @@ Scout → Hermes → Kitt → Fish → Atlas/Sigma → Jarvis (operator visibili
 - OpenBB adapter with market context fetch
 - Packet writers and schema for all 6 lanes
 - Kitt paper trading state machine (open/close/track)
-- Fish scenario engine (consume Kitt → produce scenarios)
+- Salmon Adapter (scenario feeder for Fish lane: consume Kitt → produce scenarios)
 - Atlas experiment surface (receive structured inputs)
 - Sigma validation surface (receive structured inputs)
 - Jarvis token ledger and observability stubs
@@ -196,7 +196,7 @@ Scout → Hermes → Kitt → Fish → Atlas/Sigma → Jarvis (operator visibili
 - Full vectorbt automation for Atlas
 - Full backtesting.py harness for Sigma
 - Options chain deep integration (requires API keys)
-- Automated scenario timers for Fish
+- Automated scenario timers for Fish (via Salmon Adapter)
 - Multi-symbol support beyond NQ
 - Vector/embedding store for Atlas experiments
 - Real-time P&L streaming for Kitt paper positions
@@ -242,7 +242,7 @@ Scripts the operator can run today:
 - `python3 workspace/quant_infra/warehouse/bootstrap.py` — initialize/reset DuckDB
 - `workspace/quant_infra/openbb/fetch_market_context.py` — pull OpenBB data
 - `python3 workspace/quant_infra/kitt/paper_trader.py --status` — check paper positions
-- `python3 workspace/quant_infra/fish/scenario_engine.py` — generate scenarios from latest Kitt state
+- `python3 workspace/quant_infra/salmon/adapter.py` — Salmon Adapter: generate scenarios for Fish lane
 - `python3 workspace/quant_infra/jarvis/observability.py` — operator summary
 
 All scripts use the project venv at `.venv/` for DuckDB, and the OpenBB venv at

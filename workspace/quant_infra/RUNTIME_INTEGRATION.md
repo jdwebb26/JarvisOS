@@ -24,7 +24,7 @@ How the live OpenClaw runtime consumes and uses the quant infra spine.
 |------|--------|-----------|
 | OpenBB market data | `openbb/fetch_market_context.py` | DuckDB + hermes packet |
 | Paper positions | `kitt/paper_trader.py` | DuckDB + kitt packet + briefs |
-| Scenarios | `fish/scenario_engine.py` | DuckDB + fish packet + scenario artifacts |
+| Scenarios | `salmon/adapter.py` (Salmon Adapter) | DuckDB + fish packet + scenario artifacts |
 | Experiments | `atlas/experiment_surface.py` | DuckDB + atlas packet |
 | Validations | `sigma/validation_surface.py` | DuckDB + sigma packet |
 | Token usage | `jarvis/token_ledger.py` | DuckDB |
@@ -53,8 +53,8 @@ con.close()
 workspace/quant_infra/env/.venv-openbb/bin/python3 \
     workspace/quant_infra/openbb/fetch_market_context.py
 
-# Run scenario generation
-.venv/bin/python3 workspace/quant_infra/fish/scenario_engine.py
+# Run scenario generation via Salmon Adapter
+.venv/bin/python3 workspace/quant_infra/salmon/adapter.py
 
 # Check paper trading status
 .venv/bin/python3 workspace/quant_infra/kitt/paper_trader.py --status
@@ -83,7 +83,7 @@ result = subprocess.run(
 | DuckDB warehouse | 3.14 (main .venv) | DuckDB supports 3.14 |
 | OpenBB adapter | 3.12 (quant_infra/env/.venv-openbb) | OpenBB requires <3.14 |
 | Kitt paper_trader | 3.14 (main .venv) | Uses DuckDB only |
-| Fish scenario_engine | 3.14 (main .venv) | Uses DuckDB only |
+| Salmon Adapter | 3.14 (main .venv) | Uses DuckDB only |
 | Atlas/Sigma surfaces | 3.14 (main .venv) | Uses DuckDB only |
 | Jarvis observability | 3.14 (main .venv) | Uses DuckDB only |
 
@@ -96,7 +96,7 @@ and live governor/executor control. The quant_infra spine adds:
 1. **DuckDB warehouse** — persistent analytical store not available in the file-based runtime
 2. **OpenBB data** — structured market data backend beyond cron-ingested CSVs
 3. **Paper trading state machine** — bounded, auditable position tracking in DuckDB
-4. **Scenario generation** — systematic scenario analysis with DuckDB-backed persistence
+4. **Salmon Adapter** — scenario generation feeding the Fish lane, with DuckDB-backed persistence
 5. **Experiment/validation surfaces** — structured interfaces for Atlas and Sigma
 
 The two systems can coexist. Lanes can read from both `workspace/quant/shared/latest/`

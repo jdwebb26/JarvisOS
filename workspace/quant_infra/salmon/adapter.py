@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Fish Scenario Engine — generate scenarios around Kitt's paper positions.
+"""Salmon Adapter — scenario/simulation feeder for the Fish lane.
+
+Fish is the lane (the operator-facing identity). This module is the Salmon
+Adapter: the quant_infra implementation that generates scenario data and
+writes it into Fish's packet and research paths.
 
 Consumes Kitt packet + DuckDB warehouse context.
 Produces scenario artifacts answering:
@@ -9,7 +13,7 @@ Produces scenario artifacts answering:
 - What should the operator watch next?
 
 Usage:
-    .venv/bin/python3 workspace/quant_infra/fish/scenario_engine.py
+    .venv/bin/python3 workspace/quant_infra/salmon/adapter.py
 """
 from __future__ import annotations
 
@@ -310,17 +314,17 @@ def run_scenario_generation() -> list[dict]:
                 }
                 scenarios = generate_scenarios_for_position(con, pos_dict, market, range_stats)
                 all_scenarios.extend(scenarios)
-                print(f"[fish] Generated {len(scenarios)} scenarios for position {pos[0]}")
+                print(f"[salmon] Generated {len(scenarios)} scenarios for position {pos[0]}")
         else:
             all_scenarios = generate_baseline_scenarios(con, market, range_stats)
-            print(f"[fish] Generated {len(all_scenarios)} baseline scenarios (no open positions)")
+            print(f"[salmon] Generated {len(all_scenarios)} baseline scenarios (no open positions)")
 
         # Store in DuckDB
         for s in all_scenarios:
             try:
                 insert_scenario(con, s)
             except Exception as e:
-                print(f"[fish] WARN: failed to store scenario {s['scenario_id']}: {e}")
+                print(f"[salmon] WARN: failed to store scenario {s['scenario_id']}: {e}")
 
         # Write Fish packet
         _write_fish_packet(all_scenarios, market)
@@ -358,7 +362,7 @@ def _write_fish_packet(scenarios: list[dict], market: dict) -> None:
             "market_context": market,
         },
         upstream=["kitt_quant"],
-        source_module="fish.scenario_engine",
+        source_module="salmon_adapter",
         confidence=0.5,
     )
 
@@ -401,13 +405,13 @@ def _write_scenario_artifact(scenarios: list[dict], market: dict, positions: lis
     (SCENARIOS_DIR / "latest.md").write_text(md)
     ts = now.strftime("%Y%m%dT%H%M%S")
     (SCENARIOS_DIR / f"scenario_{ts}.md").write_text(md)
-    print(f"[fish] Wrote scenario artifact → {SCENARIOS_DIR / 'latest.md'}")
+    print(f"[salmon] Wrote scenario artifact → {SCENARIOS_DIR / 'latest.md'}")
 
 
 def main():
-    print("[fish] Running scenario generation...")
+    print("[salmon] Running scenario generation for Fish lane...")
     scenarios = run_scenario_generation()
-    print(f"[fish] Generated {len(scenarios)} scenarios total.")
+    print(f"[salmon] Generated {len(scenarios)} scenarios total.")
 
 
 if __name__ == "__main__":

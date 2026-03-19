@@ -15,8 +15,8 @@ workspace/quant_infra/env/.venv-openbb/bin/python3 workspace/quant_infra/openbb/
 # 3. Check Kitt paper trading status
 .venv/bin/python3 workspace/quant_infra/kitt/paper_trader.py --status
 
-# 4. Generate Fish scenarios from latest Kitt state
-.venv/bin/python3 workspace/quant_infra/fish/scenario_engine.py
+# 4. Generate Fish scenarios via Salmon Adapter
+.venv/bin/python3 workspace/quant_infra/salmon/adapter.py
 
 # 5. Operator summary
 .venv/bin/python3 workspace/quant_infra/jarvis/observability.py
@@ -45,7 +45,7 @@ quant_infra/
 │   ├── kitt_briefs/
 │   └── fish_scenarios/
 ├── kitt/paper_trader.py        # Paper trading state machine
-├── fish/scenario_engine.py     # Scenario generation
+├── salmon/adapter.py           # Salmon Adapter (scenario feeder for Fish lane)
 ├── atlas/experiment_surface.py # Experiment ingestion interface
 ├── sigma/validation_surface.py # Validation ingestion interface
 ├── jarvis/
