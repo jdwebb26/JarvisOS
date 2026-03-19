@@ -237,6 +237,28 @@ def assess_health(root: Optional[Path] = None) -> dict[str, Any]:
     else:
         checks.append({"check": "failed_tasks", "state": "healthy", "detail": "0"})
 
+    # 8. OpenClaw memory index status
+    try:
+        r = subprocess.run(
+            ["openclaw", "memory", "status", "--json"],
+            capture_output=True, text=True, timeout=15,
+        )
+        mem_data = json.loads(r.stdout)
+        dirty_agents = [a["agentId"] for a in mem_data if a.get("status", {}).get("dirty")]
+        total_files = sum(a.get("status", {}).get("files", 0) for a in mem_data)
+        if total_files == 0 and dirty_agents:
+            checks.append({"check": "memory_index", "state": "degraded",
+                           "detail": f"0 files indexed, {len(dirty_agents)} dirty agents — run: openclaw memory index"})
+            degraded = True
+        elif dirty_agents:
+            checks.append({"check": "memory_index", "state": "healthy",
+                           "detail": f"{total_files} files, {len(dirty_agents)} dirty"})
+        else:
+            checks.append({"check": "memory_index", "state": "healthy",
+                           "detail": f"{total_files} files indexed"})
+    except Exception:
+        checks.append({"check": "memory_index", "state": "healthy", "detail": "skipped (cli unavailable)"})
+
     # ── Verdict ──
     if disconnected:
         verdict = "disconnected"
