@@ -212,6 +212,55 @@ def check_stops(current_price: float) -> list[str]:
     return stopped
 
 
+def check_targets(current_price: float) -> list[str]:
+    """Check if any open positions hit their take-profit. Returns list of hit position IDs."""
+    con = get_connection(WAREHOUSE_PATH)
+    hit = []
+    try:
+        positions = con.execute("""
+            SELECT position_id, direction, entry_price, stop_loss, take_profit
+            FROM kitt_paper_positions
+            WHERE status = 'open' AND take_profit IS NOT NULL
+        """).fetchall()
+
+        for pos_id, direction, entry, stop, tp in positions:
+            triggered = False
+            if direction == "long" and current_price >= tp:
+                triggered = True
+            elif direction == "short" and current_price <= tp:
+                triggered = True
+
+            if triggered:
+                close_paper_position(con, pos_id, tp, status="target_hit")
+                insert_trade_decision(con, {
+                    "decision_id": _uid("kpd"),
+                    "decided_at": _now(),
+                    "action": "close",
+                    "symbol": "NQ",
+                    "reasoning": f"Take-profit hit at {tp}",
+                    "position_id": pos_id,
+                })
+                hit.append(pos_id)
+                emit_event(
+                    "kitt", "target_hit",
+                    side=direction,
+                    entry=entry,
+                    stop=stop,
+                    target=tp,
+                    current_mark=current_price,
+                    position_id=pos_id,
+                    reason=f"Take-profit hit at {tp}",
+                    source_packet="kitt_quant",
+                )
+                print(f"[kitt] TARGET HIT: {pos_id} closed @ {tp}")
+
+        if hit:
+            _write_kitt_packet(con)
+    finally:
+        con.close()
+    return hit
+
+
 def get_status() -> dict:
     """Get current paper trading status."""
     con = get_connection(WAREHOUSE_PATH)
@@ -264,9 +313,14 @@ def get_status() -> dict:
 
 
 def _write_kitt_packet(con: duckdb.DuckDBPyConnection) -> None:
-    """Write the kitt quant packet with current state."""
+    """Write the kitt quant packet with current state.
+
+    Each position includes computed fields: unrealized_pnl, reward_risk,
+    dist_to_stop, dist_to_target, position_age_minutes, thesis.
+    """
     open_positions = con.execute("""
-        SELECT position_id, direction, entry_price, mark_price, stop_loss, take_profit
+        SELECT position_id, direction, entry_price, mark_price, stop_loss,
+               take_profit, opened_at, reasoning
         FROM kitt_paper_positions WHERE status = 'open'
     """).fetchall()
 
@@ -277,18 +331,51 @@ def _write_kitt_packet(con: duckdb.DuckDBPyConnection) -> None:
         FROM kitt_paper_positions
     """).fetchone()
 
-    positions_data = [
-        {
-            "id": r[0], "direction": r[1], "entry": r[2],
-            "mark": r[3], "stop": r[4], "target": r[5],
-        }
-        for r in open_positions
-    ]
+    now = datetime.now(timezone.utc)
+    positions_data = []
+    for r in open_positions:
+        pos_id, direction, entry, mark, stop, target, opened_at, reasoning = r
+        mark = mark or entry
+        mult = 1 if direction == "long" else -1
+        unrealized = round((mark - entry) * mult, 2) if entry else 0
+        risk = abs(entry - stop) if entry and stop else None
+        reward = abs(target - entry) if entry and target else None
+        rr = round(reward / risk, 2) if risk and reward and risk > 0 else None
+        dist_stop = round((mark - stop) * mult, 2) if mark and stop else None
+        dist_target = round((target - mark) * mult, 2) if mark and target else None
+
+        # Position age
+        age_minutes = None
+        if opened_at:
+            try:
+                from dateutil.parser import parse as dtparse
+                opened_dt = dtparse(str(opened_at))
+                if opened_dt.tzinfo is None:
+                    opened_dt = opened_dt.replace(tzinfo=timezone.utc)
+                age_minutes = round((now - opened_dt).total_seconds() / 60)
+            except Exception:
+                pass
+
+        positions_data.append({
+            "id": pos_id,
+            "direction": direction,
+            "entry": entry,
+            "mark": mark,
+            "stop": stop,
+            "target": target,
+            "unrealized_pnl_pts": unrealized,
+            "unrealized_pnl_usd": round(unrealized * 20, 2),
+            "reward_risk": rr,
+            "dist_to_stop_pts": dist_stop,
+            "dist_to_target_pts": dist_target,
+            "position_age_minutes": age_minutes,
+            "thesis": reasoning or "",
+        })
 
     write_packet(
         lane="kitt",
         packet_type="quant",
-        summary=f"Kitt: {len(open_positions)} open positions, {perf[0]} closed ({perf[1]} wins), PnL={perf[2]}",
+        summary=f"Kitt: {len(open_positions)} open, {perf[0]} closed ({perf[1]} wins), PnL=${perf[2]}",
         data={
             "open_positions": positions_data,
             "performance": {"closed": perf[0], "wins": perf[1], "total_pnl": perf[2]},

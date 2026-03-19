@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from kitt.paper_trader import (
     check_stops,
+    check_targets,
     get_status,
     mark_all_positions,
     open_position,
@@ -41,6 +42,7 @@ THIS_DIR = Path(__file__).resolve().parent
 QUANT_INFRA = THIS_DIR.parent
 WAREHOUSE_PATH = QUANT_INFRA / "warehouse" / "quant.duckdb"
 BRIEFS_DIR = QUANT_INFRA / "research" / "kitt_briefs"
+THESIS_STATE_PATH = THIS_DIR / "thesis_state.json"
 
 # -- Signal parameters (conservative mean-reversion) --
 EMA_FAST = 8
@@ -60,6 +62,60 @@ def _now() -> str:
 def _uid(prefix: str = "kpd") -> str:
     import uuid
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+# ---------------------------------------------------------------------------
+# Thesis state — persisted snapshot for detecting meaningful changes
+# ---------------------------------------------------------------------------
+
+def _load_thesis_state() -> dict:
+    """Load last cycle's thesis state from disk."""
+    if THESIS_STATE_PATH.exists():
+        try:
+            return json.loads(THESIS_STATE_PATH.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_thesis_state(state: dict) -> None:
+    """Persist current thesis state for next cycle comparison."""
+    THESIS_STATE_PATH.write_text(json.dumps(state, indent=2, default=str) + "\n")
+
+
+def _classify_regime(signal: dict) -> str:
+    """Classify the current market regime from signal data."""
+    atr = signal.get("atr", 0)
+    deviation = abs(signal.get("deviation", 0))
+    if atr < MIN_ATR_ABS:
+        return "low_vol"
+    if deviation > atr * 2.5:
+        return "trending"
+    if deviation > atr * ENTRY_ATR_MULT:
+        return "extended"
+    return "normal"
+
+
+def _detect_thesis_change(prev: dict, current: dict, position_open: bool) -> str | None:
+    """Detect meaningful thesis change between cycles.
+
+    Returns a reason string if a change is detected, None otherwise.
+    Only emits when a position is open (otherwise changes are expected).
+    """
+    if not position_open or not prev:
+        return None
+
+    prev_regime = prev.get("regime", "")
+    curr_regime = current.get("regime", "")
+    if prev_regime and curr_regime and prev_regime != curr_regime:
+        return f"Regime shift: {prev_regime} → {curr_regime}"
+
+    prev_signal = prev.get("signal_direction", "")
+    curr_signal = current.get("signal_direction", "")
+    if prev_signal and curr_signal and prev_signal != curr_signal and curr_signal != "none":
+        return f"Signal reversal: {prev_signal} → {curr_signal}"
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -224,15 +280,16 @@ def run_cycle(dry_run: bool = False) -> dict:
     status = get_status()
     open_positions = status["open_positions"]
 
+    cycle_event = None  # Track what event was emitted this cycle
+
     if open_positions and not dry_run:
-        # Snapshot positions before stop check to detect state changes
-        pre_stop_ids = {p["position_id"] for p in open_positions}
+        # Snapshot positions before stop/target check
+        pre_check_positions = list(open_positions)
         stopped = check_stops(current_price)
         if stopped:
             print(f"[kitt] Stopped out: {stopped}")
             for sid in stopped:
-                # Find the stopped position details from pre-check snapshot
-                stopped_pos = next((p for p in open_positions if p["position_id"] == sid), None)
+                stopped_pos = next((p for p in pre_check_positions if p["position_id"] == sid), None)
                 if stopped_pos:
                     emit_event(
                         "kitt", "stop_triggered",
@@ -245,6 +302,14 @@ def run_cycle(dry_run: bool = False) -> dict:
                         reason=f"Stop loss triggered at {stopped_pos['stop_loss']}",
                         source_packet="kitt_cycle",
                     )
+            cycle_event = "stop_triggered"
+
+        # Check take-profit targets
+        hit = check_targets(current_price)
+        if hit:
+            print(f"[kitt] Target hit: {hit}")
+            cycle_event = "target_hit"
+
         mark_all_positions(current_price)
 
     # Refresh status after potential stop-outs
@@ -252,27 +317,70 @@ def run_cycle(dry_run: bool = False) -> dict:
         status = get_status()
         open_positions = status["open_positions"]
 
-    # 3. If already at max positions, decide hold or manage
+    # 3. Compute signal (needed for thesis tracking even during hold)
+    signal = compute_signal(bars)
+    regime = _classify_regime(signal)
+
+    # 4. If already at max positions, decide hold or manage
     if len(open_positions) >= MAX_OPEN_POSITIONS:
         pos = open_positions[0]
-        unrealized = 0
-        if pos["entry_price"]:
-            mult = 1 if pos["direction"] == "long" else -1
-            unrealized = (current_price - pos["entry_price"]) * mult
-        reason = (f"Holding {pos['direction']} {pos['symbol']} @ {pos['entry_price']}, "
+        mult = 1 if pos["direction"] == "long" else -1
+        unrealized = round((current_price - pos["entry_price"]) * mult, 2) if pos["entry_price"] else 0
+        dist_stop = round((current_price - pos["stop_loss"]) * mult, 2) if pos["stop_loss"] else None
+        dist_target = round((pos["take_profit"] - current_price) * mult, 2) if pos["take_profit"] else None
+        risk = abs(pos["entry_price"] - pos["stop_loss"]) if pos["entry_price"] and pos["stop_loss"] else None
+        reward = abs(pos["take_profit"] - pos["entry_price"]) if pos["take_profit"] and pos["entry_price"] else None
+        rr = round(reward / risk, 2) if risk and reward and risk > 0 else None
+
+        # Thesis change detection
+        prev_state = _load_thesis_state()
+        current_state = {
+            "regime": regime,
+            "signal_direction": signal["signal"],
+            "atr": signal.get("atr"),
+            "deviation": signal.get("deviation"),
+            "position_id": pos["position_id"],
+            "unrealized_pts": unrealized,
+            "updated_at": _now(),
+        }
+
+        thesis_change = _detect_thesis_change(prev_state, current_state, True)
+        if thesis_change and not dry_run:
+            emit_event(
+                "kitt", "thesis_changed",
+                side=pos["direction"],
+                entry=pos["entry_price"],
+                stop=pos["stop_loss"],
+                target=pos["take_profit"],
+                current_mark=current_price,
+                position_id=pos["position_id"],
+                reason=thesis_change,
+                source_packet="kitt_cycle",
+                extra={"regime": regime, "signal": signal["signal"]},
+            )
+            cycle_event = "thesis_changed"
+            print(f"[kitt] Thesis change: {thesis_change}")
+
+        _save_thesis_state(current_state)
+
+        reason = (f"Holding {pos['direction']} NQ @ {pos['entry_price']}, "
                   f"mark={current_price:.2f}, unrealized={unrealized:.2f} pts")
         return _record_decision("hold", reason, reason, dry_run=dry_run,
                                 market_context=_market_context(bars),
-                                position_id=pos["position_id"])
+                                position_id=pos["position_id"],
+                                signal=signal, regime=regime,
+                                cycle_event=cycle_event)
 
-    # 4. Compute signal
-    signal = compute_signal(bars)
     print(f"[kitt] Signal: {signal['signal']} — {signal['reason']}")
 
     if signal["signal"] == "none":
+        _save_thesis_state({"regime": regime, "signal_direction": "none",
+                            "atr": signal.get("atr"), "updated_at": _now()})
         return _record_decision("no_trade", signal["reason"], signal["reason"],
                                 dry_run=dry_run,
-                                market_context=_market_context(bars))
+                                market_context=_market_context(bars),
+                                signal=signal, regime=regime,
+                                cycle_event=cycle_event)
 
     # 5. Execute paper trade
     direction = signal["signal"]
@@ -285,7 +393,8 @@ def run_cycle(dry_run: bool = False) -> dict:
         print(f"[kitt] DRY RUN: would open {direction} @ {entry}, SL={stop}, TP={target}")
         return _record_decision(f"open_{direction}", reason,
                                 f"DRY RUN: {reason}", dry_run=True,
-                                market_context=_market_context(bars))
+                                market_context=_market_context(bars),
+                                signal=signal, regime=regime)
 
     pos_id = open_position(direction, entry, stop, target, reason)
     print(f"[kitt] Opened: {pos_id}")
@@ -302,10 +411,19 @@ def run_cycle(dry_run: bool = False) -> dict:
         reason=reason,
         source_packet="kitt_cycle",
     )
+    cycle_event = "position_opened"
+
+    _save_thesis_state({
+        "regime": regime, "signal_direction": direction,
+        "atr": signal.get("atr"), "position_id": pos_id,
+        "updated_at": _now(),
+    })
 
     return _record_decision(f"open_{direction}", reason, reason,
                             dry_run=False, position_id=pos_id,
-                            market_context=_market_context(bars))
+                            market_context=_market_context(bars),
+                            signal=signal, regime=regime,
+                            cycle_event=cycle_event)
 
 
 def _market_context(bars: list[dict]) -> str:
@@ -326,6 +444,9 @@ def _record_decision(
     dry_run: bool = False,
     position_id: str | None = None,
     market_context: str = "",
+    signal: dict | None = None,
+    regime: str | None = None,
+    cycle_event: str | None = None,
 ) -> dict:
     """Record a cycle decision to DuckDB + packet + brief."""
     decision = {
@@ -345,16 +466,59 @@ def _record_decision(
         try:
             insert_trade_decision(con, decision)
 
-            # Write packet
+            # Write enriched packet
             status = get_status()
+
+            # Compute per-position enrichment for cycle packet
+            now = datetime.now(timezone.utc)
+            enriched_positions = []
+            for p in status["open_positions"]:
+                entry = p["entry_price"]
+                mark = p.get("mark_price") or entry
+                direction = p["direction"]
+                mult = 1 if direction == "long" else -1
+                unrealized = round((mark - entry) * mult, 2) if entry else 0
+                stop = p.get("stop_loss")
+                target = p.get("take_profit")
+                risk = abs(entry - stop) if entry and stop else None
+                reward = abs(target - entry) if entry and target else None
+                rr = round(reward / risk, 2) if risk and reward and risk > 0 else None
+
+                ep = dict(p)
+                ep.update({
+                    "unrealized_pnl_pts": unrealized,
+                    "unrealized_pnl_usd": round(unrealized * 20, 2),
+                    "reward_risk": rr,
+                    "dist_to_stop_pts": round((mark - stop) * mult, 2) if mark and stop else None,
+                    "dist_to_target_pts": round((target - mark) * mult, 2) if mark and target else None,
+                })
+                enriched_positions.append(ep)
+
+            # Build invalidation note
+            invalidation = None
+            if enriched_positions:
+                ep = enriched_positions[0]
+                if ep.get("stop_loss"):
+                    invalidation = f"Thesis invalidated if NQ reaches stop at {ep['stop_loss']}"
+
             write_packet(
                 lane="kitt",
                 packet_type="cycle",
                 summary=f"Kitt cycle: {action} — {reasoning[:80]}",
                 data={
                     "decision": decision,
-                    "open_positions": status["open_positions"],
+                    "regime": regime,
+                    "signal": {
+                        "direction": signal.get("signal") if signal else None,
+                        "atr": signal.get("atr") if signal else None,
+                        "deviation": signal.get("deviation") if signal else None,
+                        "ema_fast": signal.get("ema_fast") if signal else None,
+                        "ema_slow": signal.get("ema_slow") if signal else None,
+                    } if signal else None,
+                    "open_positions": enriched_positions,
                     "performance": status["performance"],
+                    "cycle_event": cycle_event,
+                    "invalidation": invalidation,
                 },
                 upstream=[],
                 source_module="kitt.run_kitt_cycle",
@@ -362,7 +526,9 @@ def _record_decision(
             )
 
             # Write brief
-            _write_cycle_brief(action, reasoning, status, market_context)
+            _write_cycle_brief(action, reasoning, status, market_context,
+                               signal=signal, regime=regime,
+                               cycle_event=cycle_event)
         finally:
             con.close()
 
@@ -371,8 +537,10 @@ def _record_decision(
 
 
 def _write_cycle_brief(action: str, reasoning: str, status: dict,
-                       market_context: str) -> None:
-    """Write human-readable Kitt cycle brief."""
+                       market_context: str, *, signal: dict | None = None,
+                       regime: str | None = None,
+                       cycle_event: str | None = None) -> None:
+    """Write human-readable Kitt cycle brief with thesis and change tracking."""
     now = datetime.now(timezone.utc)
     perf = status["performance"]
 
@@ -383,14 +551,43 @@ def _write_cycle_brief(action: str, reasoning: str, status: dict,
 
 ## Market Context
 {market_context}
-
-## Open Positions
 """
+    if regime:
+        md += f"- **Regime**: {regime}\n"
+    if signal:
+        md += (f"- **Signal**: {signal.get('signal', 'n/a')} | "
+               f"ATR={signal.get('atr', 'n/a')} | "
+               f"Deviation={signal.get('deviation', 'n/a')}\n")
+
+    if cycle_event:
+        md += f"\n> **Event emitted this cycle**: `{cycle_event}`\n"
+
+    md += "\n## Open Positions\n"
     if status["open_positions"]:
         for p in status["open_positions"]:
-            md += (f"- **{p['position_id']}**: {p['direction']} NQ "
-                   f"@ {p['entry_price']} "
-                   f"(SL={p['stop_loss']}, TP={p['take_profit']})\n")
+            entry = p["entry_price"]
+            mark = p.get("mark_price") or entry
+            direction = p["direction"]
+            mult = 1 if direction == "long" else -1
+            unrealized = round((mark - entry) * mult, 2) if entry else 0
+            stop = p.get("stop_loss")
+            target = p.get("take_profit")
+            dist_stop = round((mark - stop) * mult, 2) if mark and stop else None
+            dist_target = round((target - mark) * mult, 2) if mark and target else None
+            risk = abs(entry - stop) if entry and stop else None
+            reward = abs(target - entry) if entry and target else None
+            rr = round(reward / risk, 2) if risk and reward and risk > 0 else None
+
+            md += (f"- **{p['position_id']}**: {direction} NQ "
+                   f"@ {entry} → mark {mark}\n")
+            md += f"  - SL={stop} | TP={target} | R:R={rr}\n"
+            md += f"  - Unrealized: {unrealized:+.2f} pts (${unrealized * 20:+.2f})\n"
+            if dist_stop is not None:
+                md += f"  - Distance to stop: {dist_stop:.2f} pts | to target: {dist_target:.2f} pts\n"
+            if p.get("reasoning"):
+                md += f"  - **Thesis**: {p['reasoning'][:120]}\n"
+            if stop:
+                md += f"  - **Invalidation**: thesis fails if NQ reaches {stop}\n"
     else:
         md += "- None\n"
 
@@ -403,6 +600,21 @@ def _write_cycle_brief(action: str, reasoning: str, status: dict,
 """
     for d in status["recent_decisions"][:3]:
         md += f"- [{d['at'][:19]}] **{d['action']}**: {d['reasoning'][:80]}\n"
+
+    # What changed since last cycle
+    prev_state = _load_thesis_state()
+    if prev_state:
+        md += "\n## Changes Since Last Cycle\n"
+        prev_regime = prev_state.get("regime")
+        if prev_regime and regime and prev_regime != regime:
+            md += f"- Regime: {prev_regime} → {regime}\n"
+        prev_signal = prev_state.get("signal_direction")
+        sig_dir = signal.get("signal") if signal else None
+        if prev_signal and sig_dir and prev_signal != sig_dir:
+            md += f"- Signal: {prev_signal} → {sig_dir}\n"
+        if not any([prev_regime != regime if prev_regime and regime else False,
+                    prev_signal != sig_dir if prev_signal and sig_dir else False]):
+            md += "- No material changes\n"
 
     BRIEFS_DIR.mkdir(parents=True, exist_ok=True)
     (BRIEFS_DIR / "latest.md").write_text(md)
