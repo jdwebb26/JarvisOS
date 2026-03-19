@@ -1,0 +1,28 @@
+{
+  "seed_themes": [
+    {
+      "thesis": "NQ overnight gap fade: exploit mean-reversion after large gaps",
+      "symbol_scope": "NQ",
+      "timeframe_scope": "15m",
+      "confidence": 0.4,
+      "strategy_prefix": "atlas-gap"
+    },
+    {
+      "thesis": "NQ VWAP reversion: entries at deviation bands during consolidation",
+      "symbol_scope": "NQ",
+      "timeframe_scope": "15m",
+      "confidence": 0.4,
+      "strategy_prefix": "atlas-vwap"
+    },
+    {
+      "thesis": "NQ momentum breakout: trend continuation after opening range break",
+      "symbol_scope": "NQ",
+      "timeframe_scope": "15m",
+      "confidence": 0.35,
+      "strategy_prefix": "atlas-orb"
+    }
+  ],
+  "max_bootstrap_candidates": 3,
+  "require_hermes_evidence": true,
+  "notes": "Atlas bootstrap themes. Bounded to max_bootstrap_candidates per bootstrap run. Prefers Hermes evidence when available."
+}

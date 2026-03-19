@@ -1,0 +1,59 @@
+{
+  "seed_regimes": [
+    {
+      "label": "trending_bull",
+      "thesis": "NQ in sustained uptrend with higher highs and higher lows",
+      "confidence": 0.4
+    },
+    {
+      "label": "trending_bear",
+      "thesis": "NQ in sustained downtrend with lower highs and lower lows",
+      "confidence": 0.4
+    },
+    {
+      "label": "range_bound",
+      "thesis": "NQ consolidating in defined range with no directional bias",
+      "confidence": 0.5
+    },
+    {
+      "label": "high_volatility",
+      "thesis": "NQ experiencing elevated volatility with wide intraday ranges",
+      "confidence": 0.3
+    }
+  ],
+  "seed_scenarios": [
+    {
+      "thesis": "NQ overnight gap reversal during high-VIX environment",
+      "symbol_scope": "NQ",
+      "timeframe_scope": "1D",
+      "confidence": 0.4
+    },
+    {
+      "thesis": "NQ mean-reversion at key VWAP levels during consolidation",
+      "symbol_scope": "NQ",
+      "timeframe_scope": "4H",
+      "confidence": 0.4
+    },
+    {
+      "thesis": "NQ momentum continuation after opening range breakout",
+      "symbol_scope": "NQ",
+      "timeframe_scope": "1D",
+      "confidence": 0.35
+    }
+  ],
+  "seed_risk_zones": {
+    "vix_elevation": {
+      "level": "medium",
+      "trigger": "VIX > 20 sustained"
+    },
+    "fomc_proximity": {
+      "level": "medium",
+      "trigger": "Within 48h of FOMC announcement"
+    },
+    "overnight_gap_risk": {
+      "level": "low",
+      "trigger": "NQ overnight gap > 0.5%"
+    }
+  },
+  "notes": "Fish bootstrap config. Conservative seed confidence. No fake calibration history."
+}
