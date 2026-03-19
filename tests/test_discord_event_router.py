@@ -201,5 +201,89 @@ def test_no_old_labels_in_any_kind():
             assert label not in text, f"{kind} still produces old label {label}"
 
 
+# ---------------------------------------------------------------------------
+# Jarvis channel noise filtering — routine events must NOT forward to #jarvis
+# ---------------------------------------------------------------------------
+
+from runtime.core.discord_event_router import emit_event, _load_channel_map
+
+
+def test_routine_events_skip_jarvis_but_hit_worklog(tmp_path):
+    """Routine lifecycle events must land in lane + worklog, NOT in #jarvis."""
+    # Write channel map to tmp_path so emit_event uses it
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    channel_map = _load_channel_map()
+    (config_dir / "agent_channel_map.json").write_text(json.dumps(channel_map))
+
+    # Also need runtime.core.models accessible — create state dirs
+    (tmp_path / "state" / "dispatch_events").mkdir(parents=True)
+    (tmp_path / "state" / "discord_outbox").mkdir(parents=True)
+
+    # These are routine events that were removed from jarvis_forward_event_kinds
+    routine_events = [
+        ("artifact_promoted", "hal"),
+        ("kitt_brief_completed", "kitt"),
+        ("delegation_sent", "jarvis"),
+        ("quant_strategy_promoted", "sigma"),
+        ("quant_execution_status", "kitt"),
+    ]
+
+    for kind, agent in routine_events:
+        result = emit_event(
+            kind, agent,
+            task_id="task_test123456",
+            detail="routine test event",
+            root=tmp_path,
+        )
+        # Must NOT forward to #jarvis
+        assert result["jarvis_forwarded"] is False, (
+            f"{kind} still forwarded to #jarvis"
+        )
+        # Must still have an owner channel (lane channel)
+        assert result["owner_channel_id"] is not None, (
+            f"{kind} lost its owner channel"
+        )
+        # Must still mirror to worklog (these are all in worklog_mirror_event_kinds)
+        assert result["worklog_mirrored"] is True, (
+            f"{kind} lost worklog mirror"
+        )
+        # Verify outbox entries: should have owner + worklog, but no jarvis_fwd
+        labels = [e["label"] for e in result["outbox_entries"]]
+        assert "jarvis_fwd" not in labels, (
+            f"{kind} has jarvis_fwd outbox entry"
+        )
+
+
+def test_critical_events_still_forward_to_jarvis(tmp_path):
+    """Operator-action-needed events must still forward to #jarvis."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    channel_map = _load_channel_map()
+    (config_dir / "agent_channel_map.json").write_text(json.dumps(channel_map))
+
+    (tmp_path / "state" / "dispatch_events").mkdir(parents=True)
+    (tmp_path / "state" / "discord_outbox").mkdir(parents=True)
+
+    critical_events = [
+        ("task_failed", "hal"),
+        ("task_blocked", "hal"),
+        ("error", "hal"),
+        ("warning", "ralph"),
+        ("quant_alert", "kitt"),
+    ]
+
+    for kind, agent in critical_events:
+        result = emit_event(
+            kind, agent,
+            task_id="task_test123456",
+            detail="critical test event",
+            root=tmp_path,
+        )
+        assert result["jarvis_forwarded"] is True, (
+            f"{kind} no longer forwards to #jarvis"
+        )
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
