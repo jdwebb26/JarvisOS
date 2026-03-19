@@ -192,9 +192,8 @@ def cmd_brief(args):
     market_read = args.market
     if not market_read:
         try:
-            from workspace.quant.shared.market_context import read_market_snapshot, format_market_read
-            snap = read_market_snapshot(ROOT)
-            market_read = format_market_read(snap)
+            from workspace.quant.shared.market_context import format_full_market_read
+            market_read = format_full_market_read(ROOT)
         except Exception:
             market_read = "No market data available."
     brief = produce_brief(ROOT, market_read=market_read)
@@ -518,44 +517,59 @@ def cmd_acceptance(args):
 # ---------------------------------------------------------------------------
 
 def cmd_pulse_status(args):
-    """Pulse lane status — phone-readable."""
+    """Pulse lane status — phone-readable, full lifecycle visibility."""
     from workspace.quant.shared.packet_store import list_lane_packets
     from workspace.quant.shared.discord_bridge import check_delivery_health
+    from workspace.quant.pulse.alert_lane import list_all_proposals
 
     alerts = list_lane_packets(ROOT, "pulse", "pulse_alert_packet")
     clusters = list_lane_packets(ROOT, "pulse", "pulse_cluster_packet")
-    proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
-    pending = [p for p in proposals if "status=pending" in (p.notes or "")]
     outcomes = list_lane_packets(ROOT, "pulse", "pulse_outcome_packet")
 
+    # Use authoritative proposal state files, not packet notes
+    all_proposals = list_all_proposals(ROOT)
+    pending = [p for p in all_proposals if p["status"] == "pending"]
+    approved = [p for p in all_proposals if p["status"] == "approved"]
+    rejected = [p for p in all_proposals if p["status"] == "rejected"]
+
     dh = check_delivery_health()
-    pulse_delivery = dh.get("pulse", "?")
 
     print("PULSE STATUS")
-    print("━" * 30)
-    print(f"  Alerts:    {len(alerts)}")
-    print(f"  Clusters:  {len(clusters)}")
-    print(f"  Proposals: {len(proposals)} ({len(pending)} pending)")
-    print(f"  Outcomes:  {len(outcomes)}")
+    print("━" * 40)
+    print(f"  Alerts:     {len(alerts)}")
+    print(f"  Clusters:   {len(clusters)}")
+    print(f"  Outcomes:   {len(outcomes)}")
     if outcomes:
         hits = sum(1 for o in outcomes if "hit=true" in (o.notes or ""))
-        print(f"  Hit rate:  {hits}/{len(outcomes)}")
-    print(f"  Delivery:  {pulse_delivery}")
+        print(f"  Hit rate:   {hits}/{len(outcomes)}")
+    print(f"  Delivery:   {dh.get('pulse', '?')}")
+    print(f"  Proposals:  {len(all_proposals)} total "
+          f"({len(pending)} pending, {len(approved)} approved, {len(rejected)} rejected)")
 
     if pending:
-        print("\n  Pending proposals:")
-        for p in pending[-5:]:
-            target = ""
-            for part in (p.notes or "").split(";"):
-                if part.strip().startswith("target="):
-                    target = part.strip().split("=", 1)[1]
-            print(f"    [{target}] {p.thesis[:70]}")
-            print(f"    approve: quant_lanes.py pulse-approve {p.packet_id}")
+        print("\n  PENDING REVIEW:")
+        for p in pending:
+            print(f"    {p['approval_ref']}  → {p['target']}")
+            print(f"      {p['thesis'][:70]}")
+            print(f"      #review: approve {p['approval_ref']}")
+    if approved:
+        print("\n  APPROVED (released):")
+        for p in approved[-3:]:
+            ds = p.get("downstream_packet_id") or "?"
+            print(f"    {p['approval_ref']}  → {p['target']}  downstream={ds[:40]}")
+            if p.get("approved_at"):
+                print(f"      approved at {p['approved_at'][:19]}")
+    if rejected:
+        print("\n  REJECTED:")
+        for p in rejected[-3:]:
+            print(f"    {p['approval_ref']}  → {p['target']}")
+            if p.get("rejected_at"):
+                print(f"      rejected at {p['rejected_at'][:19]}")
 
     if alerts:
         print("\n  Recent alerts:")
         for a in alerts[-3:]:
-            print(f"    {a.thesis[:70]}")
+            print(f"    {a.created_at[:19]}  {a.thesis[:60]}")
 
 
 def cmd_pulse_ingest(args):
@@ -574,77 +588,120 @@ def cmd_pulse_ingest(args):
 
 
 def cmd_pulse_proposals(args):
-    """Show pending Pulse proposals."""
-    from workspace.quant.shared.packet_store import list_lane_packets
-    proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
-    pending = [p for p in proposals if "status=pending" in (p.notes or "")]
-    if not pending:
-        print("No pending Pulse proposals.")
+    """Show Pulse proposals — full lifecycle audit view."""
+    from workspace.quant.pulse.alert_lane import list_all_proposals
+
+    all_proposals = list_all_proposals(ROOT)
+    if not all_proposals:
+        print("No Pulse proposals.")
         return
-    print(f"PULSE PROPOSALS ({len(pending)} pending)")
-    print("━" * 40)
-    for p in pending:
-        target = ""
-        approval_ref = ""
-        for part in (p.notes or "").split(";"):
-            part = part.strip()
-            if part.startswith("target="):
-                target = part.split("=", 1)[1]
-            elif part.startswith("approval_ref="):
-                approval_ref = part.split("=", 1)[1]
-        print(f"  Target:  {target}")
-        print(f"  Ref:     {approval_ref}")
-        print(f"  Thesis:  {p.thesis[:80]}")
-        print(f"  #review: approve {approval_ref}")
-        print()
+
+    pending = [p for p in all_proposals if p["status"] == "pending"]
+    approved = [p for p in all_proposals if p["status"] == "approved"]
+    rejected = [p for p in all_proposals if p["status"] == "rejected"]
+
+    print(f"PULSE PROPOSALS  {len(all_proposals)} total: "
+          f"{len(pending)} pending, {len(approved)} approved, {len(rejected)} rejected")
+    print("━" * 60)
+
+    for p in all_proposals:
+        status_tag = {
+            "pending": "PENDING",
+            "approved": "APPROVED",
+            "rejected": "REJECTED",
+        }.get(p["status"], p["status"])
+
+        print(f"\n  [{status_tag}]  {p['approval_ref']}")
+        print(f"    Target:   {p['target']}")
+        print(f"    Thesis:   {p['thesis'][:70]}")
+        print(f"    Created:  {(p.get('created_at') or '?')[:19]}")
+
+        if p["status"] == "pending":
+            print(f"    Action:   approve {p['approval_ref']}  (in #review)")
+        elif p["status"] == "approved":
+            print(f"    Approved: {(p.get('approved_at') or '?')[:19]}")
+            ds = p.get("downstream_packet_id")
+            if ds:
+                print(f"    Released: {ds}")
+        elif p["status"] == "rejected":
+            print(f"    Rejected: {(p.get('rejected_at') or '?')[:19]}")
 
 
 def cmd_pulse_approve(args):
-    """Check status of a Pulse proposal. Approval must go through #review."""
+    """Inspect a Pulse proposal by approval_ref. Approval/rejection goes through #review only."""
     from workspace.quant.pulse.alert_lane import get_proposal_by_ref
     state = get_proposal_by_ref(ROOT, args.proposal_id)
     if state is None:
         print(f"  Proposal {args.proposal_id} not found.")
         return
-    print(f"  Proposal:   {state['approval_ref']}")
-    print(f"  Target:     {state['target']}")
-    print(f"  Status:     {state['status']}")
-    print(f"  Thesis:     {state['thesis'][:80]}")
+
+    status_tag = state["status"].upper()
+    print(f"  PULSE PROPOSAL  [{status_tag}]")
+    print(f"  ────────────────────────────────────────")
+    print(f"  Ref:       {state['approval_ref']}")
+    print(f"  Target:    {state['target']}")
+    print(f"  Symbol:    {state.get('symbol', '?')}")
+    print(f"  Thesis:    {state['thesis'][:80]}")
+    print(f"  Conf:      {state.get('confidence', '?')}")
+    print(f"  Created:   {(state.get('created_at') or '?')[:19]}")
+    print(f"  Packet:    {state.get('proposal_packet_id', '?')}")
+
     if state["status"] == "pending":
-        print(f"\n  To approve: type 'approve {state['approval_ref']}' in #review")
-        print(f"  To reject:  type 'reject {state['approval_ref']}' in #review")
+        print(f"\n  Governance: approval/rejection must go through #review")
+        print(f"    approve {state['approval_ref']}")
+        print(f"    reject {state['approval_ref']}")
     elif state["status"] == "approved":
-        print(f"  Downstream: {state.get('downstream_packet_id', '?')}")
+        print(f"\n  Approved:   {(state.get('approved_at') or '?')[:19]}")
+        ds = state.get("downstream_packet_id")
+        if ds:
+            print(f"  Downstream: {ds}")
+        else:
+            print(f"  Downstream: (not yet released)")
     elif state["status"] == "rejected":
-        print(f"  Rejected at: {state.get('rejected_at', '?')}")
+        print(f"\n  Rejected:   {(state.get('rejected_at') or '?')[:19]}")
+        print(f"  Downstream: none (blocked by review)")
 
 
 def cmd_pulse_health(args):
-    """Pulse health summary — phone-readable."""
+    """Pulse health summary — phone-readable, includes governance audit."""
     from workspace.quant.shared.packet_store import list_lane_packets
     from workspace.quant.shared.discord_bridge import check_delivery_health
+    from workspace.quant.pulse.alert_lane import list_all_proposals
 
     alerts = list_lane_packets(ROOT, "pulse", "pulse_alert_packet")
     outcomes = list_lane_packets(ROOT, "pulse", "pulse_outcome_packet")
-    proposals = list_lane_packets(ROOT, "pulse", "pulse_review_proposal_packet")
+
+    all_proposals = list_all_proposals(ROOT)
+    pending = [p for p in all_proposals if p["status"] == "pending"]
+    approved = [p for p in all_proposals if p["status"] == "approved"]
+    rejected = [p for p in all_proposals if p["status"] == "rejected"]
 
     dh = check_delivery_health()
 
     print("PULSE HEALTH")
-    print("━" * 30)
-    print(f"  Alerts:    {len(alerts)}")
-    print(f"  Outcomes:  {len(outcomes)}")
-    print(f"  Proposals: {len(proposals)}")
-    print(f"  Delivery:  {dh.get('pulse', '?')}")
+    print("━" * 40)
+    print(f"  Alerts:      {len(alerts)}")
+    print(f"  Outcomes:    {len(outcomes)}")
     if outcomes:
         hits = sum(1 for o in outcomes if "hit=true" in (o.notes or ""))
         total = len(outcomes)
-        print(f"  Hit rate:  {hits}/{total} ({hits/total:.0%})" if total else "")
-    noise = len(alerts) - len(set(
-        ref for o in outcomes for ref in o.evidence_refs
-    ))
+        print(f"  Hit rate:    {hits}/{total} ({hits/total:.0%})")
+    print(f"  Delivery:    {dh.get('pulse', '?')}")
+
+    noise = len(alerts) - len(set(ref for o in outcomes for ref in o.evidence_refs))
     if noise > 0:
-        print(f"  Noise:     {noise} alerts without outcomes")
+        print(f"  Noise:       {noise} alerts without outcomes")
+
+    print(f"\n  GOVERNANCE")
+    print(f"  Proposals:   {len(all_proposals)} total")
+    print(f"    Pending:   {len(pending)}")
+    print(f"    Approved:  {len(approved)}")
+    print(f"    Rejected:  {len(rejected)}")
+    released = [p for p in approved if p.get("downstream_packet_id")]
+    print(f"    Released:  {len(released)} downstream packets")
+
+    if pending:
+        print(f"\n  ACTION: {len(pending)} proposal(s) await #review")
 
 
 # ---------------------------------------------------------------------------
@@ -774,17 +831,25 @@ def cmd_observe(args):
     except Exception:
         pass
 
-    # Market context
+    # Market context — daily + intraday
     try:
-        from workspace.quant.shared.market_context import read_market_snapshot
+        from workspace.quant.shared.market_context import read_market_snapshot, read_intraday_snapshot
         mkt = read_market_snapshot(ROOT)
+        intra = read_intraday_snapshot(ROOT)
         if mkt:
             fresh = mkt.get("data_freshness_hours")
             age = f"{fresh:.0f}h" if fresh is not None and fresh < 48 else "stale" if fresh else "?"
-            print(f"  Market: NQ={mkt['last_close']:.0f} ({mkt['daily_change_pct']:+.1f}%) "
+            print(f"  Daily:  NQ={mkt['last_close']:.0f} ({mkt['daily_change_pct']:+.1f}%) "
                   f"VIX={mkt['vix']:.1f} trend={mkt['trend_5d']} [{age} old]")
         else:
-            print("  Market: no data (cron_ingest may not have run)")
+            print("  Daily:  no data")
+        if intra:
+            fresh_h = intra.get("data_freshness_hours")
+            age_h = f"{fresh_h:.0f}h" if fresh_h is not None and fresh_h < 48 else "stale" if fresh_h else "?"
+            print(f"  Hourly: NQ={intra['last_close']:.0f} ({intra['intraday_change_pct']:+.1f}%) "
+                  f"trend={intra['hourly_trend']} range={intra['intraday_range_pct']:.1f}% [{age_h} old]")
+        else:
+            print("  Hourly: no data")
     except Exception:
         pass
     print()

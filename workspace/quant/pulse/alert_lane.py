@@ -488,16 +488,26 @@ def get_proposal_by_ref(root: Path, approval_ref: str) -> Optional[dict]:
 
 def list_pending_proposals(root: Path) -> list[dict]:
     """List all pending Pulse proposals."""
+    return [s for s in list_all_proposals(root) if s.get("status") == "pending"]
+
+
+def list_all_proposals(root: Path) -> list[dict]:
+    """List all Pulse proposals (pending, approved, rejected) from state files.
+
+    Returns list of dicts sorted by created_at, each with:
+        approval_ref, proposal_packet_id, target, thesis, symbol,
+        confidence, status, created_at, approved_at, rejected_at,
+        downstream_packet_id
+    """
     d = _proposals_state_path(root)
     results = []
     for f in sorted(d.glob("pulse_*.json")):
         try:
             state = json.loads(f.read_text(encoding="utf-8"))
-            if state.get("status") == "pending":
-                results.append(state)
+            results.append(state)
         except (json.JSONDecodeError, OSError):
             continue
-    return results
+    return sorted(results, key=lambda s: s.get("created_at", ""))
 
 
 def propose_downstream(

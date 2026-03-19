@@ -184,31 +184,35 @@ def _feedback_loops(root: Path, latest: dict[str, QuantPacket]) -> str:
 def _pulse_section(root: Path) -> Optional[str]:
     """Build Pulse discretionary alert section for the brief.
 
-    Clearly separated from core quant lanes. Shows raw activity,
-    learning, and pending review-gated proposals.
+    Clearly separated from core quant lanes. Shows alert activity,
+    proposal lifecycle (pending/approved/rejected), and learning.
     """
     try:
-        from workspace.quant.pulse.alert_lane import (
-            build_learning_state, LANE as PULSE_LANE,
-        )
+        from workspace.quant.pulse.alert_lane import list_all_proposals
         from workspace.quant.shared.packet_store import list_lane_packets as _list
 
         alerts = _list(root, "pulse", "pulse_alert_packet")
         clusters = _list(root, "pulse", "pulse_cluster_packet")
-        proposals = _list(root, "pulse", "pulse_review_proposal_packet")
+        all_proposals = list_all_proposals(root)
 
-        if not alerts and not proposals:
+        if not alerts and not all_proposals:
             return None
 
         lines = []
         lines.append(f"  {len(alerts)} alerts, {len(clusters)} clusters")
 
-        # Pending proposals awaiting approval
-        pending = [p for p in proposals if "status=pending" in (p.notes or "")]
-        if pending:
-            lines.append(f"  {len(pending)} proposals awaiting #review approval")
-            for p in pending[-3:]:
-                lines.append(f"    → {p.thesis[:80]}")
+        # Proposal lifecycle from authoritative state files
+        if all_proposals:
+            pending = [p for p in all_proposals if p["status"] == "pending"]
+            approved = [p for p in all_proposals if p["status"] == "approved"]
+            rejected = [p for p in all_proposals if p["status"] == "rejected"]
+            lines.append(f"  Proposals: {len(pending)} pending, "
+                         f"{len(approved)} approved, {len(rejected)} rejected")
+            for p in pending[-2:]:
+                lines.append(f"    awaiting: {p['approval_ref']} → {p['target']}")
+            for p in approved[-2:]:
+                ds = p.get("downstream_packet_id", "?")
+                lines.append(f"    released: {p['approval_ref']} → {ds[:35]}")
 
         # Learning summary (only if outcomes exist)
         outcomes = _list(root, "pulse", "pulse_outcome_packet")
