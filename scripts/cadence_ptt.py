@@ -23,10 +23,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import select
 import sys
-import termios
-import tty
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,62 +33,22 @@ if str(ROOT) not in sys.path:
 
 
 # ---------------------------------------------------------------------------
-# Terminal raw-mode key detection
-# ---------------------------------------------------------------------------
-
-class RawTerminal:
-    """Context manager for raw terminal input (no echo, character-at-a-time)."""
-
-    def __init__(self):
-        self._fd = sys.stdin.fileno()
-        self._old_settings = None
-
-    def __enter__(self):
-        self._old_settings = termios.tcgetattr(self._fd)
-        tty.setraw(self._fd)
-        return self
-
-    def __exit__(self, *args):
-        if self._old_settings is not None:
-            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._old_settings)
-
-    def key_pressed(self, timeout: float = 0.1) -> str:
-        """Return the key pressed, or empty string if none within timeout."""
-        rlist, _, _ = select.select([sys.stdin], [], [], timeout)
-        if rlist:
-            ch = sys.stdin.read(1)
-            return ch
-        return ""
-
-
-# Key mapping for named keys
-_KEY_MAP = {
-    "space": " ",
-    "enter": "\r",
-    "tab": "\t",
-}
-
-
-def _resolve_key(binding: str) -> str:
-    """Resolve a key binding name to the actual character."""
-    lower = binding.lower().strip()
-    if lower in _KEY_MAP:
-        return _KEY_MAP[lower]
-    if len(lower) == 1:
-        return lower
-    return " "  # default to space
-
-
-# ---------------------------------------------------------------------------
 # Status display
 # ---------------------------------------------------------------------------
 
 def _show_status() -> int:
     from runtime.voice.ptt import INPUT_MODE, PTT_BINDING
+    from runtime.voice.ptt_input import probe_backends
 
+    backends = probe_backends()
     print("Cadence input configuration")
-    print(f"  Input mode:   {INPUT_MODE}")
-    print(f"  PTT binding:  {PTT_BINDING}")
+    print(f"  Input mode:      {INPUT_MODE}")
+    print(f"  PTT binding:     {PTT_BINDING}")
+    print(f"  Backend:         {backends['selected_backend']} (configured: {backends['configured_backend']})")
+    print(f"  pynput:          {'available' if backends['pynput_available'] else 'not available'}")
+    print(f"  DISPLAY:         {os.environ.get('DISPLAY', 'not set')}")
+    is_global = backends['selected_backend'] == 'pynput'
+    print(f"  Global capture:  {'yes (X11)' if is_global else 'no (terminal-only)'}")
     print()
 
     from runtime.voice.cadence_status import load_status
@@ -99,11 +57,17 @@ def _show_status() -> int:
         routing = status.get("last_routing_mode", "—")
         ppx_id = status.get("last_personaplex_session_id", "")
         last_t = status.get("last_transcript", "")
-        print(f"  Last routing:  {routing}")
+        response_preview = status.get("last_response_preview", "")
+        print(f"  Last routing:    {routing}")
         if ppx_id:
-            print(f"  Last PPX session: {ppx_id}")
+            print(f"  Last session:    {ppx_id}")
         if last_t:
-            print(f"  Last transcript:  {last_t!r}")
+            print(f"  Last transcript: {last_t!r}")
+        if response_preview:
+            preview = response_preview[:100].replace("\n", " ")
+            if len(response_preview) > 100:
+                preview += "..."
+            print(f"  Last response:   {preview}")
     else:
         print("  No status file yet (daemon hasn't run).")
     return 0
@@ -146,138 +110,133 @@ def _replay(transcript: str) -> int:
 # Live PTT loop
 # ---------------------------------------------------------------------------
 
-def _live_ptt(*, binding: str = "space") -> int:
+def _live_ptt(*, binding: str = "space", backend: str = "") -> int:
     from runtime.voice.ptt import PTTCapture, process_ptt_turn, interrupt_tts, tts_is_playing
     from runtime.voice.cues import play_cue, cues_available
     from runtime.voice.cadence_status import init_status
+    from runtime.voice.ptt_input import create_ptt_backend
 
     init_status(listener_mode="ptt", root=ROOT)
-    ptt_key = _resolve_key(binding)
-    key_name = binding.upper() if len(binding) > 1 else repr(binding)
+    input_backend = create_ptt_backend(backend=backend, binding=binding)
 
-    print(f"\033[1mCadence PTT\033[0m — hold {key_name} to talk, Ctrl+C to exit")
-    if cues_available():
-        print(f"\033[2mAudio cues enabled. TTS via Piper.\033[0m")
+    print(f"\033[1mCadence PTT\033[0m — {input_backend.binding_description}")
+    if input_backend.is_global:
+        print(f"\033[2mGlobal capture active (pynput/X11). Works from any window.\033[0m")
     else:
-        print(f"\033[2mAudio cues not available (paplay missing or no cue files).\033[0m")
+        print(f"\033[2mTerminal capture. Focus this window to talk.\033[0m")
+    if cues_available():
+        print(f"\033[2mAudio cues enabled.\033[0m")
+    print(f"\033[2mCtrl+C to exit.\033[0m")
     print()
 
     capture = PTTCapture()
     capturing = False
+    stop_event = threading.Event()
+
+    def on_press():
+        nonlocal capturing
+        if capturing:
+            return
+        # Interrupt TTS if playing
+        if tts_is_playing():
+            interrupt_tts()
+        # Start capture
+        play_cue("wake_accept", block=False)
+        try:
+            capture.start()
+            capturing = True
+            _safe_print("\033[33m● Recording...\033[0m", end="")
+        except Exception as exc:
+            _safe_print(f"\033[31mCapture error: {exc}\033[0m")
+
+    def on_release():
+        nonlocal capturing
+        if not capturing:
+            return
+        wav_path = capture.stop()
+        capturing = False
+
+        if wav_path is None:
+            _safe_print("\033[2m  (too short, ignored)\033[0m")
+            return
+
+        _safe_print("\033[36m◉ Processing...\033[0m")
+        result = process_ptt_turn(wav_path, execute=False, root=ROOT)
+        _display_result_normal(result)
+
+        try:
+            wav_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    input_backend.start(on_press=on_press, on_release=on_release)
 
     try:
-        with RawTerminal() as term:
-            while True:
-                ch = term.key_pressed(timeout=0.05)
-
-                # Ctrl+C
-                if ch == "\x03":
-                    if capturing:
-                        capture.abort()
-                    break
-
-                # PTT key pressed
-                if ch == ptt_key:
-                    if not capturing:
-                        # Interrupt TTS if playing
-                        if tts_is_playing():
-                            interrupt_tts()
-
-                        # Start capture
-                        play_cue("wake_accept", block=False)
-                        try:
-                            capture.start()
-                            capturing = True
-                            _raw_write("\r\033[33m● Recording...\033[0m")
-                        except Exception as exc:
-                            _raw_write(f"\r\033[31mCapture error: {exc}\033[0m\n")
-                    else:
-                        # Key is still held — no action needed
-                        pass
-
-                # No key pressed (released or idle)
-                elif capturing and ch == "":
-                    # Check if key was released by waiting a bit longer
-                    # In raw mode, we detect release by absence of the key
-                    ch2 = term.key_pressed(timeout=0.15)
-                    if ch2 == ptt_key:
-                        # Still held
-                        continue
-
-                    # Key released — stop capture
-                    wav_path = capture.stop()
-                    capturing = False
-
-                    if wav_path is None:
-                        _raw_write("\r\033[2m  (too short, ignored)\033[0m\n")
-                        continue
-
-                    _raw_write("\r\033[36m◉ Processing...\033[0m   \n")
-
-                    # Process the captured audio
-                    result = process_ptt_turn(wav_path, execute=False, root=ROOT)
-                    _display_result(result)
-
-                    # Clean up WAV
-                    try:
-                        wav_path.unlink(missing_ok=True)
-                    except Exception:
-                        pass
-
-                # Enforce max capture duration
-                if capturing and capture.duration > 30.0:
-                    wav_path = capture.stop()
-                    capturing = False
-                    _raw_write("\r\033[33m  (max duration reached)\033[0m\n")
-                    if wav_path:
-                        result = process_ptt_turn(wav_path, execute=False, root=ROOT)
-                        _display_result(result)
-                        try:
-                            wav_path.unlink(missing_ok=True)
-                        except Exception:
-                            pass
-
+        while not stop_event.is_set():
+            try:
+                # For terminal backend, the listener runs in its own thread
+                # For pynput, we just sleep and let the listener thread handle events
+                if input_backend.is_global:
+                    stop_event.wait(timeout=0.5)
+                else:
+                    # Terminal backend handles its own loop; we wait for it to finish
+                    stop_event.wait(timeout=0.5)
+                    if not input_backend.is_running():
+                        break
+            except KeyboardInterrupt:
+                break
+            # Enforce max capture duration
+            if capturing and capture.duration > 30.0:
+                on_release()
+                _safe_print("\033[33m  (max duration reached)\033[0m")
     except KeyboardInterrupt:
+        pass
+    finally:
         if capturing:
             capture.abort()
+        input_backend.stop()
 
-    _raw_write("\n\033[2mCadence PTT stopped.\033[0m\n")
+    print("\n\033[2mCadence PTT stopped.\033[0m")
     return 0
 
 
-def _raw_write(text: str) -> None:
-    """Write to stdout in raw terminal mode (needs \\r for line start)."""
-    os.write(sys.stdout.fileno(), text.encode())
+def _safe_print(text: str, **kwargs) -> None:
+    """Print that works from both main thread and callbacks."""
+    try:
+        print(text, flush=True, **kwargs)
+    except Exception:
+        try:
+            os.write(sys.stdout.fileno(), (text + "\n").encode())
+        except Exception:
+            pass
 
 
-def _display_result(result: dict) -> None:
-    """Display a PTT turn result in raw terminal mode."""
+def _display_result_normal(result: dict) -> None:
+    """Display a PTT turn result."""
     phase = result.get("phase", "?")
 
     if phase in ("too_short", "silent", "no_speech", "empty_command"):
-        _raw_write(f"\r\033[2m  ({phase})\033[0m\n")
+        _safe_print(f"\033[2m  ({phase})\033[0m")
         return
 
     if phase == "route_error":
-        _raw_write(f"\r\033[31m  Error: {result.get('error', '?')}\033[0m\n")
+        _safe_print(f"\033[31m  Error: {result.get('error', '?')}\033[0m")
         return
 
     command = result.get("command", "")
     mode = result.get("routing_mode", "?")
     response = result.get("response", "")
 
-    mode_label = "PersonaPlex" if mode == "personaplex" else "command"
-    _raw_write(f"\r\033[32m  you:\033[0m {command}\n")
-    _raw_write(f"\r\033[2m  [{mode_label}]\033[0m\n")
+    _safe_print(f"\033[32m  you:\033[0m {command}")
+    _safe_print(f"\033[2m  [{'conversation' if mode == 'personaplex' else 'command'}]\033[0m")
 
     if response:
-        # Compact response for terminal
         lines = response.split("\n")
         for line in lines[:15]:
-            _raw_write(f"\r\033[36m  Cadence:\033[0m {line}\n")
+            _safe_print(f"\033[36m  Cadence:\033[0m {line}")
         if len(lines) > 15:
-            _raw_write(f"\r\033[2m  ... ({len(lines) - 15} more lines)\033[0m\n")
-    _raw_write("\r\n")
+            _safe_print(f"\033[2m  ... ({len(lines) - 15} more lines)\033[0m")
+    _safe_print("")
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +252,9 @@ def main() -> int:
     parser.add_argument("--replay", default="", help="Replay a canned transcript (no mic)")
     parser.add_argument("--status", action="store_true", help="Show input mode and last routing info")
     parser.add_argument("--binding", default=os.environ.get("CADENCE_PTT_BINDING", "space"),
-                        help="PTT key binding (default: space)")
+                        help="PTT key/button binding (space, f5, mouse4, mouse5)")
+    parser.add_argument("--backend", default="",
+                        help="Input backend: auto, pynput, terminal (default: auto)")
     parser.add_argument("--json", action="store_true", help="Output replay result as JSON")
     args = parser.parse_args()
 
@@ -306,13 +267,12 @@ def main() -> int:
             from runtime.voice.cadence_status import init_status
             init_status(root=ROOT)
             result = replay_ptt_turn(args.replay, root=ROOT)
-            # Strip non-serializable route_result for clean JSON
             clean = {k: v for k, v in result.items() if k != "route_result"}
             print(json.dumps(clean, indent=2, default=str))
             return 0
         return _replay(args.replay)
 
-    return _live_ptt(binding=args.binding)
+    return _live_ptt(binding=args.binding, backend=args.backend)
 
 
 if __name__ == "__main__":
