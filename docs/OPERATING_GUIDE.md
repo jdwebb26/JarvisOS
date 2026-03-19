@@ -505,30 +505,39 @@ This is important because cancel is now part of the trust boundary, not just UI 
 
 ---
 
-## Voice operation
+## Cadence voice operation
 
-## What voice v5.1 is for
+Cadence is designed as a two-layer voice interface. Both layers are described here with their current status.
 
-Voice is meant to support safe operator interaction, not unrestricted hot-mic control.
+### Layer 1: Wake-word command — PARTIAL
 
-Voice flows are important when you want:
+Always-listening wake-word detection that captures a spoken command and routes it into the task system.
 
-* lightweight interaction
-* session-aware routing
-* safety-aware command handling
-* future-friendly operator ergonomics
+**Pipeline**: openWakeWord wake detection → audible beep (earcon) → Silero VAD speech gating → faster-whisper STT → `route_cadence_utterance()` → task creation or direct action → Piper/Coqui TTS response.
 
-## What to expect
+**What exists**:
+* `cadence_daemon.py` — two-phase loop (passive standby → wake → command capture → route)
+* `live_listener.py` — subprocess: openWakeWord + Silero VAD + faster-whisper (runs in `.venv-voice`, Python 3.12)
+* `cadence_ingress.py` — intent classification, task creation, voice command routing
+* `tts_piper.py` / `tts_coqui_render.py` — TTS output
+* `cues.py` / `feedback.py` — earcon playback (wake_accept, command_open, route_ok, error)
+* systemd unit `cadence-voice-daemon.service` — daemon is running (596 MB resident)
+* Transcript routing and TTS output are independently proven
 
-Expect voice behavior to flow through:
+**What's blocked**: Mic capture via RDPSource is unavailable in WSL2. Without live mic input, there is no end-to-end wake-to-command proof. The daemon runs but receives no audio.
 
-* voice session records
-* route safety logic
-* gateway handling
-* notification / operator visibility surfaces
+### Layer 2: PersonaPlex conversation — MISSING
 
-A good mental model is:
-voice input is proposed intent plus bounded route logic, not immediate authority.
+Persistent conversational AI that can discuss what is happening across OpenClaw/Jarvis, access workspace context and runtime state, and act as an ongoing copilot — not just one-shot commands.
+
+**What exists**: Nothing. The current Cadence code is entirely one-shot: wake → capture → route single utterance → respond. There is no multi-turn conversation state, no workspace/context awareness beyond the routed command, and no copilot surface.
+
+**What would be needed**:
+* Persistent conversation session with memory across turns
+* Access to live runtime state (task board, approvals, failures, agent status)
+* Access to relevant workspaces and artifacts
+* Dialogue management (follow-ups, clarification, context carry-over)
+* Distinction between command intent ("approve task X") and conversation intent ("what failed today?")
 
 ---
 

@@ -40,7 +40,8 @@ These components are running on the live machine and have been proven end-to-end
 
 | Area | Status |
 |------|--------|
-| **Cadence (voice)** | Listener + TTS stack inventoried; integration in progress elsewhere |
+| **Cadence — wake-word command layer** | PARTIAL — daemon running, wake detection + VAD + STT + TTS built. Mic blocked on WSL2 (RDPSource unavailable). No live end-to-end wake-to-command proof yet. |
+| **Cadence — PersonaPlex conversation layer** | MISSING — no persistent conversational AI / copilot surface exists. Current code is one-shot command routing only. |
 | **Strategy Factory** | Separate pipeline at `~/.openclaw/workspace/strategy_factory/` |
 | **v5.2 multi-model routing** | Scaffolding only — not active in production |
 
@@ -274,7 +275,8 @@ Current baseline: **395 pass, 1 warn, 0 fail**.
 - **LM Studio required** — Hermes and Qwen backends need LM Studio running at the configured address.
 - **No Claude API** — Claude integration is blocked until real API access is configured.
 - **No GPT in production** — OpenAI adapter is scaffolded but not active without valid billing.
-- **Voice not integrated** — Cadence voice stack (listener + TTS) is inventoried but not wired into the runtime.
+- **Cadence command layer partial** — wake-word daemon is running but mic capture is blocked on WSL2 (RDPSource unavailable). No live end-to-end wake-to-command proof.
+- **Cadence PersonaPlex missing** — the persistent conversational AI / copilot layer does not exist yet. Current Cadence is one-shot command routing only.
 - **Strategy Factory separate** — the quant backtesting pipeline lives at `~/.openclaw/workspace/strategy_factory/` and is operated independently.
 - **v5.2 features are scaffolding** — multi-model routing, deeper replay/scoring, and accelerator visibility are not yet active.
 
