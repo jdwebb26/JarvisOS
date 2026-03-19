@@ -168,14 +168,41 @@ def test_browser_result():
     assert "browsed" in text
 
 
-def test_kitt_brief_completed():
+def test_kitt_brief_completed_basic():
     text = _render_status_text("kitt_brief_completed", _payload(
         agent_id="kitt",
-        detail="kitt_brief_abc123: MARKET STATE NQ at 20100",
+        detail="NQ at 20100, bullish momentum",
     ))
     assert "\U0001f9e0" in text  # 🧠
     assert "**Kitt**" in text
-    assert "brief ready" in text
+    assert "NQ brief ready" in text
+
+
+def test_kitt_brief_completed_factory():
+    text = _render_status_text("kitt_brief_completed", _payload(
+        agent_id="kitt",
+        detail="Factory weekly: status=review priority=ema_crossover",
+        source="strategy_factory",
+        cycle_id="weekly_20260319",
+        operator_status="review",
+        priority_family="ema_crossover",
+    ))
+    assert "factory brief" in text
+    assert "weekly_20260319" in text
+    assert "ema_crossover" in text
+
+
+def test_kitt_brief_failed_with_model():
+    text = _render_status_text("kitt_brief_failed", _payload(
+        agent_id="kitt",
+        detail="FAILED: nvidia_error: NVIDIA API timeout: HTTPSConnectionPool(host='integrate.api.nvidia.com', port=443): Read timed out",
+        model_used="moonshotai/kimi-k2.5",
+    ))
+    assert "brief failed" in text
+    assert "kimi-k2.5" in text
+    assert "NVIDIA API timeout" in text
+    # Full exception chain should be extracted to summary, not raw dump
+    assert "port=443" not in text
 
 
 def test_warning_compact():
@@ -253,6 +280,100 @@ def test_noise_stripping_tab_hashes():
 def test_noise_stripping_cycle_ids():
     text = _clean_detail("cycle rcycle_abc123def456 completed with 3 tasks")
     assert "rcycle_" not in text
+
+
+# ---------------------------------------------------------------------------
+# Informational quant event formatting
+# ---------------------------------------------------------------------------
+
+def test_strategy_promoted_strips_redundant_id():
+    text = _render_status_text("quant_strategy_promoted", _payload(
+        agent_id="sigma",
+        detail="[atlas-gap-65f8a3d6] Strategy atlas-gap-65f8a3d6 promoted. Meets all validation gates.",
+        strategy_id="atlas-gap-65f8a3d6",
+        priority="high",
+    ))
+    assert "**Strategy promoted**" in text
+    assert "`atlas-gap-65f8a3d6`" in text
+    # Strategy ID should not appear 3 times — redundant prefix stripped
+    assert text.count("atlas-gap-65f8a3d6") <= 2
+    assert "paper-trade approval" in text  # high-priority gets next-step hint
+
+
+def test_strategy_rejected_clean():
+    text = _render_status_text("quant_strategy_rejected", _payload(
+        agent_id="sigma",
+        detail="[atlas-mr-001] Strategy atlas-mr-001 rejected: PF 0.9 < 1.3; Sharpe 0.4 < 0.8",
+        strategy_id="atlas-mr-001",
+    ))
+    assert "**Strategy rejected**" in text
+    assert "PF 0.9" in text
+    # Redundant "Strategy atlas-mr-001 rejected:" prefix should be stripped
+    assert "Strategy atlas-mr-001 rejected:" not in text
+
+
+def test_execution_status_clean():
+    text = _render_status_text("quant_execution_status", _payload(
+        agent_id="kitt",
+        detail="[atlas-gap-65f8a3d6] Paper trade filled: long 1 NQ at 24584.29 (slippage: -0.0151)",
+        strategy_id="atlas-gap-65f8a3d6",
+    ))
+    assert "**Trade filled**" in text
+    assert "long 1 NQ" in text
+    assert "Executor" not in text  # no more "Executor" jargon
+
+
+def test_execution_rejected_clean():
+    text = _render_status_text("quant_execution_rejected", _payload(
+        agent_id="kitt",
+        detail="[atlas-gap-65f8a3d6] Execution refused for atlas-gap-65f8a3d6: strategy_limit_breach: quantity 999 > max 2",
+        strategy_id="atlas-gap-65f8a3d6",
+    ))
+    assert "**Trade rejected**" in text
+    assert "strategy_limit_breach" in text
+    # Redundant "Execution refused for atlas-gap..." prefix stripped
+    assert "Execution refused for atlas-gap" not in text
+
+
+def test_pulse_alert_no_redundant_pulse():
+    text = _render_status_text("quant_pulse_alert", _payload(
+        agent_id="pulse",
+        detail="NQ @ 24600.0 bullish [reclaim, vwap]",
+    ))
+    assert "**Pulse alert**" in text
+    assert "NQ @ 24600" in text
+    # Must not say "Pulse pulse alert"
+    assert "Pulse pulse" not in text
+
+
+def test_candidate_submitted():
+    text = _render_status_text("quant_candidate_submitted", _payload(
+        agent_id="atlas",
+        detail="[atlas-live-proof-002] Mean-rev NQ: RSI(14)<30 + VWAP + low-VIX. Backtest PF 1.65",
+        strategy_id="atlas-live-proof-002",
+    ))
+    assert "**New candidate**" in text
+    assert "`atlas-live-proof-002`" in text
+    assert "PF 1.65" in text
+
+
+def test_scenario_submitted():
+    text = _render_status_text("quant_scenario_submitted", _payload(
+        agent_id="fish",
+        detail="NQ consolidation breakout scenario (proof run)",
+    ))
+    assert "**Scenario**" in text
+    assert "consolidation breakout" in text
+
+
+def test_execution_intent():
+    text = _render_status_text("quant_execution_intent", _payload(
+        agent_id="kitt",
+        detail="[atlas-gap-65f8a3d6] Paper trade intent: long 1 NQ for atlas-gap-65f8a3d6",
+        strategy_id="atlas-gap-65f8a3d6",
+    ))
+    assert "**Trade intent**" in text
+    assert "long 1 NQ" in text
 
 
 # ---------------------------------------------------------------------------

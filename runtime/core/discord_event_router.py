@@ -439,12 +439,28 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
     # --- Kitt brief ---
 
     if kind == "kitt_brief_completed":
-        line = f"{e} **Kitt** brief ready"
+        source = payload.get("source", "")
+        cycle_id = payload.get("cycle_id", "")
+        op_status = payload.get("operator_status", "")
+        priority_fam = payload.get("priority_family", "")
+        # Factory-sourced briefs get richer headline
+        if source == "strategy_factory" and cycle_id:
+            line = f"{e} **Kitt** \u2014 factory brief `{cycle_id}`"
+            if op_status:
+                line += f" ({op_status})"
+            if priority_fam:
+                line += f"\n\U0001f3af Priority family: **{priority_fam}**"
+        else:
+            line = f"{e} **Kitt** \u2014 NQ brief ready"
         return f"{line}\n> {clean}" if clean else line
 
     if kind == "kitt_brief_failed":
+        err = _extract_error_summary(detail)
+        model = payload.get("model_used", "")
         line = f"{e} **Kitt** brief failed"
-        return f"{line}\n> {clean}" if clean else line
+        if model:
+            line += f" ({model})"
+        return f"{line}\n> {err}" if err else line
 
     # --- Delegation ---
 
@@ -492,16 +508,37 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
         strategy = payload.get("strategy_id", "")
         pkt_type = payload.get("packet_type", "")
         strat_tag = f" `{strategy}`" if strategy else ""
+        priority = payload.get("priority", "")
+
+        # Strip redundant "[strategy_id] Strategy strategy_id ..." prefix from detail.
+        # The quant bridge prepends "[strategy_id]" and the lane code often follows with
+        # "Strategy strategy_id verb:" — both are noise when the headline already has strat_tag.
+        _qclean = clean
+        if strategy:
+            # Strip leading "[strategy_id] " bracket prefix
+            _bracket = f"[{strategy}] "
+            if _qclean.startswith(_bracket):
+                _qclean = _qclean[len(_bracket):]
+            # Strip "Strategy strategy_id verb:" prose prefix
+            if _qclean.startswith(f"Strategy {strategy} "):
+                _qclean = _qclean[len(f"Strategy {strategy} "):]
+            # Strip "Execution refused for strategy_id:" prose prefix
+            if _qclean.startswith(f"Execution refused for {strategy}: "):
+                _qclean = _qclean[len(f"Execution refused for {strategy}: "):]
 
         if kind == "quant_strategy_promoted":
-            line = f"{e} **Sigma** promoted{strat_tag}"
-            return f"{line}\n> {clean}" if clean else line
+            line = f"{e} **Strategy promoted**{strat_tag}"
+            if _qclean:
+                line += f"\n> {_qclean}"
+            if priority == "high":
+                line += f"\n\U0001f4cc Sigma validated \u2014 next: paper-trade approval"
+            return line
         if kind == "quant_strategy_rejected":
-            line = f"{e} **Sigma** rejected{strat_tag}"
-            return f"{line}\n> {clean}" if clean else line
+            line = f"{e} **Strategy rejected**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
         if kind == "quant_papertrade_candidate":
-            line = f"{e} **Sigma** paper-trade candidate{strat_tag}"
-            return f"{line}\n> {clean}" if clean else line
+            line = f"{e} **Paper-trade candidate**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
         if kind == "quant_papertrade_request":
             thesis = payload.get("thesis", "")
             symbol = payload.get("symbol", "NQ")
@@ -537,18 +574,48 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
             else:
                 lines.append(f"\U0001f4cc Approve/reject via emoji reaction on this message")
             return "\n".join(lines)
+        if kind == "quant_execution_intent":
+            line = f"\u23f3 **Trade intent**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
         if kind == "quant_execution_status":
-            line = f"{e} **Executor** fill{strat_tag}"
-            return f"{line}\n> {clean}" if clean else line
+            line = f"{e} **Trade filled**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_fill":
+            line = f"\U0001f4b0 **Fill**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
         if kind == "quant_execution_rejected":
-            line = f"{e} **Executor** rejected{strat_tag}"
-            return f"{line}\n> {clean}" if clean else line
+            line = f"{e} **Trade rejected**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
         if kind == "quant_paper_review":
-            line = f"{e} **Sigma** paper review{strat_tag}"
-            return f"{line}\n> {clean}" if clean else line
+            line = f"{e} **Paper-trade review**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
         if kind == "quant_alert":
             line = f"{e} **Kitt** ALERT{strat_tag}"
-            return f"{line}\n> {clean}" if clean else line
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_pulse_alert":
+            line = f"\U0001f4a1 **Pulse alert**"
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_pulse_cluster":
+            line = f"\U0001f4a1 **Pulse cluster**"
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_pulse_learning":
+            line = f"\U0001f4a1 **Pulse learning**"
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_candidate_submitted":
+            line = f"\U0001f9ea **New candidate**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_scenario_submitted":
+            line = f"\U0001f3a3 **Scenario**"
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_validation_completed":
+            line = f"\U0001f50d **Validation complete**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_setup":
+            line = f"\U0001f3af **Setup**{strat_tag}"
+            return f"{line}\n> {_qclean}" if _qclean else line
+        if kind == "quant_health":
+            line = f"\U0001f3e5 **{agent}** health"
+            return f"{line}\n> {_qclean}" if _qclean else line
         if kind == "quant_pulse_proposal":
             thesis = payload.get("thesis", "")
             symbol = payload.get("symbol", "NQ")
@@ -582,10 +649,10 @@ def _render_status_text(kind: str, payload: dict[str, Any]) -> str:
             else:
                 lines.append(f"\U0001f4cc Approve/reject via emoji reaction on this message")
             return "\n".join(lines)
-        # Generic quant event
+        # Generic quant event — fallback
         label = kind.replace("quant_", "").replace("_", " ")
         line = f"{e} **{agent}** {label}{strat_tag}"
-        return f"{line}\n> {clean}" if clean else line
+        return f"{line}\n> {_qclean}" if _qclean else line
 
     # --- Fallback ---
     line = f"\u2139\ufe0f **{agent}** {kind}"
