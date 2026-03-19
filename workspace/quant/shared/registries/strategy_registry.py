@@ -329,3 +329,43 @@ def transition_strategy(
             fcntl.flock(f, fcntl.LOCK_UN)
 
     return current
+
+
+# ---------------------------------------------------------------------------
+# Query helpers
+# ---------------------------------------------------------------------------
+
+def get_lineage(root: Path, strategy_id: str) -> list[StrategyEntry]:
+    """Walk parent_id chain from oldest ancestor to this strategy.
+
+    Returns [] if strategy not found.
+    """
+    all_strats = load_all_strategies(root)
+    if strategy_id not in all_strats:
+        return []
+
+    chain = []
+    current = strategy_id
+    seen = set()
+    while current and current not in seen:
+        seen.add(current)
+        entry = all_strats.get(current)
+        if entry is None:
+            break
+        chain.append(entry)
+        current = entry.parent_id
+
+    chain.reverse()
+    return chain
+
+
+def get_children(root: Path, parent_id: str) -> list[StrategyEntry]:
+    """Find all strategies whose parent_id matches."""
+    all_strats = load_all_strategies(root)
+    return [s for s in all_strats.values() if s.parent_id == parent_id]
+
+
+def get_strategies_by_state(root: Path, state: str) -> list[StrategyEntry]:
+    """Find all strategies in a given lifecycle state."""
+    all_strats = load_all_strategies(root)
+    return [s for s in all_strats.values() if s.lifecycle_state == state]

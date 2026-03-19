@@ -181,6 +181,48 @@ def _feedback_loops(root: Path, latest: dict[str, QuantPacket]) -> str:
     return "\n".join(lines)
 
 
+def _pulse_section(root: Path) -> Optional[str]:
+    """Build Pulse discretionary alert section for the brief.
+
+    Clearly separated from core quant lanes. Shows raw activity,
+    learning, and pending review-gated proposals.
+    """
+    try:
+        from workspace.quant.pulse.alert_lane import (
+            build_learning_state, LANE as PULSE_LANE,
+        )
+        from workspace.quant.shared.packet_store import list_lane_packets as _list
+
+        alerts = _list(root, "pulse", "pulse_alert_packet")
+        clusters = _list(root, "pulse", "pulse_cluster_packet")
+        proposals = _list(root, "pulse", "pulse_review_proposal_packet")
+
+        if not alerts and not proposals:
+            return None
+
+        lines = []
+        lines.append(f"  {len(alerts)} alerts, {len(clusters)} clusters")
+
+        # Pending proposals awaiting approval
+        pending = [p for p in proposals if "status=pending" in (p.notes or "")]
+        if pending:
+            lines.append(f"  {len(pending)} proposals awaiting #review approval")
+            for p in pending[-3:]:
+                lines.append(f"    → {p.thesis[:80]}")
+
+        # Learning summary (only if outcomes exist)
+        outcomes = _list(root, "pulse", "pulse_outcome_packet")
+        if outcomes:
+            hits = sum(1 for o in outcomes if "hit=true" in (o.notes or ""))
+            total = len(outcomes)
+            hr = f"{hits/total:.0%}" if total else "?"
+            lines.append(f"  Learning: {total} outcomes, hit_rate={hr}")
+
+        return "\n".join(lines)
+    except Exception:
+        return None
+
+
 def _operator_actions(by_state: dict[str, list[str]], root: Path) -> str:
     actions = []
     promoted = by_state.get("PROMOTED", [])
@@ -230,6 +272,11 @@ PIPELINE
     if tf_pkt is not None:
         tier = tf_pkt.agreement_tier if tf_pkt.agreement_tier is not None else "?"
         brief_text += f"\n\nTRADEFLOOR\n  Agreement tier: {tier}\n  {tf_pkt.thesis[:120]}"
+
+    # Pulse section — separate from core quant lanes
+    pulse_text = _pulse_section(root)
+    if pulse_text:
+        brief_text += f"\n\nPULSE (discretionary)\n{pulse_text}"
 
     # Feedback loops section
     brief_text += f"\n\nFEEDBACK LOOPS\n{_feedback_loops(root, latest)}"

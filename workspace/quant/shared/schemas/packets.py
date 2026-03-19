@@ -78,10 +78,13 @@ CANONICAL_PACKET_TYPES = {
     "tradefloor_packet", "tradefloor_request_packet",
     # System (all lanes)
     "health_summary",
+    # Pulse (discretionary / TradingView alert lane)
+    "pulse_alert_packet", "pulse_cluster_packet", "pulse_outcome_packet",
+    "pulse_learning_packet", "pulse_review_proposal_packet",
 }
 
 # Canonical lane names
-LANE_NAMES = {"kitt", "atlas", "fish", "sigma", "hermes", "executor", "tradefloor"}
+LANE_NAMES = {"kitt", "atlas", "fish", "sigma", "hermes", "executor", "tradefloor", "pulse"}
 
 
 # ---------------------------------------------------------------------------
