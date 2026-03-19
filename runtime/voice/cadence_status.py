@@ -75,7 +75,16 @@ def record_command_window() -> None:
     _write_status(state="command_window")
 
 
-def record_route(*, transcript: str, intent: str, ok: bool, error: str = "") -> None:
+def record_route(
+    *,
+    transcript: str,
+    intent: str,
+    ok: bool,
+    error: str = "",
+    routing_mode: str = "",
+    personaplex_session_id: str = "",
+    response_preview: str = "",
+) -> None:
     _counters["route"] += 1
     if not ok:
         _counters["error"] += 1
@@ -84,6 +93,9 @@ def record_route(*, transcript: str, intent: str, ok: bool, error: str = "") -> 
     _last["route_ok"] = ok
     _last["route_error"] = error
     _last["route_at"] = _now_iso()
+    _last["routing_mode"] = routing_mode or ("personaplex" if personaplex_session_id else "command")
+    _last["personaplex_session_id"] = personaplex_session_id
+    _last["response_preview"] = response_preview[:200] if response_preview else ""
     _write_status(state="standby")
 
 
@@ -127,6 +139,9 @@ def _write_status(*, state: str, listener_mode: str = "", audio_device: str = ""
         "last_route_ok": _last.get("route_ok", None),
         "last_route_error": _last.get("route_error", ""),
         "last_route_at": _last.get("route_at", ""),
+        "last_routing_mode": _last.get("routing_mode", ""),
+        "last_personaplex_session_id": _last.get("personaplex_session_id", ""),
+        "last_response_preview": _last.get("response_preview", ""),
         "uptime_seconds": round(uptime),
     }
     if listener_mode:

@@ -91,10 +91,25 @@ def _show_status(*, as_json: bool = False) -> int:
             print(f"  Last error:      {last_err}")
         if last_route_at:
             print(f"  Last route at:   {last_route_at}")
+
+    # PersonaPlex routing info
+    routing_mode = status.get("last_routing_mode", "")
+    ppx_session = status.get("last_personaplex_session_id", "")
+    ppx_response = status.get("last_response_preview", "")
+    if routing_mode:
+        print()
+        print(f"  Routing mode:    {routing_mode}")
+        if ppx_session:
+            print(f"  PersonaPlex session: {ppx_session}")
+        if ppx_response:
+            preview = ppx_response[:120].replace("\n", " ")
+            if len(ppx_response) > 120:
+                preview += "..."
+            print(f"  Response preview: {preview}")
     return 0
 
 
-def _replay(*, transcript: str, command: str = "", execute: bool = False) -> int:
+def _replay(*, transcript: str, command: str = "", execute: bool = False, verbose: bool = False) -> int:
     from runtime.voice.cadence_daemon import run_turn
 
     passive_t = transcript
@@ -108,17 +123,57 @@ def _replay(*, transcript: str, command: str = "", execute: bool = False) -> int
         verbose=True,
     )
 
-    print()
-    print(json.dumps(result, indent=2, default=str))
-
     phase = result.get("phase", "?")
+    route_result = result.get("route_result") or {}
+    intent_result = route_result.get("intent_result") or {}
+    delegation = route_result.get("delegation_result") or {}
+    route_reason = route_result.get("route_reason", "")
+    is_ppx = route_reason == "personaplex_conversation"
+
+    print()
+    # Compact summary first
     if phase == "routed":
         ok = result.get("route_ok", False)
         cmd = result.get("command", "")
-        intent = (result.get("route_result") or {}).get("intent_result", {}).get("intent", "?")
-        print(f"\nResult: phase={phase}  ok={ok}  command={cmd!r}  intent={intent}")
+        intent = intent_result.get("intent", "?")
+        mode = "PersonaPlex" if is_ppx else "command"
+        print(f"Phase:     {phase}")
+        print(f"OK:        {ok}")
+        print(f"Command:   {cmd!r}")
+        print(f"Intent:    {intent}")
+        print(f"Mode:      {mode}")
+
+        if is_ppx:
+            ppx_session = delegation.get("conversation_id", "")
+            ppx_intent = delegation.get("personaplex_intent", "")
+            ppx_response = delegation.get("response", "")
+            action = delegation.get("action_proposed")
+            usage = delegation.get("llm_usage") or {}
+
+            if ppx_session:
+                print(f"Session:   {ppx_session}")
+            if ppx_intent:
+                print(f"PPX Intent: {ppx_intent}")
+            if usage.get("total_tokens"):
+                print(f"Tokens:    {usage['total_tokens']}")
+            if action:
+                print(f"Action:    {action.get('description', '?')} (PROPOSED — needs confirmation)")
+            if ppx_response:
+                print()
+                print("--- PersonaPlex Response ---")
+                print(ppx_response)
+                print("---")
+        else:
+            # Command routing — show delegation result
+            if delegation:
+                print(f"Delegation: {json.dumps(delegation, indent=2, default=str)[:500]}")
     else:
-        print(f"\nResult: phase={phase}")
+        print(f"Phase: {phase}")
+
+    if verbose:
+        print()
+        print("--- Full Result JSON ---")
+        print(json.dumps(result, indent=2, default=str))
     return 0
 
 
@@ -157,6 +212,7 @@ def main() -> int:
     parser.add_argument("--execute", action="store_true", help="Execute mode for --replay (default: preview)")
     parser.add_argument("--health", action="store_true", help="Run voice stack health probe")
     parser.add_argument("--recent", action="store_true", help="Show recent voice command records")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Show full JSON in --replay output")
     args = parser.parse_args()
 
     if args.health:
@@ -164,7 +220,7 @@ def main() -> int:
     if args.recent:
         return _recent()
     if args.replay:
-        return _replay(transcript=args.replay, command=args.command, execute=args.execute)
+        return _replay(transcript=args.replay, command=args.command, execute=args.execute, verbose=args.verbose)
     return _show_status(as_json=args.json)
 
 

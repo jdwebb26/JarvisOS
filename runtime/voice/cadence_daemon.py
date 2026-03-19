@@ -402,8 +402,21 @@ def run_turn(
     intent = route_result.get("intent_result", {}).get("intent", "?")
     routed = route_result.get("routed", False)
     route_ok = routed or not execute
-    record_route(transcript=command, intent=intent, ok=route_ok,
-                 error="" if route_ok else f"intent={intent} routed={routed}")
+
+    # Extract PersonaPlex routing info if present
+    delegation = route_result.get("delegation_result") or {}
+    route_reason = route_result.get("route_reason", "")
+    is_ppx = route_reason == "personaplex_conversation"
+    ppx_session_id = delegation.get("conversation_id", "") if is_ppx else ""
+    ppx_response = delegation.get("response", "") if is_ppx else ""
+
+    record_route(
+        transcript=command, intent=intent, ok=route_ok,
+        error="" if route_ok else f"intent={intent} routed={routed}",
+        routing_mode="personaplex" if is_ppx else "command",
+        personaplex_session_id=ppx_session_id,
+        response_preview=ppx_response,
+    )
     if route_ok:
         play_cue("route_ok")
         print(f"[cadence] routed_ok  intent={intent}  routed={routed}", file=sys.stderr)
