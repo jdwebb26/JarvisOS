@@ -104,6 +104,7 @@ def request_paper_trade_approval(
     discord_result = emit_quant_approval_request(
         strategy_id=strategy_id,
         approval_type="paper_trade",
+        approval_ref=approval.approval_ref,
         detail=detail,
         root=root,
     )

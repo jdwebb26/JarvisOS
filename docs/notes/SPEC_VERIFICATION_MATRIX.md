@@ -39,7 +39,7 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 | 2.9 | Hermes research daemon | v5.1 §21 | Long-form research, source gathering, synthesis | `hermes_adapter.py` (43KB). `hermes_transport.py` calls LM Studio directly. `hermes_adapter` in `backend_dispatch.py` BACKEND_ADAPTERS + Ralph ELIGIBLE_BACKENDS. | Real execution proven 2026-03-18: task `task_7b4905b3005f` → `bres_7b10e9081a58` (qwen3.5-35b-a3b, 1284 tokens) → artifact `art_bf1920942594` (3342 chars). 6 transport tests + 20 adapter tests pass. | **LIVE** | b70a8b4 | Requires LM Studio running. No external daemon needed — transport calls LM Studio API directly. |
 | 2.10 | Muse creative | v5.1 §4 | Creative specialist | Agent config + gateway binding (channel 1483133844663304272). Model: lmstudio/qwen3.5-35b-a3b. Webhook + bot delivery live. | Agent turns via gateway proven (3 turns). Bot delivers replies to #muse Discord channel. Session file created/updated. Event routing + outbox + worklog mirror working. No channel collisions (11 bindings). Config structurally identical to Jarvis (proven Discord ingress). | **LIVE** | 527ede7 | Discord user-message ingress untested (gateway `allowFrom` requires operator to type in #muse). Ralph muse_creative backend path untested under timer. |
 | 2.11a | Cadence — wake-word command layer | v5.1 §25 | Wake detection → VAD → STT → command routing → TTS response | Full pipeline in `runtime/voice/`: `cadence_daemon.py` (two-phase loop), `live_listener.py` (OWW + Silero + faster-whisper subprocess), `cadence_ingress.py` (routing), `tts_piper.py`/`tts_coqui_render.py` (TTS), `cues.py`/`feedback.py` (earcons). Daemon active (`cadence-voice-daemon.service`, 596 MB). | Daemon running. Transcript routing proven. TTS proven. Mic blocked: RDPSource unavailable in WSL2. No live end-to-end wake-to-command proof. | **PARTIAL** | Watchboard §7.3 | Mic blocked on WSL2. One-shot command routing works if audio is provided; live mic capture does not. |
-| 2.11b | Cadence — PersonaPlex conversation layer | v5.1 §25 | Persistent conversational AI with workspace/context awareness — multi-turn copilot, not one-shot commands | Does not exist. No code, no design, no session state beyond the single-utterance voice session record used by the command layer. | — | **MISSING** | — | Entire layer needs to be designed and built. Requires: persistent conversation memory, live runtime state access, dialogue management, intent distinction (command vs conversation). |
+| 2.11b | Cadence — PersonaPlex conversation layer | v5.1 §25 | Persistent conversational AI with workspace/context awareness — multi-turn copilot, not one-shot commands | `runtime/personaplex/` — engine, session, context, intent, cli. Bridge in `cadence_ingress.py`. | Replay proven 2026-03-18: conversational queries return grounded LLM answers; commands produce proposals with confirmation. Voice session linkage working. | **LIVE (replay)** | a485ad6 | Mic blocked on WSL2 — same as L1. |
 | 2.12 | Flowstate distillation | v5.1 §4 | Ingestion and distillation lane | `runtime/flowstate/` — source_store, distill_store, promotion_store, index_builder. Operator CLI: `scripts/flowstate.py`. State in `state/flowstate_sources/`. | Full ingest→extract→distill lifecycle proven with real input. Source records, extraction artifacts, distillation artifacts stored on disk with provenance. Promotion is explicit (approval-gated, not auto-promoted). 2 sources, 2 distillations in live state. | **LIVE** | This commit | No daemon. No Discord #flowstate channel wiring. No LLM-powered auto-distillation. |
 
 ## 3. Task Lifecycle & Execution
@@ -188,12 +188,11 @@ Feature-by-feature verification of v5 / v5.1 / v5.2 spec claims against live run
 |---------|--------|---------|
 | 8.8b OpenAI/GPT provider | Adapter + dispatch + model registry + tests all wired | Requires funded API key (current key returns 401). `gpt` family not in any agent's `allowed_families`. ChatGPT subscription does NOT fund API. |
 
-### Still Blocked — 2 features
+### Still Blocked — 1 feature
 
 | Feature | Blocker |
 |---------|---------|
 | 8.8 Anthropic/Claude provider | `ANTHROPIC_API_KEY=REPLACE_ME`. No Python-track adapter exists (gateway config only). |
-| 2.11b Cadence PersonaPlex conversation layer | Does not exist. Entire persistent conversational AI / copilot layer needs to be designed and built. Current Cadence is one-shot command routing only. |
 
 ### DOC-ONLY (spec-defined, not runtime-implemented) — 9 features
 
