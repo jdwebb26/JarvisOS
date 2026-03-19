@@ -30,34 +30,59 @@ from workspace.quant.shared.packet_store import get_all_latest, list_lane_packet
 
 
 def cmd_status(args):
-    """Show strategy pipeline overview."""
+    """Phone-scannable pipeline + action items."""
     strategies = load_all_strategies(ROOT)
     approvals = load_all_approvals(ROOT)
     latest = get_all_latest(ROOT)
-
     by_state: dict[str, list[str]] = {}
     for sid, s in strategies.items():
         by_state.setdefault(s.lifecycle_state, []).append(sid)
 
-    print("QUANT LANES STATUS")
-    print("=" * 50)
-    print(f"\nStrategies: {len(strategies)} total")
-    for state in ["IDEA", "CANDIDATE", "VALIDATING", "PROMOTED",
-                   "PAPER_QUEUED", "PAPER_ACTIVE", "PAPER_REVIEW",
-                   "LIVE_QUEUED", "LIVE_ACTIVE", "LIVE_REVIEW",
-                   "REJECTED", "PAPER_KILLED", "LIVE_KILLED", "RETIRED", "ITERATE"]:
-        ids = by_state.get(state, [])
-        if ids:
-            print(f"  {state:16s}: {len(ids)} ({', '.join(ids[:5])})")
+    paper = by_state.get("PAPER_ACTIVE", [])
+    live = by_state.get("LIVE_ACTIVE", [])
+    print(f"ACTIVE  paper={len(paper)} live={len(live)}")
+    for sid in paper:
+        print(f"  paper: {sid}")
+    for sid in live:
+        print(f"  live:  {sid}")
 
-    print(f"\nApprovals: {len(approvals)} total")
-    active = [a for a in approvals if not a.revoked]
-    revoked = [a for a in approvals if a.revoked]
-    print(f"  Active: {len(active)}, Revoked: {len(revoked)}")
+    promoted = by_state.get("PROMOTED", [])
+    queued = by_state.get("PAPER_QUEUED", [])
+    review = by_state.get("PAPER_REVIEW", [])
+    if promoted or queued or review:
+        print(f"\nACTION NEEDED")
+        for sid in promoted:
+            pending = [a for a in approvals if a.strategy_id == sid and not a.revoked]
+            if pending:
+                print(f"  approve {pending[-1].approval_ref}  (paper trade {sid})")
+            else:
+                print(f"  request-paper {sid}")
+        for sid in queued:
+            print(f"  execute {sid}")
+        for sid in review:
+            print(f"  review paper: {sid}")
 
-    print(f"\nLatest packets: {len(latest)}")
-    for key, pkt in sorted(latest.items()):
-        print(f"  {key}: {pkt.thesis[:80]}")
+    ideas = len(by_state.get("IDEA", []))
+    cands = len(by_state.get("CANDIDATE", []))
+    val = len(by_state.get("VALIDATING", []))
+    rej = len(by_state.get("REJECTED", []))
+    if ideas + cands + val + rej > 0:
+        print(f"\nDEPTH  {ideas} idea, {cands} candidate, {val} validating, {rej} rejected")
+
+    exec_pkt = None
+    for key, pkt in latest.items():
+        if pkt.packet_type == "execution_status_packet":
+            exec_pkt = pkt
+    if exec_pkt:
+        fill = f"@ {exec_pkt.fill_price}" if exec_pkt.fill_price else ""
+        print(f"\nLAST FILL  {exec_pkt.strategy_id} {exec_pkt.execution_mode} {exec_pkt.execution_status} {fill}")
+
+    active_appr = [a for a in approvals if not a.revoked]
+    if active_appr:
+        print(f"\nAPPROVALS  {len(active_appr)} active")
+        for a in active_appr[-3:]:
+            v, r = a.is_valid()
+            print(f"  {a.approval_ref} {a.strategy_id} [{'valid' if v else r}]")
 
 
 def cmd_strategies(args):
@@ -209,21 +234,76 @@ def cmd_execute(args):
             emit_quant_event(pkt, root=ROOT)
 
 
+def cmd_lane_b_cycle(args):
+    """Run one Lane B cycle (Hermes → Atlas → Fish → TradeFloor → Brief)."""
+    from workspace.quant.run_lane_b_cycle import run_cycle
+    s = run_cycle(ROOT, verbose=args.verbose)
+    parts = []
+    if s["hermes"]["emitted"]:
+        parts.append(f"hermes={s['hermes']['emitted']}")
+    if s["atlas"]["generated"]:
+        parts.append(f"atlas={s['atlas']['generated']}")
+    if s["fish"]["emitted"]:
+        parts.append(f"fish={s['fish']['emitted']}")
+    if s["tradefloor"]["ran"]:
+        parts.append(f"tradefloor=tier{s['tradefloor']['tier']}")
+    elif s["tradefloor"]["cadence_refused"]:
+        parts.append("tradefloor=cadence_wait")
+    if s["brief"]:
+        parts.append("brief=ok")
+    print(f"Cycle: {' '.join(parts) or 'nothing produced'}")
+    if s["errors"]:
+        for e in s["errors"]:
+            print(f"  ERROR: {e}")
+
+
+def cmd_tradefloor(args):
+    """Run TradeFloor synthesis (respects 6h cadence unless --override)."""
+    from workspace.quant.tradefloor.synthesis_lane import synthesize, check_cadence, CadenceRefused
+    can_run, remaining = check_cadence(ROOT)
+    if not can_run and not args.override:
+        print(f"Cadence: {remaining:.0f}s remaining. Use --override 'reason' to bypass.")
+        return
+    try:
+        pkt = synthesize(ROOT, override_reason=args.override)
+        tier = pkt.agreement_tier
+        print(f"TradeFloor tier {tier}: {pkt.thesis[:120]}")
+    except CadenceRefused as e:
+        print(f"Cadence refused: {e}")
+
+
+def cmd_atlas_batch(args):
+    """Run Atlas candidate batch."""
+    from workspace.quant.atlas.exploration_lane import generate_candidate_batch
+    import hashlib
+    from datetime import datetime, timezone
+    bid = hashlib.sha256(datetime.now(timezone.utc).isoformat().encode()).hexdigest()[:8]
+    stubs = [{"strategy_id": f"atlas-cli-{bid}", "thesis": args.thesis or "NQ mean-reversion (CLI)"}]
+    batch_pkt, candidates, info = generate_candidate_batch(ROOT, stubs)
+    print(f"Atlas: {info.get('generated', 0)} generated, host={info.get('host', '?')}")
+
+
+def cmd_fish_batch(args):
+    """Run Fish scenario batch."""
+    from workspace.quant.fish.scenario_lane import run_scenario_batch
+    stubs = [{"thesis": args.thesis or "NQ consolidation scenario (CLI)"}]
+    emitted, info = run_scenario_batch(ROOT, stubs)
+    print(f"Fish: {len(emitted)} scenarios, host={info.get('host', '?')}")
+
+
+def cmd_hermes_batch(args):
+    """Run Hermes research batch."""
+    from workspace.quant.hermes.research_lane import run_research_batch
+    stubs = [{"thesis": args.thesis or "NQ volume analysis (CLI)", "source": f"cli-{args.source or 'manual'}"}]
+    emitted, info = run_research_batch(ROOT, stubs)
+    print(f"Hermes: {len(emitted)} emitted, {info.get('deduped', 0)} deduped")
+
+
 def cmd_live_proof(args):
     """Run end-to-end live runtime proof."""
     import subprocess
     result = subprocess.run(
         [sys.executable, str(ROOT / "workspace" / "quant" / "live_runtime_proof.py")],
-        cwd=str(ROOT),
-    )
-    sys.exit(result.returncode)
-
-
-def cmd_phase0(args):
-    """Run Phase 0 vertical slice proof."""
-    import subprocess
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "workspace" / "quant" / "phase0_vertical_slice.py")],
         cwd=str(ROOT),
     )
     sys.exit(result.returncode)
@@ -263,8 +343,23 @@ def main():
     p_exec.add_argument("--quantity", type=int, default=1)
     p_exec.add_argument("--price", type=float, default=18250.0)
 
+    s_lbc = sub.add_parser("lane-b-cycle", help="Run one Lane B cycle")
+    s_lbc.add_argument("-v", "--verbose", action="store_true")
+
+    s_tf = sub.add_parser("tradefloor", help="Run TradeFloor synthesis")
+    s_tf.add_argument("--override", default=None, help="Override cadence with reason")
+
+    s_ab = sub.add_parser("atlas-batch", help="Run Atlas candidate batch")
+    s_ab.add_argument("--thesis", default=None)
+
+    s_fb = sub.add_parser("fish-batch", help="Run Fish scenario batch")
+    s_fb.add_argument("--thesis", default=None)
+
+    s_hb = sub.add_parser("hermes-batch", help="Run Hermes research batch")
+    s_hb.add_argument("--thesis", default=None)
+    s_hb.add_argument("--source", default=None)
+
     sub.add_parser("live-proof", help="Run live runtime proof")
-    sub.add_parser("phase0", help="Run Phase 0 proof")
 
     args = parser.parse_args()
     if not args.command:
@@ -281,8 +376,12 @@ def main():
         "request-paper": cmd_request_paper,
         "approve-paper": cmd_approve_paper,
         "execute": cmd_execute,
+        "lane-b-cycle": cmd_lane_b_cycle,
+        "tradefloor": cmd_tradefloor,
+        "atlas-batch": cmd_atlas_batch,
+        "fish-batch": cmd_fish_batch,
+        "hermes-batch": cmd_hermes_batch,
         "live-proof": cmd_live_proof,
-        "phase0": cmd_phase0,
     }
     commands[args.command](args)
 

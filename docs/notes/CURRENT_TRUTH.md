@@ -105,6 +105,47 @@ Messages use emoji-first format (✅/❌/⚠️/📌). Events route to owner cha
 - **Status**: pipeline code present, cron scheduled. No strategy has reached PF ≥ 1.5 promotion gate yet
 - **Live data**: OHLCV and VIX data pulls running. Feature generation runs after data pull
 
+## 6b. Quant Lanes (Lane A — Money Path)
+
+**Spec**: `docs/spec/QUANT_LANES_OPERATING_SPEC_v3.5.1.md`
+**Status**: Lane A live-integrated into runtime. Lane B (Atlas/Fish/Hermes/TradeFloor) runtime-safe with restart recovery.
+
+### What works
+- **Packet contracts**: 33 canonical types, 7 lanes, validation. `workspace/quant/shared/schemas/packets.py`
+- **Strategy registry**: file-locked, transition-authority-validated, append-only history. `workspace/quant/shared/registries/strategy_registry.py`
+- **Approval registry**: structured approval objects (`qpt_` IDs), pre-flight validation. `workspace/quant/shared/registries/approval_registry.py`
+- **Sigma validation lane**: validates candidates (PF/Sharpe/DD/trades gates), promotes or rejects, emits Discord events directly. `workspace/quant/sigma/validation_lane.py`
+- **Executor lane**: paper adapter with full pre-flight (kill switch, approval, risk limits, broker health), emits Discord events directly. Live adapter stubbed. `workspace/quant/executor/executor_lane.py`
+- **Kitt brief producer**: reads shared/latest, shows pipeline/execution/approvals/operator actions. Spec §7 format. `workspace/quant/kitt/brief_producer.py`
+- **Discord routing**: 14 quant event kinds routed through `emit_event()`. Sigma → #sigma, execution → #kitt, approvals → #review, briefs → #kitt. Worklog mirror + Jarvis forward for key events
+- **Review poller integration**: `qpt_` approval IDs matched by review poller, routed to quant approval bridge. Operator types `approve qpt_xxx` in #review
+- **Operator CLI**: `scripts/quant_lanes.py` — status, brief, request-paper, approve-paper, execute, strategies, approvals
+
+### Operator actions required
+1. Add `JARVIS_DISCORD_WEBHOOK_SIGMA` to `~/.openclaw/secrets.env`
+2. Restart outbox sender after adding webhook
+3. Test real approval flow in #review
+
+### Proven live (64 tests + 26-check live proof)
+- Candidate → Sigma validation → promotion (Discord event to #sigma + worklog + jarvis)
+- Kitt papertrade request → approval_requested to #review (with approve/reject instructions)
+- Operator approval via review poller path → PAPER_QUEUED
+- Executor paper trade → fill (Discord event to #kitt)
+- Strategy lifecycle: IDEA → CANDIDATE → VALIDATING → PROMOTED → PAPER_QUEUED → PAPER_ACTIVE
+- Kitt brief shows pipeline, execution result, operator action items
+
+### Lane B — Intelligence Lanes (repeatable one-shot cycles)
+- **Cycle runner**: `quant_lanes.py lane-b-cycle` runs Hermes → Atlas → Fish → TradeFloor → Kitt brief in one shot. Restart-safe, idempotent, respects governor/scheduler/dedup. Ready for cron/systemd.
+- **Atlas exploration lane**: rejection-aware candidate generation, experiment batches, failure_learning. Scheduler/host-aware. Governor-integrated.
+- **Fish scenario/calibration lane**: forecast → calibrate → confidence adjustment. risk_map_packet. Scheduler-aware batch.
+- **Hermes research intake**: research/dataset/repo/theme packets. 24h dedup. Directed requests. Scheduler-aware batch.
+- **TradeFloor synthesis**: agreement tier 0-4, cadence enforcement (6h + override), degraded mode on scheduler block. Kitt consumes via TRADEFLOOR brief section.
+- **Individual lane commands**: `atlas-batch`, `fish-batch`, `hermes-batch`, `tradefloor` in CLI.
+- **Scheduler**: host-aware (NIMO 2, SonLM 1, global 3), fcntl file-locked, stale auto-clear (30 min), context-managed slots.
+- **Governor**: threshold-based push/hold/backoff/pause. Persists to governor_state.json. Health summaries trigger evaluation.
+- **Restart recovery**: filesystem state survives restart. Scheduler stale cleanup. Cadence/dedup/registry/governor all durable.
+- **Proven**: 50+6 proof checks, 63+6 pytest. Repeated cycles verified: dedup holds, cadence blocks, state coherent.
+
 ## 7. Known State Quirks
 
 - **Bowser realized model shows stale**: `qwen3.5-122b-a10b` instead of `qwen3.5-35b`. Cosmetic — Bowser's execution goes through PinchTab, not LLM
