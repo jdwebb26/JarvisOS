@@ -64,6 +64,32 @@ def _check_risk_limits(root: Path, strategy_id: str, symbol: str, quantity: int)
 # Proof tracking — auto-record fills against paper runs
 # ---------------------------------------------------------------------------
 
+
+def create_promotion_if_needed(root: Path, paper_run_id: str) -> Optional[dict]:
+    """Create a promotion review artifact if one doesn't already exist.
+
+    Idempotent: if the paper run already has a promotion_id, returns None.
+    Only creates the review if proof is sufficient.
+    Returns {promotion_id, packet_id} or None.
+    """
+    try:
+        from workspace.quant.executor.proof_tracker import (
+            load_paper_run, create_promotion_review,
+        )
+        run = load_paper_run(root, paper_run_id)
+        if run is None:
+            return None
+        if run.promotion_id is not None:
+            return None  # Already has a promotion review — idempotent
+        if run.proof_status != "sufficient" and run.status != "paper_proof_ready":
+            return None  # Not ready
+
+        promo, pkt = create_promotion_review(root, paper_run_id)
+        return {"promotion_id": promo.promotion_id, "packet_id": pkt.packet_id}
+    except (ValueError, Exception):
+        return None  # Non-fatal
+
+
 # Map strategy timeframe_scope → proof horizon_class
 _TIMEFRAME_TO_HORIZON = {
     "1m": "scalp", "5m": "scalp", "15m": "intraday",
@@ -149,6 +175,8 @@ def _record_paper_fill(root: Path, strategy_id: str, fill, side: str) -> dict:
                              f"run={evaluated_run.paper_run_id})",
                     )
                     promoted = True
+                    # Create promotion review artifact for the review path
+                    promo_result = create_promotion_if_needed(root, evaluated_run.paper_run_id)
             except (ValueError, TimeoutError):
                 pass  # Non-fatal — operator can manually promote via proof-promote
 

@@ -249,6 +249,9 @@ def sweep_proof_ready(root: Path) -> dict:
                              f"run={run.paper_run_id})",
                     )
                     result["promoted"].append(s.strategy_id)
+                    # Create promotion review artifact for the review path
+                    from workspace.quant.executor.executor_lane import create_promotion_if_needed
+                    create_promotion_if_needed(root, run.paper_run_id)
                 except (ValueError, TimeoutError):
                     pass  # Non-fatal
         else:
