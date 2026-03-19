@@ -89,18 +89,18 @@ def _infer_horizon_class(root: Path, strategy_id: str) -> str:
 def _record_paper_fill(root: Path, strategy_id: str, fill, side: str) -> dict:
     """Record a paper fill against the strategy's proof run.
 
-    Creates the paper run on first fill. Evaluates proof after every fill.
-    Returns a summary dict for operator visibility.
+    Uses real position accounting: only closed trades (entry→exit pairs)
+    produce realized PnL that feeds proof metrics. Entry fills open a
+    position but do not count as closed trades.
 
-    PnL per fill: derived from simulated slippage.
-    - Favorable slippage (negative) = small gain from better fill
-    - Adverse slippage (positive) = small cost from worse fill
-    This is a placeholder; real PnL requires entry/exit pair tracking.
+    Creates the paper run on first fill. Evaluates proof after every close.
+    Returns a summary dict for operator visibility.
     """
     try:
         from workspace.quant.executor.proof_tracker import (
             get_active_run, create_paper_run, record_fill, evaluate_proof,
         )
+        from workspace.quant.executor.paper_positions import process_fill
 
         # Find or create the paper run
         run = get_active_run(root, strategy_id)
@@ -112,15 +112,23 @@ def _record_paper_fill(root: Path, strategy_id: str, fill, side: str) -> dict:
         if run.proof_status == "sufficient" or run.status == "paper_proof_ready":
             eval_result = evaluate_proof(root, run.paper_run_id)
         else:
-            # Compute fill PnL from slippage
-            slippage_pct = fill.slippage if hasattr(fill, "slippage") else 0.0
-            fill_pnl = round(-slippage_pct * fill.fill_price / 100, 2)
-            is_winner = fill_pnl >= 0
+            # Process fill through position accounting
+            symbol = fill.symbol if hasattr(fill, "symbol") else "NQ"
+            closed_trade = process_fill(
+                root, strategy_id, symbol, side,
+                fill_price=fill.fill_price,
+                quantity=fill.quantity if hasattr(fill, "quantity") else 1,
+            )
 
-            # Record the fill
-            run = record_fill(root, run.paper_run_id, pnl=fill_pnl, is_winner=is_winner)
+            if closed_trade is not None:
+                # Closed trade — record realized PnL into proof tracker
+                run = record_fill(
+                    root, run.paper_run_id,
+                    pnl=closed_trade.realized_pnl,
+                    is_winner=closed_trade.is_winner,
+                )
 
-            # Evaluate proof
+            # Evaluate proof (always, so time-based criteria still get checked)
             eval_result = evaluate_proof(root, run.paper_run_id)
 
         # Use the run object from evaluate_proof (it has the updated status)

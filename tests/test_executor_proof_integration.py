@@ -127,7 +127,8 @@ class TestPaperRunAutoCreation:
         assert result["success"] is True
         assert "proof" in result
         assert result["proof"].get("paper_run_id") is not None
-        assert result["proof"]["closed_count"] == 1
+        # Entry fill opens position — no closed trade yet
+        assert result["proof"]["closed_count"] == 0
 
     def test_paper_run_persists_on_disk(self, clean_root):
         """Paper run state file exists after execution."""
@@ -139,7 +140,8 @@ class TestPaperRunAutoCreation:
         run = load_paper_run(clean_root, run_id)
         assert run is not None
         assert run.strategy_id == "disk-001"
-        assert run.closed_count == 1
+        # Entry only — no closed trades
+        assert run.closed_count == 0
 
     def test_horizon_inferred_from_candidate(self, clean_root):
         """Horizon class is inferred from the candidate's timeframe_scope."""
@@ -156,27 +158,23 @@ class TestPaperRunAutoCreation:
 # ---------------------------------------------------------------------------
 
 class TestFillRecording:
-    def test_multiple_fills_accumulate(self, clean_root):
-        """Multiple paper executions accumulate fills in the same run."""
+    def test_round_trips_accumulate(self, clean_root):
+        """Entry/exit round trips accumulate closed trades in the same run."""
         ref = _promote_to_paper_queued(clean_root, "multi-001")
 
-        # First fill
-        r1 = execute_paper_trade(
-            clean_root, "multi-001", ref, symbol="NQ", side="long",
-        )
+        # Round trip 1: entry + exit
+        execute_paper_trade(clean_root, "multi-001", ref, symbol="NQ", side="long",
+                            simulated_price=18000.0)
+        r1 = execute_paper_trade(clean_root, "multi-001", ref, symbol="NQ", side="short",
+                                  simulated_price=18050.0)
         assert r1["proof"]["closed_count"] == 1
 
-        # Second fill (strategy is now PAPER_ACTIVE, still same approval)
-        r2 = execute_paper_trade(
-            clean_root, "multi-001", ref, symbol="NQ", side="long",
-        )
+        # Round trip 2
+        execute_paper_trade(clean_root, "multi-001", ref, symbol="NQ", side="long",
+                            simulated_price=18050.0)
+        r2 = execute_paper_trade(clean_root, "multi-001", ref, symbol="NQ", side="short",
+                                  simulated_price=18100.0)
         assert r2["proof"]["closed_count"] == 2
-
-        # Third fill
-        r3 = execute_paper_trade(
-            clean_root, "multi-001", ref, symbol="NQ", side="long",
-        )
-        assert r3["proof"]["closed_count"] == 3
 
     def test_run_reused_across_fills(self, clean_root):
         """Same paper_run_id is used across multiple fills."""
@@ -205,13 +203,14 @@ class TestProofEvaluation:
         assert result["proof"]["proof_status"] == "accumulating"
         assert result["proof"]["sufficient"] is False
 
-    def test_proof_evaluation_checked_every_fill(self, clean_root):
-        """Proof evaluation runs after each fill, reflected in result."""
+    def test_proof_evaluation_checked_every_close(self, clean_root):
+        """Proof evaluation runs after each closed trade."""
         ref = _promote_to_paper_queued(clean_root, "evalcheck-001")
         for _ in range(3):
-            result = execute_paper_trade(
-                clean_root, "evalcheck-001", ref, symbol="NQ", side="long",
-            )
+            execute_paper_trade(clean_root, "evalcheck-001", ref, symbol="NQ",
+                                side="long", simulated_price=18000.0)
+            result = execute_paper_trade(clean_root, "evalcheck-001", ref, symbol="NQ",
+                                          side="short", simulated_price=18050.0)
         # Still accumulating (intraday needs 30 trades minimum)
         assert result["proof"]["sufficient"] is False
         assert result["proof"]["closed_count"] == 3
