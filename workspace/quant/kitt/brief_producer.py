@@ -227,6 +227,59 @@ def _pulse_section(root: Path) -> Optional[str]:
         return None
 
 
+def _proof_section(root: Path, by_state: dict[str, list[str]]) -> Optional[str]:
+    """Build proof progress section for active paper runs. Read-only."""
+    try:
+        from workspace.quant.executor.proof_tracker import (
+            get_active_run, evaluate_proof, get_proof_profile,
+        )
+        from datetime import datetime, timezone as _tz
+
+        paper_active = by_state.get("PAPER_ACTIVE", [])
+        paper_review = by_state.get("PAPER_REVIEW", [])
+        paper_queued = by_state.get("PAPER_QUEUED", [])
+        if not paper_active and not paper_review and not paper_queued:
+            return None
+
+        lines = []
+        for sid in paper_active:
+            run = get_active_run(root, sid)
+            if run is None:
+                lines.append(f"  {sid}: no active run data")
+                continue
+            profile = get_proof_profile(root, run.horizon_class)
+            try:
+                started = datetime.fromisoformat(run.started_at)
+                days = (datetime.now(_tz.utc) - started).total_seconds() / 86400
+            except (ValueError, TypeError):
+                days = 0.0
+
+            result = evaluate_proof(root, run.paper_run_id)
+            if result["sufficient"]:
+                lines.append(f"  {sid} [{run.horizon_class}]: PROOF READY")
+            else:
+                blocking = [k for k, v in result["criteria"].items() if not v["met"]]
+                trades_pct = min(run.closed_count / profile.min_trades_required, 1.0) if profile.min_trades_required > 0 else 1.0
+                days_pct = min(days / profile.min_days_required, 1.0) if profile.min_days_required > 0 else 1.0
+                overall = min(trades_pct, days_pct)
+                lines.append(
+                    f"  {sid} [{run.horizon_class}]: {overall:.0%} "
+                    f"({run.closed_count}/{profile.min_trades_required} trades, "
+                    f"{days:.0f}/{profile.min_days_required}d) "
+                    f"blocked: {', '.join(blocking)}"
+                )
+
+        for sid in paper_review:
+            lines.append(f"  {sid}: awaiting operator review")
+
+        for sid in paper_queued:
+            lines.append(f"  {sid}: queued, not yet trading")
+
+        return "\n".join(lines) if lines else None
+    except Exception:
+        return None
+
+
 def _operator_actions(by_state: dict[str, list[str]], root: Path) -> str:
     actions = []
     promoted = by_state.get("PROMOTED", [])
@@ -239,6 +292,17 @@ def _operator_actions(by_state: dict[str, list[str]], root: Path) -> str:
             actions.append(f"Request paper: quant_lanes.py request-paper {sid}")
     for sid in by_state.get("PAPER_REVIEW", []):
         actions.append(f"Review paper results: {sid}")
+
+    # Proof-ready runs that need promotion
+    try:
+        from workspace.quant.executor.proof_tracker import get_active_run
+        for sid in by_state.get("PAPER_ACTIVE", []):
+            run = get_active_run(root, sid)
+            if run and run.proof_status == "sufficient":
+                actions.append(f"Proof ready: quant_lanes.py proof-promote {run.paper_run_id}")
+    except Exception:
+        pass
+
     return "\n".join(f"  {a}" for a in actions) if actions else "  none"
 
 
@@ -264,6 +328,11 @@ TOP SIGNAL
 
 PIPELINE
 {_pipeline_section(by_state, root)}"""
+
+    # Proof tracker section
+    proof_text = _proof_section(root, by_state)
+    if proof_text:
+        brief_text += f"\n\nPROOF PROGRESS\n{proof_text}"
 
     if exec_section:
         brief_text += f"\n\nEXECUTION\n{exec_section}"

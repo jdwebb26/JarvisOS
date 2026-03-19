@@ -15,6 +15,10 @@ Commands:
     python3 scripts/quant_lanes.py doctor                    — operator health check (phone-readable)
     python3 scripts/quant_lanes.py acceptance                — non-destructive acceptance test
     python3 scripts/quant_lanes.py phase0                   — run Phase 0 vertical slice proof
+    python3 scripts/quant_lanes.py proof-status              — phone-readable proof progress for all active paper runs
+    python3 scripts/quant_lanes.py proof-runs [--all]        — list paper runs (active by default)
+    python3 scripts/quant_lanes.py proof-evaluate <run_id>   — evaluate proof sufficiency for a paper run
+    python3 scripts/quant_lanes.py proof-promote <run_id>    — create promotion review (if proof sufficient)
 """
 from __future__ import annotations
 
@@ -42,6 +46,42 @@ def _is_proof_artifact(strategy_id: str) -> bool:
     """Return True if strategy_id looks like a proof/smoke run, not real work."""
     sid = strategy_id.lower()
     return any(m in sid for m in _PROOF_MARKERS)
+
+
+def _get_proof_summary(root: Path, strategy_id: str) -> str:
+    """One-line proof progress for a strategy. Safe — returns fallback on any error."""
+    try:
+        from workspace.quant.executor.proof_tracker import (
+            get_active_run, evaluate_proof, get_proof_profile,
+        )
+        from datetime import datetime, timezone as _tz
+
+        run = get_active_run(root, strategy_id)
+        if run is None:
+            return "(no active paper run)"
+
+        profile = get_proof_profile(root, run.horizon_class)
+        try:
+            started = datetime.fromisoformat(run.started_at)
+            days = (datetime.now(_tz.utc) - started).total_seconds() / 86400
+        except (ValueError, TypeError):
+            days = 0.0
+
+        trades_pct = min(run.closed_count / profile.min_trades_required, 1.0) if profile.min_trades_required > 0 else 1.0
+        days_pct = min(days / profile.min_days_required, 1.0) if profile.min_days_required > 0 else 1.0
+        overall = min(trades_pct, days_pct)
+
+        result = evaluate_proof(root, run.paper_run_id)
+        if result["sufficient"]:
+            return f"[{run.horizon_class}] PROOF READY — {run.closed_count} trades, {days:.0f}d"
+
+        blocking = [k for k, v in result["criteria"].items() if not v["met"]]
+        return (f"[{run.horizon_class}] {overall:.0%} — "
+                f"{run.closed_count}/{profile.min_trades_required} trades, "
+                f"{days:.0f}/{profile.min_days_required}d | "
+                f"blocked: {', '.join(blocking)}")
+    except Exception:
+        return "(proof data unavailable)"
 
 
 # Human-readable stage descriptions for operator surfaces
@@ -107,12 +147,13 @@ def cmd_status(args):
             continue
         by_state.setdefault(s.lifecycle_state, []).append(sid)
 
-    # Active positions
+    # Active positions — with proof progress
     paper = by_state.get("PAPER_ACTIVE", [])
     live = by_state.get("LIVE_ACTIVE", [])
     print(f"ACTIVE  paper={len(paper)} live={len(live)}")
     for sid in paper:
-        print(f"  paper: {sid}  (accumulating proof — not live-eligible)")
+        proof_line = _get_proof_summary(ROOT, sid)
+        print(f"  paper: {sid}  {proof_line}")
     for sid in live:
         print(f"  live:  {sid}")
 
@@ -233,6 +274,40 @@ def cmd_strategy(args):
         print(f"Not live:  {reason}")
     elif s.lifecycle_state in ("LIVE_ACTIVE", "LIVE_REVIEW"):
         print(f"Live:      yes")
+
+    # Proof progress for paper states
+    if s.lifecycle_state in ("PAPER_ACTIVE", "PAPER_REVIEW", "PAPER_QUEUED", "LIVE_QUEUED"):
+        try:
+            from workspace.quant.executor.proof_tracker import (
+                get_active_run, evaluate_proof, get_proof_profile,
+            )
+            from datetime import datetime, timezone as _tz
+
+            run = get_active_run(root, s.strategy_id) if 'root' in dir() else get_active_run(ROOT, s.strategy_id)
+            if run:
+                profile = get_proof_profile(ROOT, run.horizon_class)
+                try:
+                    started = datetime.fromisoformat(run.started_at)
+                    days = (datetime.now(_tz.utc) - started).total_seconds() / 86400
+                except (ValueError, TypeError):
+                    days = 0.0
+
+                print(f"\nPaper run: {run.paper_run_id}")
+                print(f"Horizon:   {run.horizon_class}")
+                print(f"Trades:    {run.closed_count}/{profile.min_trades_required}")
+                print(f"Days:      {days:.1f}/{profile.min_days_required}")
+                wr = f"{run.win_rate:.0%}" if run.closed_count > 0 else "—"
+                print(f"Stats:     expectancy={run.expectancy:.2f}  win_rate={wr}  "
+                      f"dd={run.max_drawdown:.0f}  consec_loss={run.max_consecutive_losses}")
+
+                result = evaluate_proof(ROOT, run.paper_run_id)
+                if result["sufficient"]:
+                    print(f"Proof:     SUFFICIENT")
+                else:
+                    blocking = [k for k, v in result["criteria"].items() if not v["met"]]
+                    print(f"Proof:     accumulating — blocked: {', '.join(blocking)}")
+        except Exception:
+            pass
 
     if s.parent_id:
         print(f"Parent:    {s.parent_id}")
@@ -928,6 +1003,198 @@ def cmd_bootstrap_status(args):
         print(f"  {lane:12s} {tag}")
 
 
+# ---------------------------------------------------------------------------
+# Proof-tracker operator surfaces — visibility only, no runtime mutations
+# ---------------------------------------------------------------------------
+
+def _format_proof_bar(actual, required, label="") -> str:
+    """Format a progress bar for proof criteria. Phone-scannable."""
+    if required <= 0:
+        return f"{label} {actual}/{required} [done]"
+    pct = min(actual / required, 1.0) if required > 0 else 1.0
+    filled = int(pct * 10)
+    bar = "█" * filled + "░" * (10 - filled)
+    tag = "✓" if pct >= 1.0 else f"{pct:.0%}"
+    return f"{label} {bar} {actual}/{required} [{tag}]"
+
+
+def _format_proof_criterion(name: str, c: dict) -> str:
+    """Format one proof criterion as phone-readable line."""
+    met = "✓" if c["met"] else "✗"
+    if name in ("max_drawdown", "max_consecutive_losses"):
+        # "less is better" — show actual ≤ required
+        return f"  {met} {name}: {c['actual']} (max {c['required']})"
+    return f"  {met} {name}: {c['actual']} (need {c['required']})"
+
+
+def cmd_proof_status(args):
+    """Phone-readable proof progress for all active paper runs."""
+    from workspace.quant.executor.proof_tracker import (
+        list_paper_runs, evaluate_proof, get_proof_profile,
+    )
+    from datetime import datetime, timezone as _tz
+
+    runs = list_paper_runs(ROOT)
+    active = [r for r in runs if r.status in
+              ("paper_active", "paper_monitoring", "paper_proof_ready", "awaiting_review")]
+
+    if not active:
+        print("No active paper runs.")
+        return
+
+    print("PROOF STATUS")
+    print("━" * 50)
+
+    for run in active:
+        profile = get_proof_profile(ROOT, run.horizon_class)
+        try:
+            started = datetime.fromisoformat(run.started_at)
+            days_elapsed = (datetime.now(_tz.utc) - started).total_seconds() / 86400
+        except (ValueError, TypeError):
+            days_elapsed = 0.0
+
+        print(f"\n  {run.strategy_id}  [{run.status}]")
+        print(f"  horizon: {run.horizon_class}  |  run: {run.paper_run_id[:30]}…")
+
+        # Progress bars
+        print(f"  {_format_proof_bar(run.closed_count, profile.min_trades_required, 'trades')}")
+        print(f"  {_format_proof_bar(round(days_elapsed, 1), profile.min_days_required, 'days  ')}")
+
+        # Key metrics inline
+        wr = f"{run.win_rate:.0%}" if run.closed_count > 0 else "—"
+        print(f"  expectancy={run.expectancy:.2f}  win_rate={wr}  "
+              f"dd={run.max_drawdown:.0f}  consec_loss={run.max_consecutive_losses}")
+
+        # Evaluate and show blocking criteria
+        try:
+            result = evaluate_proof(ROOT, run.paper_run_id)
+            blocking = [k for k, v in result["criteria"].items() if not v["met"]]
+            if result["sufficient"]:
+                print(f"  PROOF: SUFFICIENT — ready for promotion review")
+            else:
+                print(f"  PROOF: ACCUMULATING — blocked by: {', '.join(blocking)}")
+                for name in blocking:
+                    print(_format_proof_criterion(name, result["criteria"][name]))
+        except Exception as e:
+            print(f"  PROOF: evaluation error — {e}")
+
+
+def cmd_proof_runs(args):
+    """List paper runs — active by default, --all for full history."""
+    from workspace.quant.executor.proof_tracker import list_paper_runs
+    from datetime import datetime, timezone as _tz
+
+    runs = list_paper_runs(ROOT)
+    if not runs:
+        print("No paper runs.")
+        return
+
+    if not args.all:
+        runs = [r for r in runs if r.status in
+                ("paper_active", "paper_monitoring", "paper_proof_ready", "awaiting_review")]
+        if not runs:
+            print("No active paper runs. Use --all to see history.")
+            return
+
+    print(f"{'RUN ID':40s} {'STRATEGY':25s} {'STATUS':18s} {'HORIZON':10s} "
+          f"{'TRADES':>7s} {'PnL':>10s} {'PROOF':>12s}")
+    print("─" * 130)
+
+    for r in runs:
+        rid = r.paper_run_id[:38] + "…" if len(r.paper_run_id) > 40 else r.paper_run_id
+        sid = r.strategy_id[:23] + "…" if len(r.strategy_id) > 25 else r.strategy_id
+        print(f"{rid:40s} {sid:25s} {r.status:18s} {r.horizon_class:10s} "
+              f"{r.closed_count:>7d} {r.realized_pnl:>+10.2f} {r.proof_status:>12s}")
+
+
+def cmd_proof_evaluate(args):
+    """Evaluate proof sufficiency for a specific paper run. Read-only."""
+    from workspace.quant.executor.proof_tracker import evaluate_proof, get_proof_profile
+    from datetime import datetime, timezone as _tz
+
+    try:
+        result = evaluate_proof(ROOT, args.run_id)
+    except ValueError as e:
+        print(f"ERROR: {e}")
+        return
+
+    run = result["run"]
+    profile = get_proof_profile(ROOT, run.horizon_class)
+    try:
+        started = datetime.fromisoformat(run.started_at)
+        days_elapsed = (datetime.now(_tz.utc) - started).total_seconds() / 86400
+    except (ValueError, TypeError):
+        days_elapsed = 0.0
+
+    print(f"PROOF EVALUATION — {run.strategy_id}")
+    print("━" * 50)
+    print(f"  Run:       {run.paper_run_id}")
+    print(f"  Horizon:   {run.horizon_class}")
+    print(f"  Status:    {run.status}")
+    print(f"  Started:   {run.started_at[:19]}")
+    print(f"  Days:      {days_elapsed:.1f}")
+    print(f"  Trades:    {run.closed_count} ({run.win_count}W / {run.loss_count}L)")
+    print(f"  PnL:       {run.realized_pnl:+.2f}")
+    wr = f"{run.win_rate:.0%}" if run.closed_count > 0 else "—"
+    print(f"  Win rate:  {wr}")
+    print(f"  Expect:    {run.expectancy:.2f}")
+    print(f"  Max DD:    {run.max_drawdown:.0f}")
+    print(f"  Consec L:  {run.max_consecutive_losses}")
+
+    print(f"\n  CRITERIA")
+    for name, c in result["criteria"].items():
+        print(_format_proof_criterion(name, c))
+
+    if result["sufficient"]:
+        print(f"\n  VERDICT: SUFFICIENT — eligible for proof-promote {run.paper_run_id}")
+    else:
+        blocking = [k for k, v in result["criteria"].items() if not v["met"]]
+        print(f"\n  VERDICT: INSUFFICIENT — blocking: {', '.join(blocking)}")
+
+
+def cmd_proof_promote(args):
+    """Create promotion review for a paper run with sufficient proof.
+
+    Read-only inspection + promotion record creation.
+    Does NOT touch the execution path or bypass any gates.
+    """
+    from workspace.quant.executor.proof_tracker import (
+        evaluate_proof, create_promotion_review,
+    )
+
+    # First evaluate
+    try:
+        result = evaluate_proof(ROOT, args.run_id)
+    except ValueError as e:
+        print(f"ERROR: {e}")
+        return
+
+    if not result["sufficient"]:
+        blocking = [k for k, v in result["criteria"].items() if not v["met"]]
+        print(f"BLOCKED: proof insufficient for {args.run_id}")
+        for name in blocking:
+            print(_format_proof_criterion(name, result["criteria"][name]))
+        print(f"\nCannot promote until all criteria are met.")
+        return
+
+    # Create promotion review
+    try:
+        promo, pkt = create_promotion_review(ROOT, args.run_id)
+    except ValueError as e:
+        print(f"ERROR: {e}")
+        return
+
+    print(f"PROMOTION REVIEW CREATED")
+    print("━" * 50)
+    print(f"  Promotion ID: {promo.promotion_id}")
+    print(f"  Strategy:     {promo.strategy_id}")
+    print(f"  Paper run:    {promo.paper_run_id}")
+    print(f"  Summary:      {promo.summary}")
+    print(f"  Status:       {promo.status} (needs operator review)")
+    print(f"  Packet:       {pkt.packet_id}")
+    print(f"\n  Next: operator review in #review → approve / reject / rerun")
+
+
 def cmd_observe(args):
     """Concise operator observability surface. Phone-readable truth."""
     from workspace.quant.shared.governor import load_governor_state
@@ -1072,6 +1339,25 @@ def cmd_observe(args):
     except Exception:
         pass
 
+    # Proof tracker — active paper runs
+    try:
+        from workspace.quant.executor.proof_tracker import list_paper_runs
+        runs = list_paper_runs(ROOT)
+        active_runs = [r for r in runs if r.status in
+                       ("paper_active", "paper_monitoring", "paper_proof_ready", "awaiting_review")]
+        if active_runs:
+            print(f"\n  Proof runs: {len(active_runs)} active")
+            for r in active_runs:
+                summary = _get_proof_summary(ROOT, r.strategy_id)
+                print(f"    {r.strategy_id}: {summary}")
+        review_runs = [r for r in runs if r.status == "awaiting_review"]
+        if review_runs:
+            print(f"  Awaiting review: {len(review_runs)}")
+            for r in review_runs:
+                print(f"    {r.strategy_id} → proof-promote {r.paper_run_id}")
+    except Exception:
+        pass
+
     print()
 
 
@@ -1143,6 +1429,15 @@ def main():
     sub.add_parser("acceptance", help="Non-destructive acceptance test")
     sub.add_parser("cold-start-proof", help="Prove bootstrap/cold-start behavior")
 
+    # Proof-tracker operator surfaces
+    sub.add_parser("proof-status", help="Phone-readable proof progress for active paper runs")
+    p_pr = sub.add_parser("proof-runs", help="List paper runs")
+    p_pr.add_argument("--all", action="store_true", help="Show all runs including archived")
+    p_pe = sub.add_parser("proof-evaluate", help="Evaluate proof sufficiency for a paper run")
+    p_pe.add_argument("run_id", help="Paper run ID")
+    p_pp = sub.add_parser("proof-promote", help="Create promotion review if proof sufficient")
+    p_pp.add_argument("run_id", help="Paper run ID")
+
     # Bootstrap commands
     sub.add_parser("bootstrap-hermes", help="Cold-start Hermes from watchlist")
     sub.add_parser("bootstrap-fish", help="Cold-start Fish from seed config")
@@ -1185,6 +1480,10 @@ def main():
         "bootstrap-atlas": cmd_bootstrap_atlas,
         "bootstrap-all": cmd_bootstrap_all,
         "bootstrap-status": cmd_bootstrap_status,
+        "proof-status": cmd_proof_status,
+        "proof-runs": cmd_proof_runs,
+        "proof-evaluate": cmd_proof_evaluate,
+        "proof-promote": cmd_proof_promote,
     }
     commands[args.command](args)
 
