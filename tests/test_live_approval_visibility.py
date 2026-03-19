@@ -268,3 +268,84 @@ class TestFullBriefIntegration:
         assert "LIVE_QUEUED" in brief_text
         assert "full-001" in brief_text
         assert "request-live" in brief_text
+
+
+# ---------------------------------------------------------------------------
+# 6. operator_status quant live surface
+# ---------------------------------------------------------------------------
+
+class TestOperatorStatusLiveQueued:
+    def test_no_request(self, clean_root):
+        """operator_status sees LIVE_QUEUED with no live_trade approval."""
+        _setup_live_queued(clean_root, "ops-001")
+        from unittest.mock import patch
+        with patch("scripts.operator_status.ROOT", clean_root):
+            from scripts.operator_status import _quant_live_queued
+            items = _quant_live_queued()
+        assert len(items) == 1
+        assert items[0]["strategy_id"] == "ops-001"
+        assert items[0]["approval_state"] == "no_request"
+        assert "request-live" in items[0]["action"]
+
+    def test_approved(self, clean_root):
+        """operator_status sees approved live_trade approval."""
+        _setup_live_queued(clean_root, "ops-002")
+        from workspace.quant.shared.approval_bridge import request_live_trade_approval
+        request_live_trade_approval(clean_root, "ops-002", symbols=["NQ"])
+        from unittest.mock import patch
+        with patch("scripts.operator_status.ROOT", clean_root):
+            from scripts.operator_status import _quant_live_queued
+            items = _quant_live_queued()
+        assert len(items) == 1
+        assert items[0]["approval_state"] == "approved"
+        assert "execute-live" in items[0]["action"]
+
+    def test_revoked(self, clean_root):
+        """operator_status sees revoked live_trade approval."""
+        _setup_live_queued(clean_root, "ops-004")
+        from workspace.quant.shared.approval_bridge import request_live_trade_approval
+        result = request_live_trade_approval(clean_root, "ops-004", symbols=["NQ"])
+        revoke_approval(clean_root, result["approval_ref"])
+        from unittest.mock import patch
+        with patch("scripts.operator_status.ROOT", clean_root):
+            from scripts.operator_status import _quant_live_queued
+            items = _quant_live_queued()
+        assert len(items) == 1
+        assert items[0]["approval_state"] == "revoked"
+
+    def test_terminal_render(self, clean_root):
+        """Terminal render includes LIVE QUEUED section."""
+        from scripts.operator_status import render_terminal
+        data = {
+            "ts": "2026-03-19T10:00:00Z",
+            "approvals": [], "queued": [], "blocked": [], "failed": [],
+            "quant_live_queued": [
+                {"strategy_id": "ops-005", "approval_state": "no_request",
+                 "approval_ref": None, "action": "request-live ops-005",
+                 "label": "needs live_trade approval request"},
+            ],
+            "timers": [{"unit": "x", "label": "R", "active": True}],
+            "outbox": {"pending": 0, "failed": 0},
+        }
+        text = render_terminal(data)
+        assert "LIVE QUEUED" in text
+        assert "ops-005" in text
+
+    def test_discord_render(self, clean_root):
+        """Discord render includes LIVE_QUEUED section."""
+        from scripts.operator_status import render_discord
+        data = {
+            "ts": "2026-03-19T10:00:00Z",
+            "approvals": [], "queued": [], "blocked": [], "failed": [],
+            "quant_live_queued": [
+                {"strategy_id": "ops-006", "approval_state": "approved",
+                 "approval_ref": "qpt_test",
+                 "action": "execute-live ops-006 --approval-ref qpt_test",
+                 "label": "live-approved, ready for execute-live (qpt_test)"},
+            ],
+            "timers": [{"unit": "x", "label": "R", "active": True}],
+            "outbox": {"pending": 0, "failed": 0},
+        }
+        text = render_discord(data)
+        assert "LIVE_QUEUED" in text
+        assert "ops-006" in text

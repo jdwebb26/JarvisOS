@@ -52,3 +52,8 @@ def test_html_template_is_valid():
     assert "<!DOCTYPE html>" in DASHBOARD_HTML
     assert "OpenClaw" in DASHBOARD_HTML
     assert "/api/data" in DASHBOARD_HTML
+
+
+def test_html_contains_live_queued_renderer():
+    assert "renderLiveQueued" in DASHBOARD_HTML
+    assert "LIVE_QUEUED" in DASHBOARD_HTML

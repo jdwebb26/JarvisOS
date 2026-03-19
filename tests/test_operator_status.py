@@ -440,3 +440,88 @@ def test_recovery_not_repeated(tmp_path):
         # Simulate: recovery posted
         _save_fingerprint(_CLEAR_SENTINEL)
         assert _was_actionable() is False
+
+
+# ---------------------------------------------------------------------------
+# Quant LIVE_QUEUED rendering
+# ---------------------------------------------------------------------------
+
+def test_quant_live_queued_returns_list():
+    """_quant_live_queued returns a list even when quant workspace is absent."""
+    result = _quant_live_queued()
+    assert isinstance(result, list)
+
+
+def test_needs_attention_true_with_live_queued():
+    data = {
+        "approvals": [],
+        "failed": [],
+        "quant_live_queued": [{"strategy_id": "s1", "approval_state": "no_request"}],
+        "timers": [{"active": True}],
+        "outbox": {"failed": 0},
+    }
+    assert needs_attention(data) is True
+
+
+def test_needs_attention_false_when_live_approved_only():
+    data = {
+        "approvals": [],
+        "failed": [],
+        "quant_live_queued": [{"strategy_id": "s1", "approval_state": "approved"}],
+        "timers": [{"active": True}],
+        "outbox": {"failed": 0},
+    }
+    assert needs_attention(data) is False
+
+
+def test_render_terminal_shows_live_queued():
+    data = {
+        "ts": "2026-03-19T10:00:00Z",
+        "approvals": [], "queued": [], "blocked": [], "failed": [],
+        "quant_live_queued": [
+            {"strategy_id": "atlas-gap-001", "approval_state": "approved",
+             "approval_ref": "qpt_abc123",
+             "action": "execute-live atlas-gap-001 --approval-ref qpt_abc123",
+             "label": "live-approved, ready for execute-live (qpt_abc123)"},
+        ],
+        "timers": [{"unit": "x.timer", "label": "Ralph", "active": True}],
+        "outbox": {"pending": 0, "failed": 0},
+    }
+    text = render_terminal(data)
+    assert "LIVE QUEUED" in text
+    assert "atlas-gap-001" in text
+    assert "execute-live" in text
+
+
+def test_render_discord_shows_live_queued():
+    data = {
+        "ts": "2026-03-19T10:00:00Z",
+        "approvals": [], "queued": [], "blocked": [], "failed": [],
+        "quant_live_queued": [
+            {"strategy_id": "ops-005", "approval_state": "approved",
+             "approval_ref": "qpt_test",
+             "action": "execute-live ops-005 --approval-ref qpt_test",
+             "label": "live-approved, ready for execute-live (qpt_test)"},
+        ],
+        "timers": [{"unit": "x", "label": "R", "active": True}],
+        "outbox": {"pending": 0, "failed": 0},
+    }
+    text = render_discord(data)
+    assert "LIVE_QUEUED" in text
+    assert "ops-005" in text
+
+
+def test_fingerprint_includes_live_queued():
+    data1 = {
+        "approvals": [], "failed": [], "blocked": [],
+        "quant_live_queued": [{"strategy_id": "s1", "approval_state": "approved"}],
+        "timers": [{"active": True, "unit": "x"}],
+        "outbox": {"failed": 0},
+    }
+    data2 = {
+        "approvals": [], "failed": [], "blocked": [],
+        "quant_live_queued": [{"strategy_id": "s1", "approval_state": "no_request"}],
+        "timers": [{"active": True, "unit": "x"}],
+        "outbox": {"failed": 0},
+    }
+    assert _fingerprint(data1) != _fingerprint(data2)
