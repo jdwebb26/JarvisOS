@@ -536,9 +536,9 @@ class TestCycleRuntimeInputs:
 
         atlas_pkts = list_lane_packets(clean_root, "atlas", "candidate_packet")
         for pkt in atlas_pkts:
-            # Strip [adapted: ...] annotation
+            # Strip enrichment annotations: [adapted: ...], [mkt: ...], etc.
             import re
-            base = re.sub(r"\s*\[adapted:.*?\]", "", pkt.thesis)
+            base = re.sub(r"\s*\[(?:adapted|mkt|regime):.*?\]", "", pkt.thesis)
             assert base in config_theses, f"Atlas thesis not from config: {pkt.thesis[:60]}"
 
     def test_cycle_atlas_fish_bounded(self, clean_root):
@@ -594,3 +594,187 @@ class TestCycleRuntimeInputs:
 
         # Synthesis text must differ when upstream changes
         assert text1 != text2, "TradeFloor should change when Fish changes direction"
+
+
+# ---------------------------------------------------------------------------
+# Market context ingestion seam
+# ---------------------------------------------------------------------------
+
+class TestMarketContext:
+    """Prove the market context reader produces structured provenance-tagged snapshots."""
+
+    def _write_test_csv(self, root, rows):
+        """Write a test NQ_daily.csv with given rows."""
+        data_dir = root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        lines = ["open,high,low,close,volume,vix"]
+        for r in rows:
+            lines.append(",".join(str(v) for v in r))
+        (data_dir / "NQ_daily.csv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _write_test_metadata(self, root, updated_at="2026-03-19T05:00:00+00:00"):
+        data_dir = root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        meta = {
+            "last_updated": updated_at,
+            "sources": {"nq_daily": {"source": "yfinance", "symbol": "NQ=F", "bars": 5}},
+        }
+        (data_dir / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")
+
+    def test_no_data_returns_none(self, clean_root):
+        """No CSV file → returns None, does not crash."""
+        from workspace.quant.shared.market_context import read_market_snapshot
+        assert read_market_snapshot(clean_root) is None
+
+    def test_reads_real_snapshot(self, clean_root):
+        """With CSV data, produces a structured snapshot."""
+        from workspace.quant.shared.market_context import read_market_snapshot
+        self._write_test_csv(clean_root, [
+            (24000, 24200, 23900, 24100, 500000, 20.0),
+            (24100, 24300, 24000, 24200, 510000, 19.5),
+            (24200, 24400, 24100, 24300, 520000, 21.0),
+            (24300, 24500, 24200, 24400, 530000, 22.0),
+            (24400, 24600, 24300, 24500, 540000, 23.5),
+        ])
+        self._write_test_metadata(clean_root)
+        snap = read_market_snapshot(clean_root)
+        assert snap is not None
+        assert snap["symbol"] == "NQ"
+        assert snap["last_close"] == 24500.0
+        assert snap["prev_close"] == 24400.0
+        assert snap["vix"] == 23.5
+        assert snap["trend_5d"] == "up"  # 24100 → 24500 is up
+        assert snap["data_source"].startswith("yfinance")
+        assert snap["snapshot_at"]  # ISO timestamp present
+
+    def test_provenance_fields(self, clean_root):
+        """Snapshot includes provenance: source, file path, update time."""
+        from workspace.quant.shared.market_context import read_market_snapshot
+        self._write_test_csv(clean_root, [
+            (24000, 24200, 23900, 24100, 500000, 20.0),
+            (24100, 24300, 24000, 24200, 510000, 19.5),
+        ])
+        self._write_test_metadata(clean_root, "2026-03-19T05:00:00+00:00")
+        snap = read_market_snapshot(clean_root)
+        assert snap is not None
+        assert "data_source" in snap
+        assert "data_file" in snap
+        assert "data_updated_at" in snap
+        assert "data_freshness_hours" in snap
+        assert snap["data_freshness_hours"] is not None
+
+    def test_trend_detection(self, clean_root):
+        """Trend detection: up, down, flat."""
+        from workspace.quant.shared.market_context import read_market_snapshot
+
+        # Up trend
+        self._write_test_csv(clean_root, [
+            (24000, 24200, 23900, 24100, 500000, 20.0),
+            (24100, 24500, 24000, 24400, 510000, 19.5),
+        ])
+        assert read_market_snapshot(clean_root)["trend_5d"] == "up"
+
+        # Down trend
+        self._write_test_csv(clean_root, [
+            (24400, 24500, 24000, 24400, 500000, 20.0),
+            (24300, 24400, 23900, 24000, 510000, 19.5),
+        ])
+        assert read_market_snapshot(clean_root)["trend_5d"] == "down"
+
+        # Flat
+        self._write_test_csv(clean_root, [
+            (24000, 24200, 23900, 24100, 500000, 20.0),
+            (24100, 24200, 24000, 24100, 510000, 19.5),
+        ])
+        assert read_market_snapshot(clean_root)["trend_5d"] == "flat"
+
+    def test_format_market_read(self, clean_root):
+        """format_market_read produces phone-scannable string."""
+        from workspace.quant.shared.market_context import read_market_snapshot, format_market_read
+        self._write_test_csv(clean_root, [
+            (24000, 24200, 23900, 24100, 500000, 20.0),
+            (24100, 24300, 24000, 24250, 510000, 22.5),
+        ])
+        self._write_test_metadata(clean_root)
+        snap = read_market_snapshot(clean_root)
+        text = format_market_read(snap)
+        assert "NQ last" in text
+        assert "VIX" in text
+        assert "Source:" in text
+
+    def test_format_market_read_none(self):
+        from workspace.quant.shared.market_context import format_market_read
+        text = format_market_read(None)
+        assert "No market data" in text
+
+    def test_atlas_enriched_with_market(self, clean_root):
+        """Atlas builder enriches thesis with market context when available."""
+        from workspace.quant.run_lane_b_cycle import _build_atlas_cycle_input
+        market = {"vix": 25.0, "trend_5d": "down", "daily_change_pct": -1.2}
+        result = _build_atlas_cycle_input(clean_root, market=market)
+        assert len(result) > 0
+        assert "[mkt:" in result[0]["thesis"]
+        assert "VIX=25" in result[0]["thesis"]
+        assert "5d-trend=down" in result[0]["thesis"]
+
+    def test_atlas_no_market_no_enrichment(self, clean_root):
+        """Atlas builder produces plain config thesis without market context."""
+        from workspace.quant.run_lane_b_cycle import _build_atlas_cycle_input
+        result = _build_atlas_cycle_input(clean_root, market=None)
+        assert len(result) > 0
+        assert "[mkt:" not in result[0]["thesis"]
+
+    def test_fish_enriched_with_market(self, clean_root):
+        """Fish builder enriches thesis with market context when available."""
+        from workspace.quant.run_lane_b_cycle import _build_fish_cycle_input
+        market = {"last_close": 24500.0, "vix": 22.0, "range_5d_pct": 3.5}
+        result = _build_fish_cycle_input(clean_root, market=market)
+        assert len(result) > 0
+        assert "[mkt:" in result[0]["thesis"]
+        assert "NQ=24500" in result[0]["thesis"]
+        assert "VIX=22" in result[0]["thesis"]
+
+    def test_high_vix_reduces_atlas_confidence(self, clean_root):
+        """High VIX reduces Atlas candidate confidence."""
+        from workspace.quant.run_lane_b_cycle import _build_atlas_cycle_input
+        low_vix = _build_atlas_cycle_input(clean_root, market={"vix": 12.0})[0]["confidence"]
+        high_vix = _build_atlas_cycle_input(clean_root, market={"vix": 35.0})[0]["confidence"]
+        assert high_vix < low_vix, f"High VIX ({high_vix}) should < low VIX ({low_vix})"
+
+    def test_hermes_ingests_market_as_dataset(self, clean_root):
+        """Hermes emits a dataset_packet from market context with provenance."""
+        from workspace.quant.hermes.research_lane import emit_dataset
+        market = {
+            "last_close": 24500.0,
+            "daily_change_pct": -0.5,
+            "vix": 22.0,
+            "trend_5d": "down",
+            "range_5d_pct": 3.2,
+            "data_updated_at": "2026-03-19T05:00:00+00:00",
+        }
+        ds_source = f"cron-ohlcv-{market['data_updated_at'][:10]}"
+        pkt = emit_dataset(
+            clean_root,
+            thesis=f"NQ daily: close={market['last_close']:.0f} VIX={market['vix']:.1f}",
+            dataset_name="NQ_daily_ohlcv_vix",
+            source=ds_source,
+            source_type="api",
+            symbol_scope="NQ",
+            confidence=0.8,
+        )
+        assert pkt is not None
+        assert "source=cron-ohlcv-2026-03-19" in pkt.notes
+        assert "dataset=NQ_daily_ohlcv_vix" in pkt.notes
+        assert pkt.packet_type == "dataset_packet"
+        assert pkt.lane == "hermes"
+
+    def test_market_dataset_dedup_via_research_source(self, clean_root):
+        """If a research_packet already exists for the same source, dataset deduplicates."""
+        from workspace.quant.hermes.research_lane import emit_research, emit_dataset
+        # Create a research_packet with matching source key
+        emit_research(clean_root, thesis="test", source="cron-ohlcv-2026-03-19",
+                      source_type="api", symbol_scope="NQ")
+        # Now dataset with same source key should dedup
+        pkt = emit_dataset(clean_root, thesis="same source",
+                           dataset_name="test", source="cron-ohlcv-2026-03-19")
+        assert pkt is None, "Should dedup when research_packet has same source"

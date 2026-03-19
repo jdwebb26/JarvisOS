@@ -189,7 +189,15 @@ def cmd_latest(args):
 def cmd_brief(args):
     """Produce and display a Kitt brief."""
     from workspace.quant.kitt.brief_producer import produce_brief
-    brief = produce_brief(ROOT, market_read=args.market or "No live market data available.")
+    market_read = args.market
+    if not market_read:
+        try:
+            from workspace.quant.shared.market_context import read_market_snapshot, format_market_read
+            snap = read_market_snapshot(ROOT)
+            market_read = format_market_read(snap)
+        except Exception:
+            market_read = "No market data available."
+    brief = produce_brief(ROOT, market_read=market_read)
     print(brief.notes or brief.thesis)
 
 
@@ -763,6 +771,20 @@ def cmd_observe(args):
             print(f"  Bootstrap: {', '.join(tags)}")
         else:
             print(f"  Bootstrap: all lanes active or bootstrapped")
+    except Exception:
+        pass
+
+    # Market context
+    try:
+        from workspace.quant.shared.market_context import read_market_snapshot
+        mkt = read_market_snapshot(ROOT)
+        if mkt:
+            fresh = mkt.get("data_freshness_hours")
+            age = f"{fresh:.0f}h" if fresh is not None and fresh < 48 else "stale" if fresh else "?"
+            print(f"  Market: NQ={mkt['last_close']:.0f} ({mkt['daily_change_pct']:+.1f}%) "
+                  f"VIX={mkt['vix']:.1f} trend={mkt['trend_5d']} [{age} old]")
+        else:
+            print("  Market: no data (cron_ingest may not have run)")
     except Exception:
         pass
     print()

@@ -57,12 +57,13 @@ def acquire_cycle_lock():
 # Config-driven cycle input builders
 # ---------------------------------------------------------------------------
 
-def _build_atlas_cycle_input(root: Path) -> list[dict]:
-    """Build Atlas candidate batch input from config + upstream evidence.
+def _build_atlas_cycle_input(root: Path, market: dict | None = None) -> list[dict]:
+    """Build Atlas candidate batch input from config + upstream evidence + market context.
 
     Sources (in priority order):
       1. atlas_sources.json seed_themes (rotating through them across cycles)
       2. Recent Hermes research packets as evidence_refs
+      3. Market snapshot (OHLCV+VIX from cron data pull) for thesis enrichment
 
     Returns a list of candidate dicts for generate_candidate_batch(),
     or [] if no config-driven input is available.
@@ -91,9 +92,7 @@ def _build_atlas_cycle_input(root: Path) -> list[dict]:
     if config.get("require_hermes_evidence", False) and not hermes_refs:
         return []
 
-    # Pick one theme per cycle by rotating based on the current date-hour.
-    # This avoids always hammering the same theme while staying deterministic
-    # within a given cycle window.
+    # Pick one theme per cycle by rotating based on the current date-hour
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     theme_idx = (now.timetuple().tm_yday * 24 + now.hour) % len(themes)
@@ -103,23 +102,43 @@ def _build_atlas_cycle_input(root: Path) -> list[dict]:
     ts = now.strftime("%Y%m%dT%H%M%S")
     short = hashlib.sha256(f"{prefix}-{ts}".encode()).hexdigest()[:8]
 
+    # Enrich thesis with market context if available
+    thesis = theme["thesis"]
+    confidence = theme.get("confidence", 0.4)
+    if market:
+        ctx_parts = []
+        if market.get("vix") is not None:
+            ctx_parts.append(f"VIX={market['vix']:.0f}")
+        if market.get("trend_5d"):
+            ctx_parts.append(f"5d-trend={market['trend_5d']}")
+        if market.get("daily_change_pct") is not None:
+            ctx_parts.append(f"chg={market['daily_change_pct']:+.1f}%")
+        if ctx_parts:
+            thesis = f"{thesis} [mkt: {', '.join(ctx_parts)}]"
+        # Adjust confidence: high VIX → lower confidence for new candidates
+        vix = market.get("vix", 0)
+        if vix > 30:
+            confidence = max(0.15, confidence - 0.1)
+        elif vix < 15:
+            confidence = min(0.7, confidence + 0.05)
+
     return [{
         "strategy_id": f"{prefix}-{short}",
-        "thesis": theme["thesis"],
+        "thesis": thesis,
         "symbol_scope": theme.get("symbol_scope", "NQ"),
         "timeframe_scope": theme.get("timeframe_scope", "15m"),
-        "confidence": theme.get("confidence", 0.4),
+        "confidence": confidence,
         "evidence_refs": hermes_refs[:3] if hermes_refs else None,
     }]
 
 
-def _build_fish_cycle_input(root: Path) -> list[dict]:
-    """Build Fish scenario batch input from config + existing lane state.
+def _build_fish_cycle_input(root: Path, market: dict | None = None) -> list[dict]:
+    """Build Fish scenario batch input from config + lane state + market context.
 
     Sources (in priority order):
       1. fish_bootstrap.json seed_scenarios (rotating across cycles)
-      2. Recent Hermes research themes as thesis enrichment
-      3. Current regime context from Fish's own regime packets
+      2. Current regime context from Fish's own regime packets
+      3. Market snapshot (OHLCV+VIX from cron data pull) for scenario enrichment
 
     Returns a list of scenario dicts for run_scenario_batch(),
     or [] if no config-driven input is available.
@@ -144,8 +163,10 @@ def _build_fish_cycle_input(root: Path) -> list[dict]:
     scenario_idx = (now.timetuple().tm_yday * 24 + now.hour) % len(scenarios)
     scenario = scenarios[scenario_idx]
 
-    # Optionally enrich thesis with current regime context
     thesis = scenario["thesis"]
+    confidence = scenario.get("confidence", 0.4)
+
+    # Enrich with regime context from Fish's own state
     try:
         from workspace.quant.shared.packet_store import list_lane_packets
         regimes = list_lane_packets(root, "fish", "regime_packet")
@@ -160,11 +181,27 @@ def _build_fish_cycle_input(root: Path) -> list[dict]:
     except Exception:
         pass
 
+    # Enrich with market context if available
+    if market:
+        ctx_parts = []
+        if market.get("last_close") is not None:
+            ctx_parts.append(f"NQ={market['last_close']:.0f}")
+        if market.get("vix") is not None:
+            ctx_parts.append(f"VIX={market['vix']:.0f}")
+        if market.get("range_5d_pct") is not None:
+            ctx_parts.append(f"5d-range={market['range_5d_pct']:.1f}%")
+        if ctx_parts:
+            thesis = f"{thesis} [mkt: {', '.join(ctx_parts)}]"
+        # Adjust confidence: wide range → more volatile → lower base confidence
+        range_pct = market.get("range_5d_pct", 0)
+        if range_pct > 5.0:
+            confidence = max(0.2, confidence - 0.1)
+
     return [{
         "thesis": thesis,
         "symbol_scope": scenario.get("symbol_scope", "NQ"),
         "timeframe_scope": scenario.get("timeframe_scope", "1D"),
-        "confidence": scenario.get("confidence", 0.4),
+        "confidence": confidence,
     }]
 
 
@@ -190,6 +227,24 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
             _log(f"  Coherence issues: {issues}")
     except Exception as e:
         summary["errors"].append(f"recovery: {e}")
+
+    # --- 1a. Read market context (cron-ingested OHLCV+VIX) ---
+    market = None
+    try:
+        from workspace.quant.shared.market_context import read_market_snapshot
+        market = read_market_snapshot(root)
+        if market and verbose:
+            _log(f"Market context: NQ={market['last_close']:.0f} "
+                 f"({market['daily_change_pct']:+.1f}%) VIX={market['vix']:.1f} "
+                 f"trend={market['trend_5d']} "
+                 f"freshness={market.get('data_freshness_hours', '?')}h")
+        elif verbose:
+            _log("Market context: not available (no cron data)")
+        summary["market_context"] = bool(market)
+    except Exception as e:
+        if verbose:
+            _log(f"Market context error: {e}")
+        summary["market_context"] = False
 
     # --- 1b. Bootstrap cold-start assistance ---
     # If lanes have never produced packets, bootstrap them (bounded, dedup-safe).
@@ -221,18 +276,41 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
 
     # --- 2. Hermes ---
     if verbose:
-        _log("Hermes: research batch")
+        _log("Hermes: research batch + market context ingestion")
     try:
-        from workspace.quant.hermes.research_lane import run_watchlist_batch, emit_health_summary
+        from workspace.quant.hermes.research_lane import run_watchlist_batch, emit_dataset, emit_health_summary
         params = get_lane_params(root, "hermes")
         if not params.get("paused"):
-            # Use real watchlist-driven research, not hardcoded stubs
+            # Ingest market context as a dataset_packet (dedup-safe on source key)
+            dataset_emitted = 0
+            if market:
+                ds_source = f"cron-ohlcv-{market.get('data_updated_at', 'unknown')[:10]}"
+                ds_pkt = emit_dataset(
+                    root,
+                    thesis=(f"NQ daily OHLCV+VIX: close={market['last_close']:.0f} "
+                            f"({market['daily_change_pct']:+.1f}%), "
+                            f"VIX={market['vix']:.1f}, "
+                            f"5d-trend={market['trend_5d']}, "
+                            f"5d-range={market['range_5d_pct']:.1f}%"),
+                    dataset_name="NQ_daily_ohlcv_vix",
+                    source=ds_source,
+                    source_type="api",
+                    symbol_scope="NQ",
+                    confidence=0.8,
+                )
+                if ds_pkt:
+                    dataset_emitted = 1
+                    if verbose:
+                        _log(f"  Market context ingested as dataset: {ds_pkt.packet_id}")
+
+            # Watchlist-driven research
             emitted, info = run_watchlist_batch(root)
-            summary["hermes"]["emitted"] = info.get("emitted", 0)
+            total_emitted = info.get("emitted", 0) + dataset_emitted
+            summary["hermes"]["emitted"] = total_emitted
             summary["hermes"]["deduped"] = info.get("deduped", 0)
             emit_health_summary(root, summary["started_at"], _ts(),
-                                packets_produced=summary["hermes"]["emitted"],
-                                research_emitted=summary["hermes"]["emitted"],
+                                packets_produced=total_emitted,
+                                research_emitted=info.get("emitted", 0),
                                 dedup_skips=info.get("deduped", 0),
                                 host_used=info.get("host", "mixed"))
         elif verbose:
@@ -251,7 +329,7 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
             if verbose:
                 _log("  Atlas paused by governor")
         else:
-            candidates_input = _build_atlas_cycle_input(root)
+            candidates_input = _build_atlas_cycle_input(root, market=market)
             if candidates_input:
                 batch_pkt, candidates, info = generate_candidate_batch(root, candidates_input)
                 summary["atlas"]["generated"] = info.get("generated", 0)
@@ -276,7 +354,7 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
             if verbose:
                 _log("  Fish paused by governor")
         else:
-            scenarios_input = _build_fish_cycle_input(root)
+            scenarios_input = _build_fish_cycle_input(root, market=market)
             if scenarios_input:
                 emitted, info = run_scenario_batch(root, scenarios_input)
                 summary["fish"]["emitted"] = len(emitted)
@@ -317,7 +395,12 @@ def run_cycle(root: Path, verbose: bool = False) -> dict:
         _log("Kitt: producing brief")
     try:
         from workspace.quant.kitt.brief_producer import produce_brief
-        produce_brief(root, market_read="Automated Lane B cycle. No live market data.")
+        if market:
+            from workspace.quant.shared.market_context import format_market_read
+            mkt_read = format_market_read(market)
+        else:
+            mkt_read = "No market data available (cron data pull may not have run yet)."
+        produce_brief(root, market_read=mkt_read)
         summary["brief"] = True
     except Exception as e:
         summary["errors"].append(f"brief: {e}")

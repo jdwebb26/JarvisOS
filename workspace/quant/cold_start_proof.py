@@ -13,9 +13,11 @@ Exit 0 = all checks pass. Exit 1 = failure.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -82,6 +84,7 @@ class Proof:
             self._prove_idempotent()
             self._prove_bootstrap_status()
             self._prove_brief_has_bootstrap()
+            self._prove_market_context()
             self._prove_lane_b_cycle()
         except Exception as e:
             self.check(f"UNEXPECTED ERROR: {e}", False, "proof aborted")
@@ -291,6 +294,52 @@ class Proof:
         self.check("brief: contains bootstrap status",
                     "Bootstrap:" in notes, notes[notes.find("Bootstrap:"):notes.find("Bootstrap:") + 60] if "Bootstrap:" in notes else "not found")
 
+    def _prove_market_context(self):
+        """Prove market context reader works with real cron-ingested data."""
+        from workspace.quant.shared.market_context import read_market_snapshot, format_market_read
+
+        # Try reading from production data dir (may not exist in CI)
+        snap = read_market_snapshot(self.root)
+        if snap is None:
+            # Fall back: create minimal test data in isolated root
+            data_dir = self.root / "data"
+            data_dir.mkdir(parents=True, exist_ok=True)
+            (data_dir / "NQ_daily.csv").write_text(
+                "open,high,low,close,volume,vix\n"
+                "24000,24200,23900,24100,500000,20.0\n"
+                "24100,24300,24000,24200,510000,19.5\n"
+                "24200,24400,24100,24350,520000,22.0\n",
+                encoding="utf-8",
+            )
+            (data_dir / "metadata.json").write_text(json.dumps({
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+                "sources": {"nq_daily": {"source": "test", "symbol": "NQ=F", "bars": 3}},
+            }), encoding="utf-8")
+            snap = read_market_snapshot(self.root)
+
+        self.check("market context: snapshot available",
+                    snap is not None, "snapshot loaded" if snap else "None")
+
+        if snap:
+            self.check("market context: has last_close",
+                        snap.get("last_close") is not None and snap["last_close"] > 0,
+                        f"last_close={snap.get('last_close')}")
+            self.check("market context: has VIX",
+                        snap.get("vix") is not None,
+                        f"vix={snap.get('vix')}")
+            self.check("market context: has provenance",
+                        bool(snap.get("data_source")),
+                        f"source={snap.get('data_source', 'missing')}")
+            self.check("market context: has trend",
+                        snap.get("trend_5d") in ("up", "down", "flat"),
+                        f"trend={snap.get('trend_5d')}")
+
+            # Format produces readable string
+            text = format_market_read(snap)
+            self.check("market context: format readable",
+                        "NQ last" in text and "VIX" in text,
+                        text[:60])
+
     def _prove_lane_b_cycle(self):
         """Lane B cycle uses config-driven inputs for all lanes."""
         from workspace.quant.run_lane_b_cycle import (
@@ -318,8 +367,11 @@ class Proof:
                 config = json.loads(config_path.read_text(encoding="utf-8"))
                 config_theses = {t["thesis"] for t in config.get("seed_themes", [])}
                 input_thesis = atlas_input[0]["thesis"]
+                # Strip market/enrichment annotations to find base config thesis
+                import re
+                base_thesis = re.sub(r"\s*\[(?:mkt|adapted|regime):.*?\]", "", input_thesis)
                 self.check("cycle: atlas input from config",
-                            input_thesis in config_theses,
+                            base_thesis in config_theses,
                             f"thesis={input_thesis[:60]}")
                 # Evidence refs should link to Hermes if available
                 refs = atlas_input[0].get("evidence_refs") or []
@@ -345,8 +397,8 @@ class Proof:
                 config = json.loads(config_path.read_text(encoding="utf-8"))
                 config_theses = {s["thesis"] for s in config.get("seed_scenarios", [])}
                 input_thesis = fish_input[0]["thesis"]
-                # The thesis may have a [regime: ...] suffix appended, so check prefix
-                base_thesis = input_thesis.split(" [regime:")[0]
+                # Strip enrichment annotations: [regime: ...], [mkt: ...]
+                base_thesis = re.sub(r"\s*\[(?:regime|mkt):.*?\]", "", input_thesis)
                 self.check("cycle: fish input from config",
                             base_thesis in config_theses,
                             f"thesis={input_thesis[:60]}")
