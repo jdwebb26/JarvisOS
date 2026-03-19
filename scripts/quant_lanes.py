@@ -1207,6 +1207,25 @@ def cmd_proof_reconcile(args):
         print(f"  {c['strategy_id']}  horizon={c['horizon_class']}  run={c['paper_run_id']}")
 
 
+def cmd_promotion_decide(args):
+    """Process an operator decision on a promotion review.
+
+    Usage:
+      quant_lanes.py promotion-decide <promotion_id> approved [reason]
+      quant_lanes.py promotion-decide <promotion_id> rejected [reason]
+      quant_lanes.py promotion-decide <promotion_id> rerun_paper [reason]
+    """
+    from workspace.quant.executor.executor_lane import handle_promotion_decision
+    result = handle_promotion_decision(ROOT, args.promotion_id, args.decision,
+                                        reason=args.reason or "")
+    if result["ok"]:
+        print(f"  Decision: {result['decision']}")
+        print(f"  Strategy: {result['strategy_id']}")
+        print(f"  New state: {result['new_state']}")
+    else:
+        print(f"  ERROR: {result['error']}")
+
+
 def cmd_observe(args):
     """Concise operator observability surface. Phone-readable truth."""
     from workspace.quant.shared.governor import load_governor_state
@@ -1450,6 +1469,11 @@ def main():
     p_pp = sub.add_parser("proof-promote", help="Create promotion review if proof sufficient")
     p_pp.add_argument("run_id", help="Paper run ID")
     sub.add_parser("proof-reconcile", help="Create missing paper runs for legacy PAPER_ACTIVE strategies")
+    p_pd = sub.add_parser("promotion-decide", help="Approve/reject/rerun a promotion review")
+    p_pd.add_argument("promotion_id", help="Promotion ID (promo_xxx)")
+    p_pd.add_argument("decision", choices=["approved", "rejected", "rerun_paper"],
+                       help="Decision: approved, rejected, or rerun_paper")
+    p_pd.add_argument("reason", nargs="?", default="", help="Optional reason")
 
     # Bootstrap commands
     sub.add_parser("bootstrap-hermes", help="Cold-start Hermes from watchlist")
@@ -1498,6 +1522,7 @@ def main():
         "proof-evaluate": cmd_proof_evaluate,
         "proof-promote": cmd_proof_promote,
         "proof-reconcile": cmd_proof_reconcile,
+        "promotion-decide": cmd_promotion_decide,
     }
     commands[args.command](args)
 

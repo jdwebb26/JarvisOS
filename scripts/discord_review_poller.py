@@ -32,17 +32,22 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 REVIEW_CHANNEL_ID = "1483132981177618482"
 
-# Approval ID pattern: apr_ or qpt_ or pulse_ followed by hex
-APPROVAL_ID_PATTERN = re.compile(r"\b(?:apr|qpt|pulse)_[a-f0-9]{8,}\b", re.IGNORECASE)
+# Approval ID pattern: apr_ or qpt_ or pulse_ or promo_ followed by identifier chars
+APPROVAL_ID_PATTERN = re.compile(r"\b(?:apr|qpt|pulse|promo)_[a-zA-Z0-9_-]{6,}\b")
 
 # Text command patterns (case-insensitive)
-# Matches Jarvis approvals (apr_xxx), quant approvals (qpt_xxx), and Pulse proposals (pulse_xxx)
+# Matches Jarvis (apr_xxx), quant (qpt_xxx), Pulse (pulse_xxx), promotions (promo_xxx)
+_ID_GROUP = r"((?:apr|qpt|pulse|promo)_[a-zA-Z0-9_-]+)"
 APPROVE_PATTERN = re.compile(
-    r"^\s*(?:approve|approved|yes|lgtm|ship\s*it)\s+((?:apr|qpt|pulse)_[a-f0-9]+)\s*(.*)?$",
+    rf"^\s*(?:approve|approved|yes|lgtm|ship\s*it)\s+{_ID_GROUP}\s*(.*)?$",
     re.IGNORECASE,
 )
 REJECT_PATTERN = re.compile(
-    r"^\s*(?:reject|rejected|no|nack)\s+((?:apr|qpt|pulse)_[a-f0-9]+)\s*(.*)?$",
+    rf"^\s*(?:reject|rejected|no|nack)\s+{_ID_GROUP}\s*(.*)?$",
+    re.IGNORECASE,
+)
+RERUN_PATTERN = re.compile(
+    rf"^\s*(?:rerun|rerun_paper|redo|continue_paper)\s+{_ID_GROUP}\s*(.*)?$",
     re.IGNORECASE,
 )
 
@@ -192,6 +197,25 @@ def _handle_pulse_approval(
         return {"ok": False, "error": str(exc)}
 
 
+def _handle_promotion_approval(
+    approval_ref: str,
+    decision: str,
+    reason: str = "",
+) -> dict[str, Any]:
+    """Handle a promotion review decision (promo_xxx IDs).
+
+    Maps review poller decisions to handle_promotion_decision():
+      approved    → "approved"    → PAPER_REVIEW → LIVE_QUEUED
+      rejected    → "rejected"    → PAPER_REVIEW → PAPER_KILLED
+      rerun_paper → "rerun_paper" → PAPER_REVIEW → ITERATE
+    """
+    try:
+        from workspace.quant.executor.executor_lane import handle_promotion_decision
+        return handle_promotion_decision(ROOT, approval_ref, decision, reason)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def call_approval_endpoint(
     approval_id: str,
     decision: str,
@@ -203,12 +227,15 @@ def call_approval_endpoint(
 
     - pulse_xxx: Pulse proposal (handled locally via Pulse lane)
     - qpt_xxx: quant lane approval (handled locally)
+    - promo_xxx: promotion review (handled locally via executor lane)
     - apr_xxx: Jarvis approval (handled via inbound server)
     """
     if approval_id.startswith("pulse_"):
         return _handle_pulse_approval(approval_id, decision)
     if approval_id.startswith("qpt_"):
         return _handle_quant_approval(approval_id, decision)
+    if approval_id.startswith("promo_"):
+        return _handle_promotion_approval(approval_id, decision, reason)
 
     token = _load_gateway_token()
     payload = json.dumps({
@@ -293,6 +320,21 @@ def _process_text_command(msg: dict, state: dict) -> bool:
             _post_review_confirmation(f"\u274c Rejected `{approval_id}` (by {author}): {reason}" if reason else f"\u274c Rejected `{approval_id}` (by {author})")
         else:
             _post_review_confirmation(f"\u26a0\ufe0f Rejection failed for `{approval_id}`: {result.get('error', 'unknown')}")
+        return True
+
+    # Try rerun pattern (promotion reviews only)
+    m = RERUN_PATTERN.match(content)
+    if m:
+        approval_id = m.group(1)
+        reason = (m.group(2) or "").strip()
+        author = msg.get("author", {}).get("username", "operator")
+        print(f"[discord_review_poller] text RERUN {approval_id} by {author}", flush=True)
+        result = call_approval_endpoint(approval_id, "rerun_paper", actor=f"operator:{author}", reason=reason)
+        state.setdefault("processed_message_ids", []).append(msg_id)
+        if result.get("ok"):
+            _post_review_confirmation(f"\U0001f504 Rerun `{approval_id}` (by {author}): {reason}" if reason else f"\U0001f504 Rerun `{approval_id}` (by {author})")
+        else:
+            _post_review_confirmation(f"\u26a0\ufe0f Rerun failed for `{approval_id}`: {result.get('error', 'unknown')}")
         return True
 
     return False
