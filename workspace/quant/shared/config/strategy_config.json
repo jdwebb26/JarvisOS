@@ -1,0 +1,17 @@
+{
+  "default_family": "ema_mean_reversion",
+  "regime_assignments": {
+    "low_vol": ["ema_mean_reversion", "vwap_reversion"],
+    "normal": ["ema_mean_reversion", "momentum", "trend_following"],
+    "trending": ["trend_following", "breakout"],
+    "extended": ["ema_mean_reversion", "vwap_reversion"]
+  },
+  "strategy_overrides": {},
+  "family_parameters": {
+    "ema_mean_reversion": {"fast": 8, "slow": 21, "entry_atr_mult": 1.8},
+    "momentum": {"rsi_period": 14, "oversold": 30, "overbought": 70},
+    "trend_following": {"macd_fast": 12, "macd_slow": 26, "macd_signal": 9},
+    "breakout": {"range_bars": 6},
+    "vwap_reversion": {"deviation_threshold": 1.5}
+  }
+}

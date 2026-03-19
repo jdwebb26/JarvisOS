@@ -373,8 +373,31 @@ def run_cycle(dry_run: bool = False) -> dict:
         status = get_status()
         open_positions = status["open_positions"]
 
-    # 3. Compute signal (needed for thesis tracking even during hold)
-    signal = compute_signal(bars)
+    # 3. Compute signal — multi-strategy aware
+    # Try the signal registry first (selects best signal across families for current regime),
+    # falling back to the original compute_signal for backward compatibility.
+    signal_family = None
+    try:
+        from kitt.signals import select_best_signal, load_strategy_config
+        strategy_config = load_strategy_config()
+        regime_preview = _classify_regime(compute_signal(bars))
+        allowed = strategy_config.get("regime_assignments", {}).get(regime_preview)
+        best = select_best_signal(bars, allowed_families=allowed)
+        if best and best.signal != "none":
+            signal = {
+                "signal": best.signal, "entry": best.entry, "stop": best.stop,
+                "target": best.target, "reason": best.reason,
+                "atr": best.atr, "deviation": best.deviation,
+                "ema_fast": best.indicators.get("ema_fast", 0),
+                "ema_slow": best.indicators.get("ema_slow", 0),
+                "current_price": best.current_price,
+            }
+            signal_family = best.family
+            print(f"[kitt] Multi-strategy: selected {best.family} (confidence={best.confidence:.2f})")
+        else:
+            signal = compute_signal(bars)
+    except Exception:
+        signal = compute_signal(bars)
     regime = _classify_regime(signal)
 
     # 4. If already at max positions, decide hold or manage
@@ -461,8 +484,9 @@ def run_cycle(dry_run: bool = False) -> dict:
                                 market_context=_market_context(bars),
                                 signal=signal, regime=regime)
 
-    pos_id = open_position(direction, entry, stop, target, reason)
-    print(f"[kitt] Opened: {pos_id}")
+    pos_id = open_position(direction, entry, stop, target, reason,
+                           strategy_id=signal_family)
+    print(f"[kitt] Opened: {pos_id} (strategy: {signal_family or 'kitt-default'})")
 
     # Emit event for new position
     emit_event(

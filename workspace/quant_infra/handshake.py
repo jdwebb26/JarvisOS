@@ -38,31 +38,35 @@ def run_chain() -> dict:
     print("=" * 60)
 
     # Step 1: Consume Kitt events -> Salmon scenario refresh
-    print("\n[1/7] Salmon: consuming Kitt events + scenario refresh...")
+    print("\n[1/8] Salmon: consuming Kitt events + scenario refresh...")
     results["steps"]["salmon"] = _run_salmon()
 
     # Step 2: Sigma paper-trade validation
-    print("\n[2/7] Sigma: paper-trade validation...")
+    print("\n[2/8] Sigma: paper-trade validation...")
     results["steps"]["sigma"] = _run_sigma()
 
     # Step 3: Sigma→Atlas feedback loop (automated)
-    print("\n[3/7] Feedback loop: Sigma→Atlas experiment proposals...")
+    print("\n[3/8] Feedback loop: Sigma→Atlas experiment proposals...")
     results["steps"]["feedback_loop"] = _run_feedback_loop()
 
     # Step 4: Rejection intelligence — ingest + feedback export + scoreboard rebuild
-    print("\n[4/7] Rejection intelligence: ingest + feedback export...")
+    print("\n[4/8] Rejection intelligence: ingest + feedback export...")
     results["steps"]["rejection"] = _run_rejection_intelligence()
 
     # Step 5: Atlas — generate candidates from rejection feedback (cadence-gated)
-    print("\n[5/7] Atlas: rejection-aware candidate generation...")
+    print("\n[5/8] Atlas: rejection-aware candidate generation...")
     results["steps"]["atlas"] = _run_atlas()
 
     # Step 6: Fish calibration — compare prior forecasts to outcomes
-    print("\n[6/7] Fish: calibration sweep...")
+    print("\n[6/8] Fish: calibration sweep...")
     results["steps"]["calibration"] = _run_fish_calibration()
 
-    # Step 7: Jarvis operator summary refresh + truth pack
-    print("\n[7/7] Jarvis: operator summary + truth pack...")
+    # Step 7: Options context refresh (volatility surface, hedging signals)
+    print("\n[7/8] Options: volatility surface + hedging signals...")
+    results["steps"]["options"] = _run_options_context()
+
+    # Step 8: Jarvis operator summary refresh + truth pack
+    print("\n[8/8] Jarvis: operator summary + truth pack...")
     results["steps"]["jarvis"] = _run_jarvis()
 
     # Write handshake log
@@ -300,6 +304,28 @@ def _run_rejection_intelligence() -> dict:
         return {"status": "error", "error": str(exc), "summary": f"error: {exc}"}
 
 
+def _run_options_context() -> dict:
+    """Fetch options-derived market context (VIX, term structure, put/call, hedging)."""
+    try:
+        from openbb.options_adapter import fetch_options_context, generate_hedging_signal
+        ctx = fetch_options_context()
+        hedging = generate_hedging_signal(ctx)
+
+        parts = [f"VIX={ctx.vix_current} ({ctx.vix_regime})"]
+        if ctx.vix_term_structure != "unknown":
+            parts.append(f"term={ctx.vix_term_structure}")
+        if ctx.spy_put_call_ratio > 0:
+            parts.append(f"P/C={ctx.spy_put_call_ratio}")
+        if hedging.recommendation != "none":
+            parts.append(f"hedge: {hedging.recommendation} ({hedging.urgency})")
+
+        return {"status": "ok", "vix": ctx.vix_current, "regime": ctx.vix_regime,
+                "hedging": hedging.recommendation, "summary": "; ".join(parts)}
+    except Exception as exc:
+        print(f"[handshake] Options context error: {exc}")
+        return {"status": "error", "error": str(exc), "summary": f"error: {exc}"}
+
+
 def _run_jarvis() -> dict:
     """Run Jarvis operator summary refresh + truth pack generation."""
     parts = []
@@ -397,7 +423,7 @@ def main():
     parser = argparse.ArgumentParser(description="Quant Event Handshake")
     parser.add_argument("--step", type=str,
                         choices=["salmon", "sigma", "feedback_loop", "rejection",
-                                 "atlas", "calibration", "jarvis"],
+                                 "atlas", "calibration", "options", "jarvis"],
                         help="Run a single step")
     parser.add_argument("--status", action="store_true", help="Show chain status")
     args = parser.parse_args()
@@ -417,6 +443,8 @@ def main():
         _run_atlas()
     elif args.step == "calibration":
         _run_fish_calibration()
+    elif args.step == "options":
+        _run_options_context()
     elif args.step == "jarvis":
         _run_jarvis()
     else:
