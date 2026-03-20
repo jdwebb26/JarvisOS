@@ -22,6 +22,8 @@ Channel → env var mapping (set these in ~/.openclaw/secrets.env):
     1483916149573025793  atlas     → JARVIS_DISCORD_WEBHOOK_ATLAS  (quant discovery)
     1483916169672130754  fish      → JARVIS_DISCORD_WEBHOOK_FISH   (quant scenarios)
     1484083970151813151  ralph     → JARVIS_DISCORD_WEBHOOK_RALPH  (overflow)
+    1484324994552172544  vizor     → JARVIS_DISCORD_WEBHOOK_VIZOR  (visual quant)
+    1484325009391489064  ict       → JARVIS_DISCORD_WEBHOOK_ICT    (methodology expert)
 """
 from __future__ import annotations
 
@@ -65,6 +67,8 @@ CHANNEL_WEBHOOK_ENV: dict[str, str] = {
     "1483916169672130754": "JARVIS_DISCORD_WEBHOOK_FISH",    # fish (quant scenarios)
     "1484083970151813151": "JARVIS_DISCORD_WEBHOOK_RALPH",   # ralph (overflow)
     "1484088366155698176": "JARVIS_DISCORD_WEBHOOK_PULSE",   # pulse (discretionary alerts)
+    "1484324994552172544": "JARVIS_DISCORD_WEBHOOK_VIZOR",   # vizor (visual quant)
+    "1484325009391489064": "JARVIS_DISCORD_WEBHOOK_ICT",     # ict (methodology expert)
 }
 
 

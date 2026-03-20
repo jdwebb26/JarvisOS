@@ -76,6 +76,11 @@ def infer_task_type(normalized_request: str, *, channel: str = "") -> str:
     if channel.lower() in {"muse", "creative"}:
         return "creative"
 
+    # Vizor and ICT channels are always quant — they are specialist agents
+    # that should always route to their dedicated models on NIMO.
+    if channel.lower() in {"vizor", "ict"}:
+        return "quant"
+
     # Explicit creative intent (any channel).
     if has_any("creative", "poem", "brainstorm", "tagline", "slogan",
                "marketing copy", "write a story", "brand", "logo",

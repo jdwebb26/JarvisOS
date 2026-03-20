@@ -2,27 +2,111 @@
   "version": "1.2",
   "updated": "2026-03-19",
   "agents": {
-    "jarvis":     { "channel_id": "1478178050133987400", "purpose": "orchestration",   "voice_only": false },
-    "hal":        { "channel_id": "1483133691969671289", "purpose": "building",         "voice_only": false },
-    "scout":      { "channel_id": "1483131531546464336", "purpose": "recon",            "voice_only": false },
-    "anton":      { "channel_id": "1478178150268670212", "purpose": "supreme_review",   "voice_only": false },
-    "archimedes": { "channel_id": "1483132981177618482", "purpose": "technical_review", "voice_only": false },
-    "hermes":     { "channel_id": "1483131437292191945", "purpose": "research",         "voice_only": false },
-    "kitt":       { "channel_id": "1483320979185733722", "purpose": "quant_lead",       "voice_only": false },
-    "sigma":      { "channel_id": "1483916191046041811", "purpose": "quant_validation", "voice_only": false },
-    "claude":     { "channel_id": null,                  "purpose": "general",          "voice_only": false },
-    "qwen":       { "channel_id": "1483131473543303208", "purpose": "qwen_agent",       "voice_only": false },
-    "bowser":     { "channel_id": "1483539080271761408", "purpose": "browser",          "voice_only": false },
-    "cadence":    { "channel_id": "1483537502152425625", "purpose": "voice_tts_calls",  "voice_only": true  },
-    "muse":       { "channel_id": "1483133844663304272", "purpose": "creative",         "voice_only": false },
-    "ralph":      { "channel_id": "1484083970151813151", "purpose": "overflow",         "voice_only": false },
-    "atlas":      { "channel_id": "1483916149573025793", "purpose": "quant_discovery",  "voice_only": false },
-    "fish":       { "channel_id": "1483916169672130754", "purpose": "quant_scenarios",  "voice_only": false },
-    "pulse":      { "channel_id": "1484088366155698176", "purpose": "discretionary_alerts", "voice_only": false }
+    "jarvis": {
+      "channel_id": "1478178050133987400",
+      "purpose": "orchestration",
+      "voice_only": false
+    },
+    "hal": {
+      "channel_id": "1483133691969671289",
+      "purpose": "building",
+      "voice_only": false
+    },
+    "scout": {
+      "channel_id": "1483131531546464336",
+      "purpose": "recon",
+      "voice_only": false
+    },
+    "anton": {
+      "channel_id": "1478178150268670212",
+      "purpose": "supreme_review",
+      "voice_only": false
+    },
+    "archimedes": {
+      "channel_id": "1483132981177618482",
+      "purpose": "technical_review",
+      "voice_only": false
+    },
+    "hermes": {
+      "channel_id": "1483131437292191945",
+      "purpose": "research",
+      "voice_only": false
+    },
+    "kitt": {
+      "channel_id": "1483320979185733722",
+      "purpose": "quant_lead",
+      "voice_only": false
+    },
+    "sigma": {
+      "channel_id": "1483916191046041811",
+      "purpose": "quant_validation",
+      "voice_only": false
+    },
+    "claude": {
+      "channel_id": null,
+      "purpose": "general",
+      "voice_only": false
+    },
+    "qwen": {
+      "channel_id": "1483131473543303208",
+      "purpose": "qwen_agent",
+      "voice_only": false
+    },
+    "bowser": {
+      "channel_id": "1483539080271761408",
+      "purpose": "browser",
+      "voice_only": false
+    },
+    "cadence": {
+      "channel_id": "1483537502152425625",
+      "purpose": "voice_tts_calls",
+      "voice_only": true
+    },
+    "muse": {
+      "channel_id": "1483133844663304272",
+      "purpose": "creative",
+      "voice_only": false
+    },
+    "ralph": {
+      "channel_id": "1484083970151813151",
+      "purpose": "overflow",
+      "voice_only": false
+    },
+    "atlas": {
+      "channel_id": "1483916149573025793",
+      "purpose": "quant_discovery",
+      "voice_only": false
+    },
+    "fish": {
+      "channel_id": "1483916169672130754",
+      "purpose": "quant_scenarios",
+      "voice_only": false
+    },
+    "pulse": {
+      "channel_id": "1484088366155698176",
+      "purpose": "discretionary_alerts",
+      "voice_only": false
+    },
+    "vizor": {
+      "channel_id": "1484324994552172544",
+      "purpose": "visual_quant",
+      "voice_only": false
+    },
+    "ict": {
+      "channel_id": "1484325009391489064",
+      "purpose": "ict_methodology",
+      "voice_only": false
+    }
   },
   "logical_channels": {
-    "worklog": { "channel_id": "1483539374854639761", "purpose": "mirror_log" },
-    "jarvis":  { "channel_id": "1478178050133987400", "purpose": "orchestration_escalation" }
+    "worklog": {
+      "channel_id": "1483539374854639761",
+      "purpose": "mirror_log"
+    },
+    "jarvis": {
+      "channel_id": "1478178050133987400",
+      "purpose": "orchestration_escalation"
+    }
   },
   "voice_only_event_kinds": [
     "voice_session_started",
